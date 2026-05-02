@@ -1,0 +1,1 @@
+﻿src/auth/auth.service.ts(14,42): error TS2339: Property 'findByEmail' does not exist on type 'UsersService'.

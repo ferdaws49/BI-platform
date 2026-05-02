@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design system variables (all colors in HSL) ── */
+@layer base {
+
+  /* ════════════════════════════════
+     LIGHT MODE (default)
+  ════════════════════════════════ */
+  :root {
+    /* Core palette */
+    --background:             40 30% 95%;
+    --foreground:             150 10% 15%;
+
+    --card:                   40 25% 97%;
+    --card-foreground:        150 10% 15%;
+
+    --popover:                40 25% 97%;
+    --popover-foreground:     150 10% 15%;
+
+    --primary:                150 25% 25%;
+    --primary-foreground:     40 30% 95%;
+
+    --secondary:              40 20% 90%;
+    --secondary-foreground:   150 10% 15%;
+
+    --muted:                  40 15% 92%;
+    --muted-foreground:       150 5% 45%;
+
+    --accent:                 150 20% 35%;
+    --accent-foreground:      40 30% 95%;
+
+    --destructive:            0 65% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border:                 40 15% 88%;
+    --input:                  40 15% 88%;
+    --ring:                   150 25% 25%;
+
+    --radius:                 0.75rem;
+
+    /* Semantic states */
+    --success:                150 40% 45%;
+    --success-foreground:     0 0% 100%;
+
+    --warning:                35 90% 55%;
+    --warning-foreground:     0 0% 100%;
+
+    /* Sidebar */
+    --sidebar-background:           40 25% 97%;
+    --sidebar-foreground:           150 10% 25%;
+    --sidebar-primary:              150 25% 25%;
+    --sidebar-primary-foreground:   40 30% 95%;
+    --sidebar-accent:               150 15% 90%;
+    --sidebar-accent-foreground:    150 10% 15%;
+    --sidebar-border:               40 15% 88%;
+    --sidebar-ring:                 150 25% 25%;
+
+    /* Admin theme */
+    --admin-bg:               40 28% 96%;
+    --admin-surface:          40 22% 98%;
+    --admin-sidebar:          40 25% 97%;
+    --admin-sidebar-fg:       150 10% 25%;
+    --admin-sidebar-active:   150 30% 30%;
+    --admin-accent:           150 30% 30%;
+    --admin-accent-light:     150 20% 92%;
+    --admin-accent-glow:      150 35% 40%;
+    --admin-header:           40 20% 99%;
+    --admin-kpi-gradient:     linear-gradient(135deg, hsl(150 25% 25%), hsl(150 35% 40%));
+    --admin-info:             150 30% 30%;
+    --admin-info-foreground:  0 0% 100%;
+  }
+
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter", sans-serif;
+    /* smooth transition لمّا يتبدّل el theme */
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--primary));
+  border-radius: 10px;
+}
+
+/* ── Reusable components ── */
+@layer components {
+  .card {
+    @apply bg-card rounded-2xl shadow-soft p-5 transition-all duration-300;
+  }
+
+  .card-hover {
+    @apply hover:shadow-hover hover:scale-105;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-primary-foreground px-4 py-2 rounded-xl
+           transition-all duration-300 hover:bg-accent hover:text-accent-foreground;
+  }
+
+  .input {
+    @apply border border-border rounded-lg px-3 py-2
+           focus:outline-none focus:ring-2 focus:ring-ring
+           bg-input text-foreground placeholder:text-muted-foreground;
+  }
+
+  .kpi-animate {
+    @apply animate-fadeIn;
+  }
+
+  /* hatha lel login page animation */
+  @keyframes slideInRight {
+    0% {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeUp {
+    0% {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
