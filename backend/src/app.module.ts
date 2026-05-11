@@ -18,6 +18,10 @@ import { PerformanceModule } from './performances/performances.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { SettingsModule } from './settings/settings.module';
 import { InscriptionsModule } from './inscriptions/inscriptions.module';
+import { RecommendationModule } from './ai/recommendations/recommendation.module';
+import { ImportModule } from './import/import.module';
+import { ResponsableApprenantsModule } from './apprenants/Responsable.apprenants.module';
+
 
 
 // Importe ton Guard de JWT (ajuste le chemin selon ton projet)
@@ -58,9 +62,12 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
     PerformanceModule,
     QualityModule, // directeur quality endpoints
     ExportModule,
+    ImportModule,
     SessionsModule,
     SettingsModule,
     InscriptionsModule,
+    RecommendationModule,
+    ResponsableApprenantsModule,
   ] /* providers: [
     /* 4. Activer cette partie pour protéger TOUTES tes routes par défaut.
        Il faudra utiliser le décorateur @Public() pour les routes comme 'Login' 

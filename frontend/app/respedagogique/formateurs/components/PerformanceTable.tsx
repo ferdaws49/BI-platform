@@ -6,13 +6,13 @@ import { useState } from "react";
  * Type local pour les performances, aligné sur les données reçues de l'API.
  */
 type FormateurPerf = {
-  id: string;
+  id: number;
   nom: string;
   specialite: string;
   scoreEfficacite: number;
   tauxReussite: number;
   satisfaction: number;
-  sessionsAnimées: number;
+  sessionsAnimees: number;
   totalApprenants: number;
 };
 
@@ -104,7 +104,7 @@ export default function PerformanceTable({
   // État pour le tri : par défaut sur le score d'efficacité décroissant
   const [sortBy, setSortBy] = useState<SortField>("scoreEfficacite");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  
+
   // État pour la pagination
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -133,8 +133,8 @@ export default function PerformanceTable({
     }
     // Pour le nom (string)
     if (typeof aVal === "string" && typeof bVal === "string") {
-      return sortDir === "asc" 
-        ? aVal.localeCompare(bVal) 
+      return sortDir === "asc"
+        ? aVal.localeCompare(bVal)
         : bVal.localeCompare(aVal);
     }
     return 0;
@@ -175,8 +175,10 @@ export default function PerformanceTable({
             </p>
           </div>
           <div className="text-xs text-gray-500">
-            Tri actuel : <span className="font-semibold text-green-800 capitalize">
-              {sortBy.replace(/([A-Z])/g, ' $1')} {sortDir === "asc" ? "↑" : "↓"}
+            Tri actuel :{" "}
+            <span className="font-semibold text-green-800 capitalize">
+              {sortBy.replace(/([A-Z])/g, " $1")}{" "}
+              {sortDir === "asc" ? "↑" : "↓"}
             </span>
           </div>
         </div>
@@ -229,10 +231,10 @@ export default function PerformanceTable({
               </th>
               <th
                 className="px-4 py-3 cursor-pointer hover:bg-green-100 transition-colors select-none text-center"
-                onClick={() => handleSort("sessionsAnimées")}
+                onClick={() => handleSort("sessionsAnimees")}
               >
                 Sessions{" "}
-                {sortBy === "sessionsAnimées"
+                {sortBy === "sessionsAnimees"
                   ? sortDir === "asc"
                     ? "↑"
                     : "↓"
@@ -282,7 +284,7 @@ export default function PerformanceTable({
                     <StarRating value={f.satisfaction} />
                   </td>
                   <td className="px-4 py-3.5 text-center text-gray-700 font-medium">
-                    {f.sessionsAnimées}
+                    {f.sessionsAnimees}
                   </td>
                   <td className="px-4 py-3.5 text-center text-gray-700 font-medium">
                     {f.totalApprenants}

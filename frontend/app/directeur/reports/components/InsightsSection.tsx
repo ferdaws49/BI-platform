@@ -29,7 +29,6 @@ ChartJS.register(
 
 type InsightsSectionProps = {
   history: HistoryPoint[];
-  trendInsights: InsightItem[];
   rootCauses: InsightItem[];
   problems: InsightItem[];
   focusItems: FocusItem[];
@@ -37,8 +36,6 @@ type InsightsSectionProps = {
   onFocusModeChange: (mode: "formations" | "formateurs") => void;
 };
 
-// Couleurs utilisées pour distinguer les signaux positifs,
-// les alertes et les points critiques.
 const toneBorder: Record<TrendTone, string> = {
   positive: "border-emerald-200 bg-emerald-50/70",
   warning: "border-amber-200 bg-amber-50/70",
@@ -68,7 +65,6 @@ function InsightList({
         {icon}
         <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
       </div>
-      {/* Composant réutilisable pour afficher une liste d'insights textuels. */}
       <div className="space-y-3">
         {items.map((item) => (
           <article
@@ -101,15 +97,12 @@ function InsightList({
 
 export default function InsightsSection({
   history,
-  trendInsights,
   rootCauses,
   problems,
   focusItems,
   focusMode,
   onFocusModeChange,
 }: InsightsSectionProps) {
-  // Ce graphique montre l'évolution des indicateurs clés
-  // pour donner un contexte temporel avant les explications textuelles.
   const chartData = {
     labels: history.map((point) => point.label),
     datasets: [
@@ -161,9 +154,7 @@ export default function InsightsSection({
               responsive: true,
               maintainAspectRatio: false,
               interaction: { mode: "index", intersect: false },
-              plugins: {
-                legend: { position: "bottom" },
-              },
+              plugins: { legend: { position: "bottom" } },
               scales: {
                 y: {
                   type: "linear",
@@ -188,26 +179,21 @@ export default function InsightsSection({
         </div>
       </div>
 
-      {/* Ici on passe de la visualisation à l'interprétation :
-          tendance, causes probables et problèmes détectés. */}
-      <div className="grid gap-4 xl:grid-cols-3">
-        <InsightList
-          title="Interpretation des tendances"
-          icon={<Activity size={18} className="text-slate-700" />}
-          items={trendInsights}
-        />
+      {/* Root Cause + Problem Detection مدمجين */}
+      <div className="grid gap-4 xl:grid-cols-2">
         <InsightList
           title="Root Cause Analysis"
           icon={<Search size={18} className="text-slate-700" />}
           items={rootCauses}
         />
         <InsightList
-          title="Problem Detection"
+          title="Problèmes détectés"
           icon={<Siren size={18} className="text-slate-700" />}
           items={problems}
         />
       </div>
 
+      {/* Focus Analysis */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -222,8 +208,6 @@ export default function InsightsSection({
             </div>
           </div>
           <div className="inline-flex rounded-xl bg-slate-100 p-1">
-            {/* Le directeur peut changer l'angle d'analyse :
-                soit par formation, soit par formateur. */}
             <button
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 focusMode === "formations"
@@ -253,8 +237,6 @@ export default function InsightsSection({
               key={`${focusMode}-${item.label}`}
               className="rounded-xl border border-slate-200 bg-slate-50 p-4"
             >
-              {/* Chaque carte de focus synthétise la performance
-                  d'un élément précis pour faciliter le drill-down. */}
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
@@ -283,9 +265,7 @@ export default function InsightsSection({
                     {item.successRate.toFixed(0)}%
                   </p>
                   <p
-                    className={`text-xs ${
-                      item.successDelta >= 0 ? "text-emerald-700" : "text-red-700"
-                    }`}
+                    className={`text-xs ${item.successDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}
                   >
                     {item.successDelta >= 0 ? "+" : ""}
                     {item.successDelta.toFixed(1)} pts
@@ -297,9 +277,7 @@ export default function InsightsSection({
                     {item.revenue.toLocaleString()} DT
                   </p>
                   <p
-                    className={`text-xs ${
-                      item.revenueDelta >= 0 ? "text-emerald-700" : "text-red-700"
-                    }`}
+                    className={`text-xs ${item.revenueDelta >= 0 ? "text-emerald-700" : "text-red-700"}`}
                   >
                     {item.revenueDelta >= 0 ? "+" : ""}
                     {item.revenueDelta.toFixed(0)}%

@@ -1,97 +1,94 @@
 "use client";
 
-import { BrainCircuit, CircleAlert, TrendingUp } from "lucide-react";
-import type { SummaryMetric, TrendTone } from "./reportTypes";
+import {
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  CircleDot,
+} from "lucide-react";
+import type { TrendCard, TrendTone } from "./reportTypes";
 
 type SummarySectionProps = {
   summary: string;
-  metrics: SummaryMetric[];
+  trendCards: TrendCard[];
   keyMessages: string[];
 };
 
-// Styles visuels selon le niveau du signal métier.
-const toneStyles: Record<TrendTone, string> = {
-  positive: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  warning: "border-amber-200 bg-amber-50 text-amber-900",
-  critical: "border-red-200 bg-red-50 text-red-900",
-  neutral: "border-slate-200 bg-slate-50 text-slate-900",
+const pillStyles: Record<TrendTone, string> = {
+  positive: "bg-emerald-100 text-emerald-800",
+  warning: "bg-amber-100  text-amber-800",
+  critical: "bg-red-100    text-red-800",
+  neutral: "bg-slate-100  text-slate-700",
 };
 
-const deltaStyles: Record<TrendTone, string> = {
-  positive: "text-emerald-700",
-  warning: "text-amber-700",
-  critical: "text-red-700",
-  neutral: "text-slate-600",
-};
+function PillIcon({ tone }: { tone: TrendTone }) {
+  if (tone === "positive") return <TrendingUp size={13} />;
+  if (tone === "critical") return <TrendingDown size={13} />;
+  return <AlertTriangle size={13} />;
+}
 
 export default function SummarySection({
   summary,
-  metrics,
+  trendCards,
   keyMessages,
 }: SummarySectionProps) {
   return (
     <section className="space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
-            <BrainCircuit size={20} />
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Executive Summary
-            </p>
-            <h2 className="text-2xl font-semibold text-slate-900">
-              Lecture strategique de la performance
-            </h2>
-            {/* Texte narratif principal :
-                il résume en langage métier la situation du moment. */}
-            <p className="max-w-4xl text-sm leading-6 text-slate-600">
-              {summary}
-            </p>
-          </div>
-        </div>
+      {/* Texte narratif */}
+      <div className="rounded-2xl bg-slate-50 border border-slate-200 px-6 py-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-2">
+          Executive Summary
+        </p>
+        <p className="text-sm leading-7 text-slate-600 max-w-4xl">{summary}</p>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.6fr,1fr]">
-        <div className="grid gap-4 md:grid-cols-3">
-          {metrics.map((metric) => (
-            <article
-              key={metric.label}
-              className={`rounded-2xl border p-5 shadow-sm ${toneStyles[metric.tone]}`}
+      {/* 3 cartes narratives */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {trendCards.map((card) => (
+          <article
+            key={card.label}
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col gap-3"
+          >
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+              {card.label}
+            </p>
+            <div className="h-px bg-slate-100" />
+            <div>
+              <p className="text-sm font-semibold text-slate-900 leading-snug">
+                {card.headline}
+              </p>
+              <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
+                {card.sub}
+              </p>
+            </div>
+            <span
+              className={`inline-flex items-center gap-1.5 self-start rounded-full px-3 py-1 text-xs font-semibold ${pillStyles[card.tone]}`}
             >
-              {/* Chaque carte donne un indicateur de synthèse
-                  avec sa variation par rapport à la période précédente. */}
-              <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
-                {metric.label}
-              </p>
-              <p className="mt-3 text-3xl font-semibold">{metric.value}</p>
-              <p className={`mt-2 text-sm font-medium ${deltaStyles[metric.tone]}`}>
-                {metric.delta}
-              </p>
-            </article>
-          ))}
-        </div>
+              <PillIcon tone={card.tone} />
+              {card.pillText}
+            </span>
+          </article>
+        ))}
+      </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="text-slate-700" />
-            <h3 className="text-sm font-semibold text-slate-900">
-              Messages a retenir
-            </h3>
-          </div>
-          {/* Cette colonne sert à mettre en avant
-              les points que le directeur doit retenir immédiatement. */}
-          <div className="space-y-3">
-            {keyMessages.map((message) => (
-              <div
-                key={message}
-                className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-700"
-              >
-                <CircleAlert size={16} className="mt-0.5 text-slate-500" />
-                <span>{message}</span>
-              </div>
-            ))}
-          </div>
+      {/* Messages à retenir */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-2 mb-3">
+          <TrendingUp size={17} className="text-slate-600" />
+          <h3 className="text-sm font-semibold text-slate-900">
+            Messages à retenir
+          </h3>
+        </div>
+        <div className="space-y-2">
+          {keyMessages.map((msg) => (
+            <div
+              key={msg}
+              className="flex items-start gap-2.5 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600 leading-relaxed"
+            >
+              <CircleDot size={15} className="mt-0.5 shrink-0 text-slate-400" />
+              <span>{msg}</span>
+            </div>
+          ))}
         </div>
       </div>
     </section>

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { usePathname } from "next/navigation";
@@ -10,7 +9,7 @@ import { DirecteurProvider, useDirecteurContext } from "./DirecteurContext";
 const PAGES_AVEC_FILTRE = [
   "/directeur/dashboard",
   "/directeur/finance",
-  "/directeur/reports",
+  // "/directeur/reports", // On retire la page reports pour ne pas afficher le filtre global
   "/directeur/quality",
   // ajouter d'autres pages si nécessaire
 ];

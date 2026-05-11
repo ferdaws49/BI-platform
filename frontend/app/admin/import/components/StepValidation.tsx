@@ -1,17 +1,34 @@
 "use client";
 
 import { Dispatch, useEffect, useState } from "react";
-import { ImportState, ImportAction } from "../state";
+import { ImportState, ImportAction, FieldSchema } from "../state";
 import { Button } from "./ui/Button";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 
-export function StepValidation({ state, dispatch }: { state: ImportState; dispatch: Dispatch<ImportAction> }) {
-  const [isValidating, setIsValidating] = useState(true);
+export function StepValidation({
+  state,
+  dispatch,
+}: {
+  state: ImportState;
+  dispatch: Dispatch<ImportAction>;
+}) {
+  const [isValidating, setIsValidating] = useState(false);
   const [valid, setValid] = useState<any[]>([]);
   const [invalid, setInvalid] = useState<any[]>([]);
+  const [hasRun, setHasRun] = useState(false);
 
   useEffect(() => {
-    const runValidation = () => {
+    // ✅ Guard : attend que mappedData ET entityFields soient disponibles
+    // Cas courant du bug : le composant monte avant que le state soit flush
+    if (state.mappedData.length === 0 || state.entityFields.length === 0)
+      return;
+
+    setIsValidating(true);
+    setHasRun(false);
+
+    // ✅ setTimeout 50ms : laisse React finir son flush avant de bloquer le thread
+    // Sans ça, le composant s'affiche avec isValidating=true mais sans spinner visible
+    const timer = setTimeout(() => {
       const validRows: any[] = [];
       const invalidRows: any[] = [];
 
@@ -19,64 +36,79 @@ export function StepValidation({ state, dispatch }: { state: ImportState; dispat
         const errors: string[] = [];
         const rowNum = row._rawIndex || i + 1;
 
-        // 1. USERS VALIDATION
-        if (state.importType === "users") {
-          if (!row.nom) errors.push("Nom requis");
-          if (!row.prenom) errors.push("Prénom requis");
-          if (!row.email) {
-            errors.push("Email requis");
-          } else if (!row.email.includes("@")) {
-            errors.push("Format email invalide");
-          }
-          if (!row.password) errors.push("Mot de passe requis");
-          if (!row.role) errors.push("Rôle requis");
-        }
+        // ── 1. Validation dynamique depuis entityFields (reçus du back) ───────
+        state.entityFields.forEach((field: FieldSchema) => {
+          const value = row[field.key];
+          const isEmpty =
+            value === undefined ||
+            value === null ||
+            String(value).trim() === "";
 
-        // 2. APPRENANT VALIDATION
-        if (state.importType === "apprenant") {
-          if (!row.nom) errors.push("Nom requis");
-          if (!row.prenom) errors.push("Prénom requis");
-          if (!row.email) {
-            errors.push("Email requis");
-          } else if (!row.email.includes("@")) {
-            errors.push("Format email invalide");
+          // Champ requis manquant
+          if (field.required && isEmpty) {
+            errors.push(`${field.label} requis`);
+            return;
           }
-        }
 
-        // 3. FORMATION VALIDATION
-        if (state.importType === "formation") {
-          if (!row.titre) errors.push("Titre requis");
-          if (row.prix === undefined || row.prix === "") {
-            errors.push("Prix requis");
-          } else if (isNaN(Number(row.prix))) {
-            errors.push("Le prix doit être un nombre");
+          // Champ non mappé + non requis → skip, pas d'erreur
+          if (isEmpty) return;
+
+          // Validation email
+          if (field.type === "email" || field.key === "email") {
+            if (!String(value).includes("@") || !String(value).includes(".")) {
+              errors.push(`Format email invalide (${field.label})`);
+            }
           }
-        }
 
-        // 4. SESSIONS VALIDATION
+          // Validation nombre
+          if (field.type === "number") {
+            if (isNaN(Number(value))) {
+              errors.push(`${field.label} doit être un nombre`);
+            }
+          }
+
+          // Validation date
+          if (field.type === "date") {
+            if (isNaN(Date.parse(String(value)))) {
+              errors.push(`${field.label} : format de date invalide`);
+            }
+          }
+
+          // Validation heure HH:MM
+          if (field.type === "time") {
+            if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(String(value).trim())) {
+              errors.push(`${field.label} : format invalide (HH:MM attendu)`);
+            }
+          }
+
+          // Validation enum — insensible à la casse
+          if (field.type === "enum" && field.enumValues?.length) {
+            const normalized = String(value).trim().toLowerCase();
+            const allowed = field.enumValues.map((v) => v.toLowerCase());
+            if (!allowed.includes(normalized)) {
+              errors.push(
+                `${field.label} invalide. Valeurs acceptées : ${field.enumValues.join(", ")}`,
+              );
+            }
+          }
+
+          // Validation boolean
+          if (field.type === "boolean") {
+            const v = String(value).trim().toLowerCase();
+            if (!["true", "false", "1", "0", "oui", "non"].includes(v)) {
+              errors.push(`${field.label} doit être vrai ou faux`);
+            }
+          }
+        });
+
+        // ── 2. Règles métier cross-champs (ne peuvent pas être dynamiques) ────
         if (state.importType === "sessions") {
-          if (!row.date) errors.push("Date requise");
-          if (!row.heureDebut) errors.push("Heure début requise");
-          if (!row.heureFin) errors.push("Heure fin requise");
-          if (row.heureDebut && row.heureFin && row.heureDebut >= row.heureFin) {
+          if (
+            row.heureDebut &&
+            row.heureFin &&
+            row.heureDebut >= row.heureFin
+          ) {
             errors.push("L'heure de début doit être avant l'heure de fin");
-          }
-          if (!row.formationId) errors.push("ID Formation requis");
-        }
-
-        // 5. FINANCE VALIDATION
-        if (state.importType === "finance") {
-          if (row.montant === undefined || row.montant === "") {
-            errors.push("Montant requis");
-          } else if (isNaN(Number(row.montant))) {
-            errors.push("Le montant doit être un nombre");
-          }
-          
-          const allowedTypes = ["paiement", "depense", "impaye", "remboursement"];
-          if (!row.type) {
-            errors.push("Type requis");
-          } else if (!allowedTypes.includes(row.type.toLowerCase())) {
-            errors.push(`Type invalide. Attendu: ${allowedTypes.join(", ")}`);
           }
         }
 
@@ -90,20 +122,42 @@ export function StepValidation({ state, dispatch }: { state: ImportState; dispat
       setValid(validRows);
       setInvalid(invalidRows);
       setIsValidating(false);
-    };
+      setHasRun(true);
+    }, 50);
 
-    runValidation();
-  }, [state.mappedData, state.importType]);
+    return () => clearTimeout(timer);
+  }, [state.mappedData, state.entityFields, state.importType]);
 
   const handleContinue = () => {
-    dispatch({ type: "SET_VALIDATION_RESULT", payload: { validData: valid, invalidData: invalid } });
+    dispatch({
+      type: "SET_VALIDATION_RESULT",
+      payload: { validData: valid, invalidData: invalid },
+    });
   };
 
-  if (isValidating) {
+  // ── Spinner : en cours de validation ──────────────────────────────────────
+  if (isValidating || (!hasRun && state.mappedData.length > 0)) {
     return (
-      <div className="py-12 flex flex-col items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent"></div>
-        <p className="mt-4 text-sm font-medium">Validation en cours...</p>
+      <div className="py-12 flex flex-col items-center justify-center gap-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-r-transparent" />
+        <p className="text-sm font-medium text-muted-foreground">
+          Validation de {state.mappedData.length} lignes en cours...
+        </p>
+      </div>
+    );
+  }
+
+  // ── Guard : mappedData vide après mount (ne devrait pas arriver) ──────────
+  if (state.mappedData.length === 0) {
+    return (
+      <div className="py-12 flex flex-col items-center gap-3 text-muted-foreground text-sm">
+        <p>Aucune donnée à valider. Retournez à l'étape de mapping.</p>
+        <Button
+          variant="ghost"
+          onClick={() => dispatch({ type: "SET_STEP", payload: "mapping" })}
+        >
+          Retour au mapping
+        </Button>
       </div>
     );
   }
@@ -112,19 +166,26 @@ export function StepValidation({ state, dispatch }: { state: ImportState; dispat
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold mb-1">Résultats de validation</h2>
-        <p className="text-muted-foreground text-sm">Vérification des règles métiers avant importation.</p>
+        <p className="text-muted-foreground text-sm">
+          Vérification des règles métiers sur{" "}
+          <span className="font-medium text-foreground">
+            {state.mappedData.length} lignes
+          </span>{" "}
+          avant importation.
+        </p>
       </div>
 
+      {/* ── Compteurs ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="flex items-center p-4 rounded-xl border bg-emerald-50 text-emerald-700">
-          <CheckCircle2 className="h-8 w-8 mr-4" />
+          <CheckCircle2 className="h-8 w-8 mr-4 shrink-0" />
           <div>
             <div className="text-2xl font-bold">{valid.length}</div>
             <div className="text-sm font-medium">Lignes valides</div>
           </div>
         </div>
         <div className="flex items-center p-4 rounded-xl border bg-rose-50 text-rose-700">
-          <XCircle className="h-8 w-8 mr-4" />
+          <XCircle className="h-8 w-8 mr-4 shrink-0" />
           <div>
             <div className="text-2xl font-bold">{invalid.length}</div>
             <div className="text-sm font-medium">Lignes en erreur</div>
@@ -132,35 +193,56 @@ export function StepValidation({ state, dispatch }: { state: ImportState; dispat
         </div>
       </div>
 
+      {/* ── Détail erreurs ─────────────────────────────────────────────────── */}
       {invalid.length > 0 && (
         <div className="space-y-3">
           <h3 className="font-semibold text-sm flex items-center gap-2 text-rose-700">
             <AlertTriangle className="h-4 w-4" />
-            Détails des erreurs
+            Détails des erreurs ({invalid.length} ligne
+            {invalid.length > 1 ? "s" : ""})
           </h3>
           <div className="rounded-xl border divide-y overflow-hidden max-h-64 overflow-y-auto bg-card">
             {invalid.map((rowError: any, idx) => (
-              <div key={idx} className="p-3 text-sm flex flex-col sm:flex-row sm:items-center gap-2 hover:bg-muted/50">
-                <div className="font-medium min-w-[80px]">Ligne {rowError.rowNumber}</div>
-                <div className="flex-1 text-rose-600">
-                  {rowError.errors.join(", ")}
+              <div
+                key={idx}
+                className="p-3 text-sm flex flex-col sm:flex-row sm:items-start gap-2 hover:bg-muted/50"
+              >
+                <div className="font-medium min-w-[80px] text-foreground">
+                  Ligne {rowError.rowNumber}
                 </div>
+                <ul className="flex-1 list-disc list-inside space-y-0.5">
+                  {rowError.errors.map((err: string, eIdx: number) => (
+                    <li key={eIdx} className="text-rose-600">
+                      {err}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
         </div>
       )}
 
+      {/* ── Actions ────────────────────────────────────────────────────────── */}
       <div className="flex justify-between pt-4 border-t">
-        <Button variant="ghost" onClick={() => dispatch({ type: "SET_STEP", payload: "mapping" })}>
+        <Button
+          variant="ghost"
+          onClick={() => dispatch({ type: "SET_STEP", payload: "mapping" })}
+        >
           Retour
         </Button>
-        <Button 
-          onClick={handleContinue} 
+        <Button
+          onClick={handleContinue}
           disabled={valid.length === 0}
-          className={invalid.length > 0 ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}
+          className={
+            invalid.length > 0
+              ? "bg-amber-600 hover:bg-amber-700 text-white"
+              : ""
+          }
         >
-          {invalid.length > 0 ? "Ignorer les erreurs et continuer" : "Continuer"}
+          {invalid.length > 0
+            ? `Ignorer ${invalid.length} erreur${invalid.length > 1 ? "s" : ""} et continuer`
+            : "Continuer"}
         </Button>
       </div>
     </div>

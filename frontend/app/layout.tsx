@@ -1,5 +1,6 @@
 // app/layout.tsx  ← EL ROOT LAYOUT (moch directeur)
 import type { Metadata } from "next";
+import { NotificationProvider } from "@/context/NotificationContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,7 +21,9 @@ export default function RootLayout({
     */
     <html lang="fr" suppressHydrationWarning>
       <body>
-        {children}
+        <NotificationProvider>
+          {children}
+        </NotificationProvider>
       </body>
     </html>
   );

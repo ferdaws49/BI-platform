@@ -20,10 +20,11 @@ export enum SessionType {
   EN_LIGNE = 'en_ligne',
 }
 export enum SessionStatut {
-  ACTIF = 'Actif',
-  TERMINE = 'Terminé',
-  ANNULE = 'Annulé',
+  ACTIF = 'Active',
+  TERMINE = 'Completed',
+  ANNULE = 'Cancelled',
 }
+
 
 // Une session correspond a une seance planifiee d'une formation.
 // Elle contient le planning, les personnes liees a la seance
@@ -95,7 +96,7 @@ export class Session {
   // Apprenants inscrits a cette session.
   @ManyToMany(() => Apprenant, { eager: true })
   @JoinTable({
-    name: 'session_apprenants',
+    name: 'sessions_apprenants',
     joinColumn: { name: 'sessionId', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'apprenantId', referencedColumnName: 'id' },
   })

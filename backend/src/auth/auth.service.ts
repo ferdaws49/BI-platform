@@ -34,11 +34,11 @@ export class AuthService {
     }
 
     if (!users.isActive) {
-      throw new UnauthorizedException('Account is disabled');
+      throw new UnauthorizedException('Votre compte est désactivé. Veuillez contacter l\'administration.');
     }
 
     if (users.status !== 'accepted') {
-      throw new UnauthorizedException('Account not accepted');
+      throw new UnauthorizedException('Votre inscription est en cours de traitement ou a été refusée.');
     }
 
     const payload = {
@@ -49,7 +49,13 @@ export class AuthService {
 
     return {
       access_token: this.jwtService.sign(payload),
-      role: users.role,
+      user: {
+        id: users.id,
+        nom: users.nom,
+        prenom: users.prenom,
+        email: users.email,
+        role: users.role,
+      },
     };
   }
 

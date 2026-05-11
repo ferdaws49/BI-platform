@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Body, Res, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, UseGuards, Request, Query } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DashboardService } from './dashboard.service';
 import { PaginationFilterDto } from './dto/dashboard-filter.dto';
+import { DirecteurReportsService } from './services/directeur.reports.service';
+import { ReportFiltersDto } from './dto/report-filters.dto';
 
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -11,45 +13,40 @@ import { PaginationFilterDto } from './dto/dashboard-filter.dto';
 export class DashboardController {
   constructor(
     private readonly dashboardService: DashboardService,
-    
+    private readonly reportsService: DirecteurReportsService,
   ) {}
 
-  // ══════════════════════════════════════════════════════════════════
-  // DASHBOARD PRINCIPAL
-  // ══════════════════════════════════════════════════════════════════
+  // ── Overview & KPIs ────────────────────────────────────────────────────────
+  // ✅ v3: @Query() ajouté — les filtres sont maintenant lus depuis l'URL
 
   @Get('overview')
-  getOverview(@Request() req) {
-    return this.dashboardService.getOverview(req.user);
+  getOverview(@Request() req, @Query() query: PaginationFilterDto) {
+    return this.dashboardService.getOverview(req.user, query);
   }
 
   @Get('kpis')
-  getKpis(@Request() req) {
-    return this.dashboardService.getKpis(req.user);
+  getKpis(@Request() req, @Query() query: PaginationFilterDto) {
+    return this.dashboardService.getKpis(req.user, query);
   }
 
-  // ══════════════════════════════════════════════════════════════════
-  // CHARTS
-  // ══════════════════════════════════════════════════════════════════
+  // ── Charts ─────────────────────────────────────────────────────────────────
 
   @Get('charts/enrollments')
-  getEnrollmentsChart(@Request() req) {
-    return this.dashboardService.getEnrollmentsChart(req.user);
+  getEnrollmentsChart(@Request() req, @Query() query: PaginationFilterDto) {
+    return this.dashboardService.getEnrollmentsChart(req.user, query);
   }
 
   @Get('charts/revenue')
-  getRevenueChart(@Request() req) {
-    return this.dashboardService.getRevenueChart(req.user);
+  getRevenueChart(@Request() req, @Query() query: PaginationFilterDto) {
+    return this.dashboardService.getRevenueChart(req.user, query);
   }
 
   @Get('charts/courses')
-  getCoursesChart(@Request() req) {
-    return this.dashboardService.getCoursesChart(req.user);
+  getCoursesChart(@Request() req, @Query() query: PaginationFilterDto) {
+    return this.dashboardService.getCoursesChart(req.user, query);
   }
 
-  // ══════════════════════════════════════════════════════════════════
-  // TABLES avec filtres complets
-  // ══════════════════════════════════════════════════════════════════
+  // ── Tables ─────────────────────────────────────────────────────────────────
 
   @Get('top-courses')
   getTopCourses(@Request() req, @Query() query: PaginationFilterDto) {
@@ -65,18 +62,17 @@ export class DashboardController {
   getRecentEnrollments(@Request() req, @Query() query: PaginationFilterDto) {
     return this.dashboardService.getRecentEnrollments(req.user, query);
   }
-
-  
-
-  
-
-  // ══════════════════════════════════════════════════════════════════
-  // PAGE ALERTES
-  // ══════════════════════════════════════════════════════════════════
+   // ── Alertes ────────────────────────────────────────────────────────────────
 
   @Get('alerts')
   getAlerts(@Request() req) {
     return this.dashboardService.getAlerts(req.user);
   }
+  // Nouvel endpoint — ajouter après les endpoints existants //
+
+@Get('reports')
+getReports(@Query() filters: ReportFiltersDto) {
+  return this.reportsService.getReports(filters);
+}
   
 }

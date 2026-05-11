@@ -36,19 +36,19 @@ export default function LoginPage() {
       // Stocke le token JWT dans le localStorage ou un cookie
       // stockage token
       document.cookie = `token=${data.access_token}; path=/; max-age=86400`;
-      //after the storage of the token, we can store the role in the cookie as well
-      document.cookie = `role=${data.role}; path=/; max-age=86400`;
+      document.cookie = `role=${data.user.role}; path=/; max-age=86400`;
+      document.cookie = `userId=${data.user.id}; path=/; max-age=86400`;
 
-      //2lines
       localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("role", data.role);
+      localStorage.setItem("role", data.user.role);
+      localStorage.setItem("user", JSON.stringify(data.user));
 
-      // Redirection basée sur le rôle
-      if (data.role === "directeur") {
+      const role = data.user.role;
+      if (role === "directeur") {
         router.push("/directeur/dashboard");
-      } else if (data.role === "resp_pedagogique") {
+      } else if (role === "resp_pedagogique") {
         router.push("/respedagogique/dashboard");
-      } else if (data.role === "admin") {
+      } else if (role === "admin") {
         router.push("/admin/dashboard");
       } else {
         router.push("/");

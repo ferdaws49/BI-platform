@@ -12,8 +12,10 @@
 // ── Helper : génère les initiales d'un nom complet ──────────
 // ex: "Ahmed Benmoussa" → "AB"
 export function getInitials(name: string): string {
-  return name
-    .split(" ")
+  const trimmed = (name || "").trim();
+  if (!trimmed) return "??";
+  return trimmed
+    .split(/\s+/)
     .map((w) => w[0])
     .join("")
     .slice(0, 2)
@@ -33,6 +35,7 @@ const AVATAR_COLORS = [
 ];
 
 function getAvatarColor(name: string): string {
+  if (!name) return "bg-gray-400";
   const sum = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }

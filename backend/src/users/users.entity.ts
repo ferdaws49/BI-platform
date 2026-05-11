@@ -3,6 +3,7 @@ export enum UserRole {
   DIRECTEUR = 'directeur',
   ADMIN = 'admin',
   RESP_PEDAGOGIQUE = 'resp_pedagogique',
+  RESP_FINANCIER = 'resp_financier',
   APPRENANT = 'apprenant',
 }
 

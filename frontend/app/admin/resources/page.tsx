@@ -5,18 +5,63 @@ import { toast as sonnerToast } from "sonner";
 import { Toaster } from "sonner";
 import { Plus } from "lucide-react";
 
-import { resourcesReducer, initialResourcesState, Formation, Formateur } from "./state";
-import { Header }             from "./components/header";
-import { StatsStrip }         from "./components/stats-strip";
-import { Tabs }               from "./components/tabs";
-import { Toolbar }            from "./components/toolbar";
-import { FormationsTab }      from "./components/formations-tab";
-import { FormateursTab }      from "./components/formateurs-tab";
-import { FormationFormModal } from "./components/formation-form";
+import {
+  resourcesReducer,
+  initialResourcesState,
+  Formation,
+  Formateur,
+} from "./state";
+import { Header } from "./components/header";
+import { StatsStrip } from "./components/stats-strip";
+import { Tabs } from "./components/tabs";
+import { Toolbar } from "./components/toolbar";
+import { FormationsTab } from "./components/formations-tab";
+import { FormateursTab } from "./components/formateurs-tab";
+import { FormationFormModal, SavePayload } from "./components/formation-form";
 import { FormateurFormModal } from "./components/formateur-form";
-import { Button }             from "./components/ui";
+import { Button } from "./components/ui";
 
 const API = "http://localhost:5000";
+
+type FormationApiItem = {
+  id: string | number;
+  titre?: string;
+  categorie?: string;
+  description?: string;
+  dureeHeures?: number | string | null;
+  prix?: number | string | null;
+  niveauType?: Formation["niveauType"];
+  statut?: Formation["statut"];
+  nbSessions?: number | null;
+};
+
+type FormateurApiItem = {
+  id: string | number;
+  nom?: string;
+  prenom?: string;
+  email?: string;
+  specialite?: string;
+  telephone?: string;
+  rating?: number;
+  nbSessions?: number;
+};
+
+type FormateurPayload = Omit<Formateur, "id" | "rating"> &
+  Partial<Pick<Formateur, "id" | "rating">>;
+
+function mapFormationApiItem(f: FormationApiItem): Formation {
+  return {
+    id: String(f.id),
+    titre: f.titre || "",
+    categorie: f.categorie || "",
+    description: f.description || "",
+    dureeHeures: Number(f.dureeHeures) || 0,
+    prix: Number(f.prix) || 0,
+    niveauType: f.niveauType ?? "présentiel",
+    statut: f.statut ?? "active",
+    nbSessions: f.nbSessions ?? 0,
+  };
+}
 
 export default function AdminResourcesPage() {
   const [state, dispatch] = useReducer(resourcesReducer, initialResourcesState);
@@ -45,29 +90,21 @@ export default function AdminResourcesPage() {
 
         // ── Formations ──
         if (formationsRes.status === "fulfilled" && formationsRes.value.ok) {
-          const data = await formationsRes.value.json();
-          const mapped: Formation[] = data.map((f: any) => ({
-            id: String(f.id),
-            titre: f.titre || "Sans titre",
-            categorie: f.categorie || "",
-            description: f.description || "",
-            dureeHeures: Number(f.dureeHeures) || 0,
-            prix: parseFloat(f.prix) || 0,
-            niveauType: (f.niveauType as "présentiel" | "en_ligne") ?? "présentiel",
-            statut: (f.statut as "active" | "completed") ?? "active",
-            nbSessions: f.nbSessions ?? f.sessions?.length,
-          }));
+          const data: FormationApiItem[] = await formationsRes.value.json();
+          const mapped: Formation[] = data.map(mapFormationApiItem);
           dispatch({ type: "SET_FORMATIONS", payload: mapped });
 
           // Catégories uniques depuis les formations
-          const cats = [...new Set(mapped.map((f) => f.categorie).filter(Boolean))];
+          const cats = [
+            ...new Set(mapped.map((f) => f.categorie).filter(Boolean)),
+          ];
           dispatch({ type: "SET_CATEGORIES", payload: cats });
         }
 
         // ── Formateurs ──
         if (formateursRes.status === "fulfilled" && formateursRes.value.ok) {
-          const data = await formateursRes.value.json();
-          const mapped: Formateur[] = data.map((f: any) => ({
+          const data: FormateurApiItem[] = await formateursRes.value.json();
+          const mapped: Formateur[] = data.map((f) => ({
             id: String(f.id),
             nom: f.nom || "",
             prenom: f.prenom || "",
@@ -75,11 +112,14 @@ export default function AdminResourcesPage() {
             specialite: f.specialite || "",
             telephone: f.telephone || "",
             rating: f.rating ?? 4.5,
+            nbSessions: f.nbSessions ?? 0,
           }));
           dispatch({ type: "SET_FORMATEURS", payload: mapped });
 
           // Spécialités uniques depuis les formateurs
-          const specs = [...new Set(mapped.map((f) => f.specialite).filter(Boolean))];
+          const specs = [
+            ...new Set(mapped.map((f) => f.specialite).filter(Boolean)),
+          ];
           dispatch({ type: "SET_SPECIALITES", payload: specs });
         }
       } catch {
@@ -93,22 +133,39 @@ export default function AdminResourcesPage() {
   }, []);
 
   // ─── CRUD Formations ──────────────────────────────────────────────────────
-  const handleAddFormation = async (data: any): Promise<void> => {
+  const handleAddFormation = async (data: SavePayload): Promise<void> => {
     const token = localStorage.getItem("access_token");
+    const { nbSessions, dureeHeures, ...body } = data;
     try {
       const res = await fetch(`${API}/responsable/formations`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error();
-      const result = await res.json();
-      const newF: Formation = { ...data, id: String(result.id), nbSessions: 0 };
+      const result: FormationApiItem = await res.json();
+      const newF = mapFormationApiItem({
+        ...result,
+        titre: result.titre ?? body.titre,
+        categorie: result.categorie ?? body.categorie,
+        description: result.description ?? body.description,
+        prix: result.prix ?? body.prix,
+        niveauType: result.niveauType ?? body.niveauType,
+        statut: result.statut ?? body.statut,
+        dureeHeures: result.dureeHeures ?? dureeHeures,
+        nbSessions: result.nbSessions ?? nbSessions,
+      });
       dispatch({ type: "ADD_FORMATION", payload: newF });
 
       // Zid la catégorie si nouvelle
-      if (data.categorie && !state.categories.includes(data.categorie)) {
-        dispatch({ type: "SET_CATEGORIES", payload: [...state.categories, data.categorie] });
+      if (newF.categorie && !state.categories.includes(newF.categorie)) {
+        dispatch({
+          type: "SET_CATEGORIES",
+          payload: [...state.categories, newF.categorie],
+        });
       }
 
       sonnerToast.success("Formation créée avec succès");
@@ -118,20 +175,49 @@ export default function AdminResourcesPage() {
     }
   };
 
-  const handleUpdateFormation = async (data: any): Promise<void> => {
+  const handleUpdateFormation = async (data: SavePayload): Promise<void> => {
     const token = localStorage.getItem("access_token");
+    const { id, nbSessions, dureeHeures, ...body } = data;
+    if (!id) {
+      sonnerToast.error("Identifiant de formation manquant");
+      return;
+    }
     try {
-      const { id, nbSessions, ...bodyData } = data; // Strip id and calculated fields
       const res = await fetch(`${API}/responsable/formations/${id}`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(bodyData),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error();
-      dispatch({ type: "UPDATE_FORMATION", payload: data });
+      const result: FormationApiItem = await res.json();
+      const updatedFormation = mapFormationApiItem({
+        ...result,
+        id,
+        titre: result.titre ?? body.titre,
+        categorie: result.categorie ?? body.categorie,
+        description: result.description ?? body.description,
+        prix: result.prix ?? body.prix,
+        niveauType: result.niveauType ?? body.niveauType,
+        statut: result.statut ?? body.statut,
+        dureeHeures: result.dureeHeures ?? dureeHeures,
+        nbSessions: result.nbSessions ?? nbSessions,
+      });
+      dispatch({
+        type: "UPDATE_FORMATION",
+        payload: updatedFormation,
+      });
 
-      if (data.categorie && !state.categories.includes(data.categorie)) {
-        dispatch({ type: "SET_CATEGORIES", payload: [...state.categories, data.categorie] });
+      if (
+        updatedFormation.categorie &&
+        !state.categories.includes(updatedFormation.categorie)
+      ) {
+        dispatch({
+          type: "SET_CATEGORIES",
+          payload: [...state.categories, updatedFormation.categorie],
+        });
       }
 
       sonnerToast.success("Formation mise à jour");
@@ -144,10 +230,11 @@ export default function AdminResourcesPage() {
   const handleDeleteFormation = async (id: string) => {
     const token = localStorage.getItem("access_token");
     try {
-      await fetch(`${API}/responsable/formations/${id}`, {
+      const res = await fetch(`${API}/responsable/formations/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) throw new Error();
       dispatch({ type: "DELETE_FORMATION", payload: id });
       sonnerToast.success("Formation supprimée");
     } catch {
@@ -156,22 +243,34 @@ export default function AdminResourcesPage() {
   };
 
   // ─── CRUD Formateurs ──────────────────────────────────────────────────────
-  const handleAddFormateur = async (data: any) => {
+  const handleAddFormateur = async (data: FormateurPayload): Promise<void> => {
     const token = localStorage.getItem("access_token");
+    const { rating, ...body } = data;
     try {
       const res = await fetch(`${API}/responsable/formateurs`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error();
       const result = await res.json();
-      const newF: Formateur = { ...data, id: String(result.id), rating: 4.5 };
+      const newF: Formateur = {
+        ...body,
+        id: String(result.id),
+        telephone: body.telephone || "",
+        rating: rating ?? 4.5,
+      };
       dispatch({ type: "ADD_FORMATEUR", payload: newF });
 
       // Zid la spécialité si nouvelle
       if (data.specialite && !state.specialites.includes(data.specialite)) {
-        dispatch({ type: "SET_SPECIALITES", payload: [...state.specialites, data.specialite] });
+        dispatch({
+          type: "SET_SPECIALITES",
+          payload: [...state.specialites, data.specialite],
+        });
       }
 
       sonnerToast.success("Formateur ajouté avec succès");
@@ -181,20 +280,26 @@ export default function AdminResourcesPage() {
     }
   };
 
-  const handleUpdateFormateur = async (data: any) => {
+  const handleUpdateFormateur = async (data: Formateur): Promise<void> => {
     const token = localStorage.getItem("access_token");
+    const { id, rating, ...body } = data;
     try {
-      const { id, rating, ...bodyData } = data; // Strip id and internal fields
       const res = await fetch(`${API}/responsable/formateurs/${id}`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(bodyData),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error();
-      dispatch({ type: "UPDATE_FORMATEUR", payload: data });
+      dispatch({ type: "UPDATE_FORMATEUR", payload: { ...body, id, rating } });
 
       if (data.specialite && !state.specialites.includes(data.specialite)) {
-        dispatch({ type: "SET_SPECIALITES", payload: [...state.specialites, data.specialite] });
+        dispatch({
+          type: "SET_SPECIALITES",
+          payload: [...state.specialites, data.specialite],
+        });
       }
 
       sonnerToast.success("Formateur mis à jour");
@@ -219,15 +324,21 @@ export default function AdminResourcesPage() {
   };
 
   // ─── Stats ────────────────────────────────────────────────────────────────
-  const stats = useMemo(() => ({
-    formationsCount: state.formations.length,
-    formateursCount: state.formateurs.length,
-    avgRating:
-      state.formateurs.length > 0
-        ? (state.formateurs.reduce((acc, f) => acc + (f.rating || 0), 0) / state.formateurs.length).toFixed(1)
-        : "N/A",
-    categoriesCount: state.categories.length,
-  }), [state.formations, state.formateurs, state.categories]);
+  const stats = useMemo(
+    () => ({
+      formationsCount: state.formations.length,
+      formateursCount: state.formateurs.length,
+      avgRating:
+        state.formateurs.length > 0
+          ? (
+              state.formateurs.reduce((acc, f) => acc + (f.rating || 0), 0) /
+              state.formateurs.length
+            ).toFixed(1)
+          : "N/A",
+      categoriesCount: state.categories.length,
+    }),
+    [state.formations, state.formateurs, state.categories],
+  );
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -241,7 +352,8 @@ export default function AdminResourcesPage() {
         <Button
           onClick={() =>
             setModal({
-              type: state.activeTab === "formations" ? "formation" : "formateur",
+              type:
+                state.activeTab === "formations" ? "formation" : "formateur",
               mode: "create",
               data: null,
             })
@@ -249,7 +361,9 @@ export default function AdminResourcesPage() {
           className="shadow-md btn-primary bg-gradient-to-r from-blue-500 to-purple-500 hover:opacity-90 text-white border-0"
         >
           <Plus className="h-4 w-4 mr-2" />
-          {state.activeTab === "formations" ? "Nouvelle formation" : "Nouveau formateur"}
+          {state.activeTab === "formations"
+            ? "Nouvelle formation"
+            : "Nouveau formateur"}
         </Button>
       </div>
 
@@ -261,11 +375,35 @@ export default function AdminResourcesPage() {
         </div>
       ) : (
         <div className="relative mt-2">
-          <div style={{ display: state.activeTab === "formations" ? "block" : "none" }} aria-hidden={state.activeTab !== "formations"}>
-            <FormationsTab state={state} dispatch={dispatch} onDelete={handleDeleteFormation} onEdit={(data) => setModal({ type: "formation", mode: "edit", data })} />
+          <div
+            style={{
+              display: state.activeTab === "formations" ? "block" : "none",
+            }}
+            aria-hidden={state.activeTab !== "formations"}
+          >
+            <FormationsTab
+              state={state}
+              dispatch={dispatch}
+              onDelete={handleDeleteFormation}
+              onEdit={(data) =>
+                setModal({ type: "formation", mode: "edit", data })
+              }
+            />
           </div>
-          <div style={{ display: state.activeTab === "formateurs" ? "block" : "none" }} aria-hidden={state.activeTab !== "formateurs"}>
-            <FormateursTab state={state} dispatch={dispatch} onDelete={handleDeleteFormateur} onEdit={(data) => setModal({ type: "formateur", mode: "edit", data })} />
+          <div
+            style={{
+              display: state.activeTab === "formateurs" ? "block" : "none",
+            }}
+            aria-hidden={state.activeTab !== "formateurs"}
+          >
+            <FormateursTab
+              state={state}
+              dispatch={dispatch}
+              onDelete={handleDeleteFormateur}
+              onEdit={(data) =>
+                setModal({ type: "formateur", mode: "edit", data })
+              }
+            />
           </div>
         </div>
       )}
@@ -273,7 +411,9 @@ export default function AdminResourcesPage() {
       <FormationFormModal
         isOpen={modal.type === "formation"}
         onOpenChange={(open) => !open && closeModal()}
-        onSave={modal.mode === "create" ? handleAddFormation : handleUpdateFormation}
+        onSave={
+          modal.mode === "create" ? handleAddFormation : handleUpdateFormation
+        }
         editModeData={modal.data as Formation | undefined}
         categories={state.categories}
       />
@@ -281,7 +421,9 @@ export default function AdminResourcesPage() {
       <FormateurFormModal
         isOpen={modal.type === "formateur"}
         onOpenChange={(open) => !open && closeModal()}
-        onSave={modal.mode === "create" ? handleAddFormateur : handleUpdateFormateur}
+        onSave={
+          modal.mode === "create" ? handleAddFormateur : handleUpdateFormateur
+        }
         editModeData={modal.data as Formateur | undefined}
       />
     </div>

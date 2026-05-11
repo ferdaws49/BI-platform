@@ -16,6 +16,12 @@ export class UsersController {
 
   constructor(private readonly usersService: UsersService) {}
 
+  // GET /admin/users/roles
+  @Get('roles')
+  getRoles() {
+    return this.usersService.getRoles();
+  }
+
   // GET /admin/users
   @Get()
   findAll() {

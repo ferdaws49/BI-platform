@@ -57,10 +57,11 @@ export class FinanceDirecteurService {
     if (filters.formation && filters.formation !== 'Tous') {
       qb.andWhere('formation.titre = :titre', { titre: filters.formation });
     }
-    // ✅ type = session.type (présentiel / en_ligne)
+    // ✅ type = session.type ('présentiel' | 'en_ligne')
     if (filters.type && filters.type !== 'Tous') {
       qb.andWhere('s.type = :type', { type: filters.type });
     }
+    // ✅ statut = formation.statut ('active' | 'completed')
     if (filters.statut && filters.statut !== 'Tous') {
       qb.andWhere('formation.statut = :statut', { statut: filters.statut });
     }
@@ -113,7 +114,7 @@ export class FinanceDirecteurService {
   ): Promise<FormationProfitabilityRow[]> {
     const range = this.getDateRange(filters.periode);
 
-    // ✅ query واحدة بـ GROUP BY — finance → session → formation
+    // ✅ query avec GROUP BY — finance → session → formation
     const qb = this.financeRepo
       .createQueryBuilder('f')
       .leftJoin('f.session', 's')
@@ -160,8 +161,8 @@ export class FinanceDirecteurService {
         return {
           formationId: r.formationId,
           titre: r.titre ?? 'N/A',
-          type: r.type ?? 'N/A', // ✅ session.type
-          statut: r.statut ?? 'N/A',
+          type: r.type ?? 'N/A', // ✅ 'présentiel' | 'en_ligne'
+          statut: r.statut ?? 'N/A', // ✅ 'active' | 'completed'
           revenus,
           couts,
           profit,
@@ -184,7 +185,7 @@ export class FinanceDirecteurService {
     const today = new Date();
     return impayes.map((f) => ({
       id: f.id,
-      // ✅ formation عبر session
+      // ✅ formation via session
       formation: f.session?.formation?.titre ?? 'N/A',
       montant: Number(f.montant),
       date: f.date,

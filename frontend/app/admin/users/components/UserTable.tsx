@@ -7,7 +7,6 @@ import { UserAvatar, RoleBadge, Toggle } from "./UsersBadges";
 // TYPE : structure d'un utilisateur
 //
 // ✅ isActive : boolean → activation/désactivation (contrôlé par l'Admin)
-// ❌ statut "actif"|"inactif" → supprimé (c'était une confusion avec status BDD)
 // ❌ status "accepted"|"pending"|"rejected" → pas affiché ici (workflow interne)
 // ─────────────────────────────────────────────────────────────
 export interface User {
@@ -15,8 +14,9 @@ export interface User {
   nom: string;
   prenom: string; 
   email: string;
-  role: "Admin" | "Directeur" | "Resp. Pédagogique";
-  isActive: boolean; // ← remplace "statut" — champ BDD à ajouter via migration
+  role: string;      // ID (ex: 'admin')
+  roleLabel: string; // Label (ex: 'Admin')
+  isActive: boolean;
   creeLe: string;
 }
 
@@ -85,8 +85,10 @@ export default function UsersTable({
               {/* Colonne : avatar + nom */}
               <td className="px-5 py-3">
                 <div className="flex items-center gap-3">
-                  <UserAvatar name={u.nom} />
-                  <span className="font-medium text-gray-800">{u.nom}</span>
+                  <UserAvatar name={`${u.prenom || ""} ${u.nom || ""}`.trim()} />
+                  <span className="font-medium text-gray-800">
+                    {u.prenom || u.nom ? `${u.prenom || ""} ${u.nom || ""}`.trim() : "Utilisateur sans nom"}
+                  </span>
                 </div>
               </td>
 
@@ -97,7 +99,7 @@ export default function UsersTable({
 
               {/* Colonne : badge coloré selon le rôle */}
               <td className="px-5 py-3">
-                <RoleBadge role={u.role} />
+                <RoleBadge role={u.roleLabel || u.role} />
               </td>
 
               {/* Colonne : toggle ON/OFF isActive + label texte */}

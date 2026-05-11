@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Formation } from "../state";
@@ -18,29 +18,41 @@ import {
 import { ChevronDown } from "lucide-react";
 
 // ─── Schéma Zod ───────────────────────────────────────────────────────────────
-// ✅ Fix : z.coerce s'occupe de la conversion string→number
-//          donc PAS besoin de valueAsNumber: true dans register()
+// .trim() sur les strings → supprime les espaces avant validation
 const formationSchema = z.object({
-  titre:       z.string().min(2, "Titre requis (min 2 caractères)"),
-  categorie:   z.string().min(1, "Catégorie requise"),
-  description: z.string().min(5, "Description trop courte (min 5 caractères)"),
-  dureeHeures: z.coerce.number().int("Doit être un entier").positive("Durée requise"),
-  prix:        z.coerce.number().positive("Prix requis"),
-  niveauType:  z.enum(["présentiel", "en_ligne"]),
-  statut:      z.enum(["active", "completed"]),
+  titre: z.string().trim().min(2, "Titre requis (min 2 caractères)"),
+  categorie: z.string().trim().min(1, "Catégorie requise"),
+  description: z
+    .string()
+    .trim()
+    .min(5, "Description trop courte (min 5 caractères)"),
+  prix: z.coerce.number().positive("Prix requis").min(0.01, "Prix requis"),
+  niveauType: z.enum(["présentiel", "en_ligne"]),
+  statut: z.enum(["active", "completed"]),
 });
 
-type FormationValues = z.infer<typeof formationSchema>;
+// Type strict du payload — plus de any
+type FormationFormInput = z.input<typeof formationSchema>;
+type FormationValues = z.output<typeof formationSchema>;
+
+// Payload envoyé au parent (inclut les champs non-éditables en mode edit)
+export type SavePayload = FormationValues & {
+  id?: string;
+  nbSessions?: number;
+  dureeHeures?: number;
+};
 
 // ─── Autocomplete catégorie ───────────────────────────────────────────────────
 function CategorieInput({
   value,
   onChange,
+  onBlur,
   suggestions,
   error,
 }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur: () => void;
   suggestions: string[];
   error?: string;
 }) {
@@ -50,16 +62,20 @@ function CategorieInput({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  useEffect(() => { setInputValue(value); }, [value]);
+  // Sync inputValue quand le parent reset le form
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
 
   const filtered = suggestions.filter((s) =>
-    s.toLowerCase().includes(inputValue.toLowerCase())
+    s.toLowerCase().includes(inputValue.toLowerCase()),
   );
 
   const handleInput = (v: string) => {
@@ -81,6 +97,7 @@ function CategorieInput({
           value={inputValue}
           onChange={(e) => handleInput(e.target.value)}
           onFocus={() => setOpen(true)}
+          onBlur={onBlur} // ✅ transmet onBlur à RHF pour déclencher la validation
           placeholder="Ex : Data & IA, Développement Web..."
           className="rounded-xl border-border/50 pr-8"
         />
@@ -119,7 +136,7 @@ function CategorieInput({
 interface FormationFormModalProps {
   isOpen: boolean;
   onOpenChange: (v: boolean) => void;
-  onSave: (data: any) => Promise<void>; // ✅ async — pour que isSubmitting fonctionne
+  onSave: (data: SavePayload) => Promise<void>;
   editModeData?: Formation;
   categories: string[];
 }
@@ -138,53 +155,56 @@ export function FormationFormModal({
     register,
     handleSubmit,
     reset,
-    watch,
-    setValue,
+    control,
     formState: { errors, isSubmitting },
-  } = useForm<FormationValues>({
+  } = useForm<FormationFormInput, unknown, FormationValues>({
     resolver: zodResolver(formationSchema),
     defaultValues: {
       titre: "",
       categorie: "",
       description: "",
-      dureeHeures: 10,
       prix: 500,
       niveauType: "présentiel",
       statut: "active",
     },
   });
 
-  const categorieValue = watch("categorie");
-
+  // Sync form à chaque ouverture
   useEffect(() => {
     if (!isOpen) return;
     if (editModeData) {
       reset({
-        titre:       editModeData.titre,
-        categorie:   editModeData.categorie,
+        titre: editModeData.titre,
+        categorie: editModeData.categorie,
         description: editModeData.description,
-        dureeHeures: editModeData.dureeHeures,
-        prix:        editModeData.prix,
-        niveauType:  editModeData.niveauType ?? "présentiel",
-        statut:      editModeData.statut     ?? "active",
+        prix: editModeData.prix,
+        niveauType: editModeData.niveauType ?? "présentiel",
+        statut: editModeData.statut ?? "active",
       });
     } else {
       reset({
-        titre: "", categorie: "", description: "",
-        dureeHeures: 10, prix: 500,
-        niveauType: "présentiel", statut: "active",
+        titre: "",
+        categorie: "",
+        description: "",
+        prix: 500,
+        niveauType: "présentiel",
+        statut: "active",
       });
     }
   }, [isOpen, editModeData, reset]);
 
-  // ✅ Fix onSubmit : retourne la Promise de onSave
-  //    → handleSubmit va attendre la fin avant de mettre isSubmitting à false
+  // ✅ Payload typé — préserve id + champs calculés en mode edit
   const onSubmit = async (data: FormationValues) => {
-    if (isEdit && editModeData) {
-      await onSave({ ...editModeData, ...data });
-    } else {
-      await onSave(data);
-    }
+    const payload: SavePayload =
+      isEdit && editModeData
+        ? {
+            ...data,
+            id: editModeData.id,
+            nbSessions: editModeData.nbSessions,
+            dureeHeures: editModeData.dureeHeures,
+          }
+        : data;
+    await onSave(payload);
   };
 
   return (
@@ -194,7 +214,6 @@ export function FormationFormModal({
       </DialogTitle>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-
         {/* Titre */}
         <div>
           <Label htmlFor="titre">Intitulé *</Label>
@@ -204,17 +223,28 @@ export function FormationFormModal({
             placeholder="Ex : Formation React Avancé"
             className="rounded-xl border-border/50"
           />
-          {errors.titre && <p className="text-xs text-destructive mt-1">{errors.titre.message}</p>}
+          {errors.titre && (
+            <p className="text-xs text-destructive mt-1">
+              {errors.titre.message}
+            </p>
+          )}
         </div>
 
-        {/* Catégorie */}
+        {/* Catégorie — Controller pour intégrer CategorieInput dans RHF */}
         <div>
           <Label>Catégorie *</Label>
-          <CategorieInput
-            value={categorieValue}
-            onChange={(v) => setValue("categorie", v, { shouldValidate: true })}
-            suggestions={categories}
-            error={errors.categorie?.message}
+          <Controller
+            control={control}
+            name="categorie"
+            render={({ field }) => (
+              <CategorieInput
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                suggestions={categories}
+                error={errors.categorie?.message}
+              />
+            )}
           />
         </div>
 
@@ -222,49 +252,54 @@ export function FormationFormModal({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="niveauType">Type *</Label>
-            <SelectNative id="niveauType" {...register("niveauType")} className="rounded-xl border-border/50">
+            <SelectNative
+              id="niveauType"
+              {...register("niveauType")}
+              className="rounded-xl border-border/50"
+            >
               <option value="présentiel">🖥 Présentiel</option>
               <option value="en_ligne">🌐 En ligne</option>
             </SelectNative>
-            {errors.niveauType && <p className="text-xs text-destructive mt-1">{errors.niveauType.message}</p>}
+            {errors.niveauType && (
+              <p className="text-xs text-destructive mt-1">
+                {errors.niveauType.message}
+              </p>
+            )}
           </div>
           <div>
             <Label htmlFor="statut">Statut *</Label>
-            <SelectNative id="statut" {...register("statut")} className="rounded-xl border-border/50">
+            <SelectNative
+              id="statut"
+              {...register("statut")}
+              className="rounded-xl border-border/50"
+            >
               <option value="active">✅ Active</option>
               <option value="completed">🏁 Terminée</option>
             </SelectNative>
-            {errors.statut && <p className="text-xs text-destructive mt-1">{errors.statut.message}</p>}
+            {errors.statut && (
+              <p className="text-xs text-destructive mt-1">
+                {errors.statut.message}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Prix + Durée */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="prix">Prix (DA) *</Label>
-            {/* ✅ Fix : pas de valueAsNumber ici — z.coerce s'en charge */}
-            <Input
-              id="prix"
-              type="number"
-              min={0}
-              step={0.01}
-              {...register("prix")}
-              className="rounded-xl border-border/50"
-            />
-            {errors.prix && <p className="text-xs text-destructive mt-1">{errors.prix.message}</p>}
-          </div>
-          <div>
-            <Label htmlFor="dureeHeures">Durée (heures) *</Label>
-            {/* ✅ Fix : pas de valueAsNumber ici — z.coerce s'en charge */}
-            <Input
-              id="dureeHeures"
-              type="number"
-              min={1}
-              {...register("dureeHeures")}
-              className="rounded-xl border-border/50"
-            />
-            {errors.dureeHeures && <p className="text-xs text-destructive mt-1">{errors.dureeHeures.message}</p>}
-          </div>
+        {/* Prix */}
+        <div>
+          <Label htmlFor="prix">Prix (DA) *</Label>
+          <Input
+            id="prix"
+            type="number"
+            min={0.01} // ✅ aligné avec schema min(0.01)
+            step={0.01}
+            {...register("prix")}
+            className="rounded-xl border-border/50"
+          />
+          {errors.prix && (
+            <p className="text-xs text-destructive mt-1">
+              {errors.prix.message}
+            </p>
+          )}
         </div>
 
         {/* Description */}
@@ -276,12 +311,21 @@ export function FormationFormModal({
             placeholder="Décrivez le contenu, les objectifs et le public cible..."
             className="rounded-xl border-border/50 min-h-[100px]"
           />
-          {errors.description && <p className="text-xs text-destructive mt-1">{errors.description.message}</p>}
+          {errors.description && (
+            <p className="text-xs text-destructive mt-1">
+              {errors.description.message}
+            </p>
+          )}
         </div>
 
         {/* Boutons */}
         <DialogFooter className="mt-6 pt-4 border-t border-border/30">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} className="rounded-xl">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="rounded-xl"
+          >
             Annuler
           </Button>
           <Button
@@ -289,7 +333,11 @@ export function FormationFormModal({
             disabled={isSubmitting}
             className="rounded-xl bg-gradient-to-r from-blue-500 to-purple-500 text-white border-0 hover:opacity-90"
           >
-            {isSubmitting ? "Enregistrement..." : isEdit ? "Sauvegarder" : "Créer la formation"}
+            {isSubmitting
+              ? "Enregistrement..."
+              : isEdit
+                ? "Sauvegarder"
+                : "Créer la formation"}
           </Button>
         </DialogFooter>
       </form>
