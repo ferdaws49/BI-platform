@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { User, UserStatus } from '../../users/users.entity';
+import { Inscription, InscriptionStatut } from '../../inscriptions/entities/inscriptions.entity';
 
 @Injectable()
 export class AdminDashboardService {
@@ -9,6 +10,8 @@ export class AdminDashboardService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Inscription)
+    private readonly inscriptionRepo: Repository<Inscription>,
   ) {}
 
   // ─── GET /admin/kpis ──────────────────────────────────────────────────────
@@ -20,7 +23,7 @@ export class AdminDashboardService {
       await Promise.all([
         this.userRepo.count({ where: { status: UserStatus.ACCEPTED } }),
         this.userRepo.count({ where: { createdAt: Between(startOfMonth, now) } }),
-        this.userRepo.count({ where: { status: UserStatus.PENDING } }),
+        this.inscriptionRepo.count({ where: { statut: InscriptionStatut.PENDING } }),
         this.userRepo.count({ where: { status: UserStatus.REJECTED } }),
       ]);
 

@@ -41,7 +41,7 @@ export default function AdminImportPage() {
             {state.step === "mapping" && <StepMapping state={state} dispatch={dispatch} />}
             {state.step === "validation" && <StepValidation state={state} dispatch={dispatch} />}
             {state.step === "preview" && <StepPreview state={state} dispatch={dispatch} />}
-            {state.step === "done" && <StepDone dispatch={dispatch} />}
+            {state.step === "done" && <StepDone state={state} dispatch={dispatch} />}
           </motion.div>
         </AnimatePresence>
       </div>

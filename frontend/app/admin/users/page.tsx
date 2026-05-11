@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from "react";
 import type { User } from "./components/UserTable";
 import { useToast } from "./components/Toast";
+import { useNotifications } from "@/context/NotificationContext";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 
 import UsersToolbar from "./components/UsersToolBar";
 import UsersTable from "./components/UserTable";
@@ -13,11 +15,10 @@ import ResetPasswordDialog from "./components/ResetPasswordDialog";
 const API = "http://localhost:5000";
 const PER_PAGE = 6;
 
-const ROLE_TO_ENUM: Record<string, string> = {
-  Admin: "admin",
-  Directeur: "directeur",
-  "Resp. Pédagogique": "resp_pedagogique",
-};
+interface Role {
+  id: string;
+  label: string;
+}
 
 const staticUsers: User[] = [
   {
@@ -75,9 +76,11 @@ function apiCall(path: string, options: RequestInit = {}) {
 }
 
 export default function UsersPage() {
-  const { showToast, ToastComponent } = useToast(); // ← hook toast
+  const { showToast, ToastComponent } = useToast();
+  const { addNotification } = useNotifications();
 
-  const [users, setUsers] = useState<User[]>(staticUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -86,14 +89,26 @@ export default function UsersPage() {
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
   const [resetUser, setResetUser] = useState<User | null>(null);
 
-  useEffect(() => {
+  const fetchData = async () => {
+    // 1. Charger les utilisateurs
     apiCall("/admin/users")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setUsers(data);
-      })
-      .catch(() => {});
+      });
+
+    // 2. Charger les rôles depuis le back
+    apiCall("/admin/users/roles")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setRoles(data));
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
+
+  // ✅ Activer l'auto-refresh basé sur les préférences des paramètres
+  useAutoRefresh(fetchData);
 
   // ── Search & Filter Logic ──────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -101,9 +116,9 @@ export default function UsersPage() {
     return users.filter(
       (u) =>
         (!q ||
-          u.nom.toLowerCase().includes(q) ||
-          u.prenom.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q)) &&
+          (u.nom || "").toLowerCase().includes(q) ||
+          (u.prenom || "").toLowerCase().includes(q) ||
+          (u.email || "").toLowerCase().includes(q)) &&
         (!roleFilter || u.role === roleFilter),
     );
   }, [users, search, roleFilter]);
@@ -132,18 +147,20 @@ export default function UsersPage() {
   const handleSave = async (
     data: Omit<User, "id" | "creeLe"> & { password?: string },
   ) => {
-    const roleEnum = ROLE_TO_ENUM[data.role] ?? data.role;
+    // Le rôle envoyé au back est déjà l'ID (ex: "admin"), pas besoin de conversion manuelle
+    const payload = {
+      nom: data.nom,
+      prenom: data.prenom,
+      email: data.email,
+      role: data.role,
+      isActive: data.isActive,
+      ...(data.password ? { password: data.password } : {}),
+    };
 
     if (editUser) {
       const res = await apiCall(`/admin/users/${editUser.id}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          nom: data.nom,
-          prenom: data.prenom,
-          email: data.email,
-          role: roleEnum,
-          isActive: data.isActive,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -151,6 +168,14 @@ export default function UsersPage() {
       }
       const updated: User = await res.json();
       setUsers((prev) => prev.map((u) => (u.id === editUser.id ? updated : u)));
+      
+      addNotification(
+        "Utilisateur modifié",
+        `${updated.prenom} ${updated.nom} a été mis à jour avec succès.`,
+        "info",
+        "accountChanges"
+      );
+
       showToast(
         `✓ ${updated.prenom} ${updated.nom} mis à jour avec succès`,
         "success",
@@ -158,14 +183,7 @@ export default function UsersPage() {
     } else {
       const res = await apiCall("/admin/users", {
         method: "POST",
-        body: JSON.stringify({
-          nom: data.nom,
-          prenom: data.prenom,
-          email: data.email,
-          password: data.password,
-          role: roleEnum,
-          isActive: data.isActive,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -173,6 +191,14 @@ export default function UsersPage() {
       }
       const created: User = await res.json();
       setUsers((prev) => [created, ...prev]);
+
+      addNotification(
+        "Nouvel utilisateur",
+        `${created.prenom} ${created.nom} a été créé (${created.role}).`,
+        "success",
+        "accountChanges"
+      );
+
       showToast(
         `✓ ${created.prenom} ${created.nom} créé avec succès`,
         "success",
@@ -213,7 +239,16 @@ export default function UsersPage() {
         method: "DELETE",
       });
       if (res.ok) {
+        const deletedName = `${deleteUser.prenom} ${deleteUser.nom}`;
         setUsers((prev) => prev.filter((u) => u.id !== deleteUser.id));
+        
+        addNotification(
+          "Utilisateur supprimé",
+          `${deletedName} a été retiré de la plateforme.`,
+          "warning",
+          "accountChanges"
+        );
+
         showToast(
           `✓ ${deleteUser.prenom} ${deleteUser.nom} supprimé avec succès`,
           "success",
@@ -257,6 +292,7 @@ export default function UsersPage() {
       <UsersToolbar
         search={search}
         roleFilter={roleFilter}
+        roles={roles}
         totalCount={filtered.length}
         onSearchChange={handleSearchChange}
         onRoleFilterChange={handleRoleFilterChange}
@@ -277,6 +313,7 @@ export default function UsersPage() {
       {showModal && (
         <UserModal
           user={editUser}
+          roles={roles}
           onClose={() => {
             setShowModal(false);
             setEditUser(null);

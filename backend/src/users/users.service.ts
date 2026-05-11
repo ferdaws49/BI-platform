@@ -13,6 +13,7 @@ const ROLE_MAP: Record<string, UserRole> = {
   'Admin':              UserRole.ADMIN,
   'Directeur':          UserRole.DIRECTEUR,
   'Resp. Pédagogique':  UserRole.RESP_PEDAGOGIQUE,
+  'Resp. Financier':    UserRole.RESP_FINANCIER,
 };
 
 // Mapping enum BDD → frontend label
@@ -20,6 +21,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   [UserRole.ADMIN]:           'Admin',
   [UserRole.DIRECTEUR]:       'Directeur',
   [UserRole.RESP_PEDAGOGIQUE]: 'Resp. Pédagogique',
+  [UserRole.RESP_FINANCIER]:  'Resp. Financier',
   [UserRole.APPRENANT]:       'Apprenant',
   [UserRole.RESP_FINANCIER]: 'resp_financier'
 };
@@ -46,7 +48,9 @@ export class UsersService {
       nom:      user.nom,
       prenom:   user.prenom,
       email:    user.email,
-      role:     ROLE_LABEL[user.role] ?? user.role,
+      role:     user.role, // ID technique (ex: 'admin') pour le filtre
+      roleLabel: ROLE_LABEL[user.role] ?? user.role, // Label (ex: 'Admin') pour l'affichage
+      status:   user.status,
       isActive: user.isActive,
       creeLe:   user.createdAt
         ? new Date(user.createdAt).toLocaleDateString('fr-FR', {
@@ -54,6 +58,18 @@ export class UsersService {
           })
         : '—',
     };
+  }
+
+  // ─── GET /admin/users/roles ──────────────────────────────────────────────
+  /**
+   * Retourne la liste des rôles disponibles pour le frontend.
+   * Format: [{ id: 'admin', label: 'Admin' }, ...]
+   */
+  getRoles() {
+    return Object.entries(ROLE_LABEL).map(([key, label]) => ({
+      id: key,
+      label: label,
+    }));
   }
 
   // ─── GET /admin/users ──────────────────────────────────────────────────

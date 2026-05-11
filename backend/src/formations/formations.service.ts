@@ -6,19 +6,22 @@ import { CreateFormationDto } from './dto/create-formation.dto';
 import { UpdateFormationDto } from './dto/update-formation.dto';
 import { Session, SessionStatut } from '../sessions/entities/session.entity';
 
-// ─── Shape renvoyée au frontend ────────────────────────────────────────────────
-
+// ─── Shape renvoyée au frontend ───────────────────────────────────────────────
 export interface FormationStats {
   id: number;
-  nom: string; // frontend attend "nom" → mappé depuis "titre"
+  titre: string;
+  categorie: string | null;
+  description: string | null;
+  dureeHeures: number | null;
+  prix: number;
+  statut: 'active' | 'completed';
+  nbSessions: number;
   nbInscrits: number;
   tauxSucces: number;
   tauxAbandon: number;
   tauxCompletion: number;
   satisfaction: number;
 }
-
-// ──────────────────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class FormationsService {
@@ -30,25 +33,24 @@ export class FormationsService {
     
   ) {}
 
-  // ── GET /responsable/formations ─────────────────────────────────────────────
+  // ── GET /responsable/formations ───────────────────────────────────────────
   async findAll(): Promise<FormationStats[]> {
     const formations = await this.formationRepo.find({
       relations: [
         'sessions',
-        'sessions.apprenants', // via table pivot session_apprenants
+        'sessions.apprenants',
       ],
     });
-
     return formations.map((f) => this.computeStats(f));
   }
 
-  // ── POST ────────────────────────────────────────────────────────────────────
+  // ── POST ──────────────────────────────────────────────────────────────────
   async create(dto: CreateFormationDto): Promise<Formation> {
     const formation = this.formationRepo.create(dto);
     return this.formationRepo.save(formation);
   }
 
-  // ── PATCH /:id ──────────────────────────────────────────────────────────────
+  // ── PATCH /:id ────────────────────────────────────────────────────────────
   async update(id: number, dto: UpdateFormationDto): Promise<Formation> {
     const formation = await this.formationRepo.findOne({ where: { id } });
     if (!formation) throw new NotFoundException(`Formation #${id} introuvable`);
@@ -56,7 +58,7 @@ export class FormationsService {
     return this.formationRepo.save(formation);
   }
 
-  // ── DELETE /:id ─────────────────────────────────────────────────────────────
+  // ── DELETE /:id ───────────────────────────────────────────────────────────
   async delete(id: number): Promise<{ message: string }> {
     const formation = await this.formationRepo.findOne({ where: { id } });
     if (!formation) throw new NotFoundException(`Formation #${id} introuvable`);
@@ -64,6 +66,7 @@ export class FormationsService {
     return { message: `Formation #${id} supprimée` };
   }
 
+<<<<<<< HEAD
 //hedhi wallet tekhdem b structure jdida
   /**
     * Afficher la liste des formations de l'apprenant(espace apprenant)
@@ -240,22 +243,43 @@ public async findAllAvailableFormations() {
 }
 
   // ─── Calcul des métriques depuis session_apprenants ──────────────────────
+=======
+  // ─── Calcul des métriques ─────────────────────────────────────────────────
+>>>>>>> 2b077d31bd11532c6659a78b2d09dbd76bf7138b
   private computeStats(f: Formation): FormationStats {
     const sessions = f.sessions ?? [];
+    const nbSessionsTotal = sessions.length;
 
-    // Nombre total d'apprenants uniques inscrits (toutes sessions confondues)
+    // ── Apprenants uniques toutes sessions confondues ─────────────────────
     const apprenantIds = new Set<number>();
     for (const session of sessions) {
       for (const apprenant of session.apprenants ?? []) {
         apprenantIds.add(apprenant.id);
       }
     }
-    const nbInscrits = apprenantIds.size;
 
-    // ── Taux de complétion : ratio sessions terminées / total ───────────────
-    const nbSessionsTotal = sessions.length;
+    // ── Durée totale calculée depuis heureDebut/heureFin des sessions ─────
+    // Sessions annulées exclues du calcul
+    const dureeHeures = sessions
+      .filter((s) => s.statut !== SessionStatut.ANNULE)
+      .reduce((total, s) => {
+        if (!s.heureDebut || !s.heureFin) return total;
+        const [hD, mD] = s.heureDebut.split(':').map(Number);
+        const [hF, mF] = s.heureFin.split(':').map(Number);
+        const diffMinutes = (hF * 60 + mF) - (hD * 60 + mD);
+        return total + (diffMinutes > 0 ? diffMinutes / 60 : 0);
+      }, 0);
+
     const nbSessionsCompleted = sessions.filter(
       (s) => s.statut === SessionStatut.TERMINE,
+    ).length;
+
+    const nbSessionsSucces = sessions.filter(
+      (s) => s.statut !== SessionStatut.ANNULE,
+    ).length;
+
+    const nbSessionsAbandon = sessions.filter(
+      (s) => s.statut === SessionStatut.ANNULE,
     ).length;
 
     const tauxCompletion =
@@ -263,42 +287,37 @@ public async findAllAvailableFormations() {
         ? Math.round((nbSessionsCompleted / nbSessionsTotal) * 1000) / 10
         : 0;
 
-    // ── Taux de succès : sessions non annulées ───────────────────────────────
-    const nbSessionsSucces = sessions.filter(
-      (s) => s.statut !== SessionStatut.ANNULE,
-    ).length;
-
     const tauxSucces =
       nbSessionsTotal > 0
         ? Math.round((nbSessionsSucces / nbSessionsTotal) * 1000) / 10
         : 0;
-
-    // ── Taux d'abandon : sessions annulées ──────────────────────────────────
-    const nbSessionsAbandon = sessions.filter(
-      (s) => s.statut === SessionStatut.ANNULE,
-    ).length;
 
     const tauxAbandon =
       nbSessionsTotal > 0
         ? Math.round((nbSessionsAbandon / nbSessionsTotal) * 1000) / 10
         : 0;
 
-    // ── Satisfaction : champ sur la session si disponible, sinon 0 ──────────
-    // Si tu ajoutes un champ `satisfaction: number` sur Session → il sera pris
     const notes = sessions
       .map((s) => (s as any).satisfaction)
       .filter((n): n is number => typeof n === 'number' && !isNaN(n));
 
     const satisfaction =
       notes.length > 0
-        ? Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) /
-          10
+        ? Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) / 10
         : 0;
 
     return {
-      id: f.id,
-      nom: f.titre, // mappe "titre" → "nom" attendu par le frontend
-      nbInscrits,
+      // ── Champs entity Formation ──────────────────────────────────────────
+      id:          f.id,
+      titre:       f.titre,
+      categorie:   f.categorie   ?? null,
+      description: f.description ?? null,
+      prix:        Number(f.prix),
+      statut:      f.statut,
+      // ── Champs calculés depuis les sessions ──────────────────────────────
+      dureeHeures,          // ← calculé depuis heureDebut/heureFin (sessions non annulées)
+      nbSessions:   nbSessionsTotal,
+      nbInscrits:   apprenantIds.size,
       tauxSucces,
       tauxAbandon,
       tauxCompletion,

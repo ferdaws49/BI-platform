@@ -8,6 +8,7 @@ export type Formateur = {
   specialite: string;
   telephone?: string;
   rating?: number;
+  nbSessions?: number;
 };
 
 export type Formation = {

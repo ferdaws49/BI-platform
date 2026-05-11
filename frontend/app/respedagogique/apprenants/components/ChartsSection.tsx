@@ -1,7 +1,17 @@
 "use client";
 
-import type { FilterOptions } from "@/context/FilterContext";
-import { useEffect, useState } from "react";
+// ─── CORRECTIONS APPORTÉES ────────────────────────────────────────────────────
+//
+// AVANT : ChartsSection faisait son propre fetch /dashboard/pedagogique/apprenants
+//         → doublon avec page.tsx, endpoint incorrect, données désynchronisées
+//
+// APRÈS : ChartsSection reçoit les données via props depuis page.tsx
+//         → un seul fetch, une seule source de vérité, plus de doublon
+//
+// Props ajoutées : loading, studentStatus, scoreEvolution, formationSuccess
+// Props supprimées : filters (n'est plus nécessaire ici)
+// ─────────────────────────────────────────────────────────────────────────────
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -43,34 +53,15 @@ type FormationSuccessRate = {
   tauxReussite: number;
 };
 
-// ─── Static Fallback Data ─────────────────────────────────────────────────────
-
-const staticStudentStatus: StudentStatus[] = [
-  { status: "Actif", count: 187 },
-  { status: "Terminé", count: 142 },
-  { status: "Annulé", count: 21 },
-];
-
-const staticScoreEvolution: ScoreEvolution[] = [
-  { date: "Sem 1", score: 65 },
-  { date: "Sem 2", score: 68 },
-  { date: "Sem 3", score: 72 },
-  { date: "Sem 4", score: 75 },
-  { date: "Sem 5", score: 78 },
-  { date: "Sem 6", score: 81 },
-];
-
-const staticFormationSucces: FormationSuccessRate[] = [
-  { formation: "Data Science", tauxReussite: 91 },
-  { formation: "Full-Stack", tauxReussite: 87 },
-  { formation: "UX/UI", tauxReussite: 84 },
-  { formation: "Cloud", tauxReussite: 78 },
-  { formation: "IA", tauxReussite: 95 },
-  { formation: "Cybersécurité", tauxReussite: 72 },
-];
+// ─── Props interface ──────────────────────────────────────────────────────────
+interface ChartsSectionProps {
+  loading: boolean;
+  studentStatus: StudentStatus[];
+  scoreEvolution: ScoreEvolution[];
+  formationSuccess: FormationSuccessRate[];
+}
 
 // ─── Loading Skeleton ─────────────────────────────────────────────────────────
-
 function SkeletonCard() {
   return (
     <div className="rounded-xl border border-blue-100 bg-white p-6 shadow-sm animate-pulse">
@@ -81,70 +72,15 @@ function SkeletonCard() {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-
-export default function ChartsSection({ filters }: { filters: FilterOptions }) {
-  const [loading, setLoading] = useState(true);
-  const [studentStatus, setStudentStatus] =
-    useState<StudentStatus[]>(staticStudentStatus);
-  const [scoreEvolution, setScoreEvolution] =
-    useState<ScoreEvolution[]>(staticScoreEvolution);
-  const [formationSuccess, setFormationSuccess] = useState<
-    FormationSuccessRate[]
-  >(staticFormationSucces);
-
-  // ── Fetch from backend ──────────────────────────────────────────────────────
-  useEffect(() => {
-    const fetchApprenants = async () => {
-      setLoading(true);
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("access_token")
-            : null;
-        const headers: HeadersInit = token
-          ? { Authorization: `Bearer ${token}` }
-          : {};
-        const base = "http://localhost:5000";
-
-        // Build query params
-        const params = new URLSearchParams();
-        if (filters.periode && filters.periode !== "Ce mois")
-          params.append("periode", filters.periode);
-        if (filters.formation && filters.formation !== "Tous")
-          params.append("formation", filters.formation);
-        if (filters.formateur && filters.formateur !== "Tous")
-          params.append("formateur", filters.formateur);
-        if (filters.statut && filters.statut !== "Tous")
-          params.append("statut", filters.statut);
-
-        const queryString = params.toString();
-        const queryPart = queryString ? `?${queryString}` : "";
-
-        const res = await fetch(
-          `${base}/dashboard/pedagogique/apprenants${queryPart}`,
-          { headers },
-        );
-
-        if (res.ok) {
-          const data = await res.json();
-          setStudentStatus(data.studentStatus || staticStudentStatus);
-          setScoreEvolution(data.scoreEvolution || staticScoreEvolution);
-          setFormationSuccess(data.formationSuccess || staticFormationSucces);
-        }
-      } catch (err) {
-        console.error("Fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchApprenants();
-  }, [filters]);
-
+export default function ChartsSection({
+  loading,
+  studentStatus,
+  scoreEvolution,
+  formationSuccess,
+}: ChartsSectionProps) {
   // ── Chart Data ──────────────────────────────────────────────────────────────
-
-  // 1. Pie Chart: Students by Status
   const totalStudents = studentStatus.reduce((sum, s) => sum + s.count, 0);
+
   const pieData = {
     labels: studentStatus.map((s) => s.status),
     datasets: [
@@ -158,7 +94,6 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
     ],
   };
 
-  // 2. Line Chart: Average Score Evolution
   const lineData = {
     labels: scoreEvolution.map((s) => s.date),
     datasets: [
@@ -176,7 +111,6 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
     ],
   };
 
-  // 3. Bar Chart: Success by formation
   const barData = {
     labels: formationSuccess.map((f) => f.formation),
     datasets: [
@@ -295,13 +229,20 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
-
   if (loading) {
     return (
-      <div className="grid gap-6 lg:grid-cols-3">
-        {[...Array(3)].map((_, i) => (
-          <SkeletonCard key={i} />
-        ))}
+      <div className="space-y-6">
+        <div className="h-8 bg-blue-50 rounded w-48 animate-pulse" />
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-24 bg-blue-50 rounded-xl animate-pulse" />
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -329,11 +270,14 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
             {studentStatus.find((s) => s.status === "Actif")?.count || 0}
           </p>
           <p className="text-xs text-gray-600 mt-1">
-            {(
-              ((studentStatus.find((s) => s.status === "Actif")?.count || 0) /
-                totalStudents) *
-              100
-            ).toFixed(1)}
+            {totalStudents > 0
+              ? (
+                  ((studentStatus.find((s) => s.status === "Actif")?.count ||
+                    0) /
+                    totalStudents) *
+                  100
+                ).toFixed(1)
+              : 0}
             % en cours
           </p>
         </div>
@@ -346,11 +290,14 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
             {studentStatus.find((s) => s.status === "Terminé")?.count || 0}
           </p>
           <p className="text-xs text-gray-600 mt-1">
-            {(
-              ((studentStatus.find((s) => s.status === "Terminé")?.count || 0) /
-                totalStudents) *
-              100
-            ).toFixed(1)}
+            {totalStudents > 0
+              ? (
+                  ((studentStatus.find((s) => s.status === "Terminé")?.count ||
+                    0) /
+                    totalStudents) *
+                  100
+                ).toFixed(1)
+              : 0}
             % complétés
           </p>
         </div>
@@ -361,11 +308,14 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
             {studentStatus.find((s) => s.status === "Annulé")?.count || 0}
           </p>
           <p className="text-xs text-gray-600 mt-1">
-            {(
-              ((studentStatus.find((s) => s.status === "Annulé")?.count || 0) /
-                totalStudents) *
-              100
-            ).toFixed(1)}
+            {totalStudents > 0
+              ? (
+                  ((studentStatus.find((s) => s.status === "Annulé")?.count ||
+                    0) /
+                    totalStudents) *
+                  100
+                ).toFixed(1)
+              : 0}
             % abandonnés
           </p>
         </div>
@@ -373,7 +323,6 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
 
       {/* Charts Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Pie Chart */}
         <div className="rounded-xl border border-blue-100 bg-white p-6 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-1">
             Distribution par Statut
@@ -386,7 +335,6 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
           </div>
         </div>
 
-        {/* Line Chart */}
         <div className="rounded-xl border border-blue-100 bg-white p-6 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-1">
             Progression Moyenne
@@ -397,7 +345,6 @@ export default function ChartsSection({ filters }: { filters: FilterOptions }) {
           </div>
         </div>
 
-        {/* Bar Chart */}
         <div className="rounded-xl border border-blue-100 bg-white p-6 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-900 mb-1">
             Réussite par Formation

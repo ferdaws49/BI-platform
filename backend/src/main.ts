@@ -23,6 +23,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+   app.enableCors(); 
 
   //documentation
 const swagger = new DocumentBuilder()

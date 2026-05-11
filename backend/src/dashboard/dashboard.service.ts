@@ -2,9 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { DirecteurDashboardService } from './services/directeur.dashboard.service';
 import { PaginationFilterDto } from './dto/dashboard-filter.dto';
 
-// Ce service est un simple ROUTER — il délègue tout à DirecteurDashboardService
-// Quand tu ajoutes FormateurDashboardService ou AdminDashboardService,
-// tu ajoutes juste un case ici.
+// Router simple — délègue tout à DirecteurDashboardService
+// ✅ v3: tous les filtres sont maintenant passés à chaque méthode
 
 @Injectable()
 export class DashboardService {
@@ -12,29 +11,26 @@ export class DashboardService {
     private readonly directeurService: DirecteurDashboardService,
   ) {}
 
-  // ── Dashboard principal ────────────────────────────────────────────────────
-  getOverview(user: any) {
-    return this.directeurService.getOverview();
+  getOverview(user: any, filters: PaginationFilterDto) {
+    return this.directeurService.getOverview(filters);
   }
 
-  getKpis(user: any) {
-    return this.directeurService.getKpis();
+  getKpis(user: any, filters: PaginationFilterDto) {
+    return this.directeurService.getKpis(filters);
   }
 
-  // ── Charts ─────────────────────────────────────────────────────────────────
-  getEnrollmentsChart(user: any) {
-    return this.directeurService.getEnrollmentsChart();
+  getEnrollmentsChart(user: any, filters: PaginationFilterDto) {
+    return this.directeurService.getEnrollmentsChart(filters);
   }
 
-  getRevenueChart(user: any) {
-    return this.directeurService.getRevenueChart();
+  getRevenueChart(user: any, filters: PaginationFilterDto) {
+    return this.directeurService.getRevenueChart(filters);
   }
 
-  getCoursesChart(user: any) {
-    return this.directeurService.getCoursesChart();
+  getCoursesChart(user: any, filters: PaginationFilterDto) {
+    return this.directeurService.getCoursesChart(filters);
   }
 
-  // ── Tables ─────────────────────────────────────────────────────────────────
   getTopCourses(user: any, filters: PaginationFilterDto) {
     return this.directeurService.getTopCourses(filters);
   }
@@ -47,9 +43,6 @@ export class DashboardService {
     return this.directeurService.getRecentEnrollments(filters);
   }
 
-  
-
-  // ── Alertes ────────────────────────────────────────────────────────────────
   getAlerts(user: any) {
     return this.directeurService.getAlerts();
   }

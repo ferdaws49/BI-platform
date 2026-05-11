@@ -8,6 +8,7 @@ import { Search, Plus } from "lucide-react";
 interface UsersToolbarProps {
   search: string;
   roleFilter: string;
+  roles: { id: string; label: string }[];
   totalCount: number;
   onSearchChange: (value: string) => void;
   onRoleFilterChange: (value: string) => void;
@@ -21,6 +22,7 @@ interface UsersToolbarProps {
 export default function UsersToolbar({
   search,
   roleFilter,
+  roles,
   totalCount,
   onSearchChange,
   onRoleFilterChange,
@@ -55,9 +57,11 @@ export default function UsersToolbar({
                      outline-none focus:ring-2 focus:ring-emerald-200 bg-white transition"
         >
           <option value="">Tous les rôles</option>
-          <option value="Admin">Admin</option>
-          <option value="Directeur">Directeur</option>
-          <option value="Resp. Pédagogique">Resp. Pédagogique</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.label}
+            </option>
+          ))}
         </select>
 
         {/* Compteur dynamique du nombre d'utilisateurs filtrés */}

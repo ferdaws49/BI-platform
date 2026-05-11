@@ -23,6 +23,7 @@ import {
   ScriptableContext,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 
 ChartJS.register(
   CategoryScale,
@@ -230,11 +231,11 @@ export default function DashboardKPISection() {
   const [services, setServices] = useState(staticServices);
   const [loading, setLoading] = useState(true);
 
-  // ── Data Fetching ──────────────────────────────────────────────────────
-  useEffect(() => {
+  // ── Data Fetching Logic ──
+  const fetchDashboardData = async () => {
     const token = localStorage.getItem("access_token");
-    // Parallel fetching of admin dashboard data
-    Promise.allSettled([
+    
+    return Promise.allSettled([
       fetch("http://localhost:5000/admin/kpis", {
         headers: { Authorization: `Bearer ${token}` },
       }),
@@ -245,7 +246,6 @@ export default function DashboardKPISection() {
         headers: { Authorization: `Bearer ${token}` },
       }),
     ]).then(async ([kpisRes, activityRes, servicesRes]) => {
-      // If requests succeed, update state; otherwise, fall back to static data
       if (kpisRes.status === "fulfilled" && kpisRes.value.ok)
         setKpis(await kpisRes.value.json());
       if (activityRes.status === "fulfilled" && activityRes.value.ok)
@@ -254,7 +254,14 @@ export default function DashboardKPISection() {
         setServices(await servicesRes.value.json());
       setLoading(false);
     });
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
   }, []);
+
+  // ✅ Activer l'auto-refresh basé sur les paramètres (Préférences)
+  useAutoRefresh(fetchDashboardData);
 
   const chartData = {
     labels: activity.map((a) => a.jour),

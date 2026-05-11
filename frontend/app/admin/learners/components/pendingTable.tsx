@@ -32,7 +32,9 @@ interface PendingTableProps {
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 function getInitials(nom: string, prenom: string): string {
-  return `${nom[0] ?? ""}${prenom[0] ?? ""}`.toUpperCase();
+  const n = (nom || "").trim()[0] ?? "";
+  const p = (prenom || "").trim()[0] ?? "";
+  return `${n}${p}`.toUpperCase() || "??";
 }
 
 const AVATAR_COLORS = [
@@ -45,7 +47,8 @@ const AVATAR_COLORS = [
 ];
 
 function getAvatarColor(name: string): string {
-  const sum = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const n = name || "";
+  const sum = n.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
 
@@ -138,9 +141,9 @@ export default function PendingTable({
               <td className="px-6 py-4">
                 <div className="flex flex-wrap gap-1.5">
                   {a.formations?.length > 0 ? (
-                    a.formations.map((f) => (
+                    a.formations.map((f, idx) => (
                       <span
-                        key={f.id}
+                        key={`${f.id}-${idx}`}
                         className="text-xs font-medium px-3 py-1 rounded-full
                                    bg-purple-50 text-purple-700 border border-purple-100"
                       >

@@ -58,6 +58,7 @@ export default function AdminSettingsPage() {
 
   // ── UI state ──
   const [activeTab, setActiveTab] = useState<Tab>("profile");
+  const [userId, setUserId] = useState<string | null>(null);
   const [profileStatus, setProfileStatus] = useState<
     "idle" | "saving" | "success" | "error"
   >("idle");
@@ -87,9 +88,18 @@ export default function AdminSettingsPage() {
 
   // ── Load localStorage on mount ──
   useEffect(() => {
-    const savedRefresh =
-      localStorage.getItem("dataRefresh-admin") ?? "5min";
-    const savedNotifs = localStorage.getItem("notifications-admin");
+    const userStr = localStorage.getItem("user");
+    let currentUserId = "";
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        setUserId(u.id);
+        currentUserId = u.id;
+      } catch {}
+    }
+
+    const savedRefresh = localStorage.getItem("dataRefresh-admin") ?? "5min";
+    const savedNotifs = localStorage.getItem(`notifications_settings_${currentUserId}`);
 
     setDataRefresh(savedRefresh);
     if (savedNotifs) {
@@ -183,7 +193,7 @@ export default function AdminSettingsPage() {
   };
 
   const handleSaveNotifs = () => {
-    localStorage.setItem("notifications-admin", JSON.stringify(notifs));
+    localStorage.setItem(`notifications_settings_${userId}`, JSON.stringify(notifs));
     setNotifSaved(true);
     setTimeout(() => setNotifSaved(false), 2000);
   };

@@ -6,18 +6,19 @@ import type { User } from "./UserTable";
 
 interface UserModalProps {
   user?: User | null;
+  roles: { id: string; label: string }[];
   onClose: () => void;
   onSave: (data: Omit<User, "id" | "creeLe"> & { password?: string }) => void;
 }
 
-export default function UserModal({ user, onClose, onSave }: UserModalProps) {
+export default function UserModal({ user, roles, onClose, onSave }: UserModalProps) {
   const isEdit = !!user;
 
   const [nom, setNom] = useState(user?.nom ?? "");
   const [prenom, setPrenom] = useState(user?.prenom ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
-  const [role, setRole] = useState<User["role"]>(
-    user?.role ?? "Resp. Pédagogique",
+  const [role, setRole] = useState<string>(
+    user?.role ?? (roles[0]?.id || ""),
   );
   const [isActive, setIsActive] = useState<boolean>(user?.isActive ?? true);
   const [password, setPassword] = useState("");
@@ -162,12 +163,14 @@ export default function UserModal({ user, onClose, onSave }: UserModalProps) {
             <label className={labelCls}>Rôle</label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as User["role"])}
+              onChange={(e) => setRole(e.target.value)}
               className={inputCls}
             >
-              <option value="Admin">Admin</option>
-              <option value="Directeur">Directeur</option>
-              <option value="Resp. Pédagogique">Resp. Pédagogique</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
             </select>
           </div>
 

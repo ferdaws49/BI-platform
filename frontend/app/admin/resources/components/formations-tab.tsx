@@ -82,15 +82,31 @@ export function FormationsTab({
           <table className="w-full text-sm text-left">
             <thead className="bg-transparent border-b border-border">
               <tr>
-                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">Intitulé</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">Catégorie</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">Type</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">Durée</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">Prix</th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
+                  Intitulé
+                </th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
+                  Catégorie
+                </th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
+                  Type
+                </th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
+                  Durée
+                </th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
+                  Prix
+                </th>
                 {/* ✅ Colonne Sessions — nbSessions vient du backend */}
-                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">Sessions</th>
-                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">Statut</th>
-                <th className="px-6 py-4 font-semibold text-right text-muted-foreground uppercase text-xs">Actions</th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
+                  Sessions
+                </th>
+                <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
+                  Statut
+                </th>
+                <th className="px-6 py-4 font-semibold text-right text-muted-foreground uppercase text-xs">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -101,7 +117,9 @@ export function FormationsTab({
                 >
                   {/* Intitulé + description courte */}
                   <td className="px-6 py-5 max-w-[220px]">
-                    <p className="font-medium text-foreground truncate">{f.titre}</p>
+                    <p className="font-medium text-foreground truncate">
+                      {f.titre}
+                    </p>
                     {f.description && (
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">
                         {f.description}
@@ -124,9 +142,17 @@ export function FormationsTab({
                     <TypeBadge type={f.niveauType} />
                   </td>
 
-                  {/* Durée */}
+                  {/* Durée — calculée depuis les sessions */}
                   <td className="px-6 py-5 text-muted-foreground font-medium whitespace-nowrap">
-                    {f.dureeHeures}h
+                    {f.dureeHeures ? (
+                      (() => {
+                        const h = Math.floor(f.dureeHeures);
+                        const m = Math.round((f.dureeHeures - h) * 60);
+                        return m > 0 ? `${h}h ${m}min` : `${h}h`;
+                      })()
+                    ) : (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
                   </td>
 
                   {/* Prix — anciennement "Coût/session" */}
@@ -139,7 +165,9 @@ export function FormationsTab({
                     {f.nbSessions !== undefined && f.nbSessions !== null ? (
                       <span className="inline-flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="font-semibold text-foreground">{f.nbSessions}</span>
+                        <span className="font-semibold text-foreground">
+                          {f.nbSessions}
+                        </span>
                         <span className="text-xs text-muted-foreground">
                           session{f.nbSessions !== 1 ? "s" : ""}
                         </span>
@@ -183,7 +211,12 @@ export function FormationsTab({
         onOpenChange={(v) => !v && setDeletingId(null)}
         title="Supprimer la formation ?"
         description="Cette action est irréversible."
-        onConfirm={() => { if (deletingId) { onDelete(deletingId); setDeletingId(null); } }}
+        onConfirm={() => {
+          if (deletingId) {
+            onDelete(deletingId);
+            setDeletingId(null);
+          }
+        }}
       />
     </div>
   );

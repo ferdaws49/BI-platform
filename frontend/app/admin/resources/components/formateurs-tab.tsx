@@ -59,7 +59,7 @@ export function FormateursTab({ state, dispatch, onEdit, onDelete }: { state: Re
                   <td className="px-6 py-5 text-muted-foreground font-medium">{f.telephone || "-"}</td>
                   <td className="px-6 py-5 text-muted-foreground">{f.specialite}</td>
                   <td className="px-6 py-5 text-foreground flex items-center gap-1 font-medium"><Star className="h-4 w-4 fill-warning text-warning" /> {f.rating?.toFixed(1) || "4.5"}</td>
-                <td className="px-6 py-5 text-muted-foreground">32</td>
+                <td className="px-6 py-5 text-muted-foreground">{f.nbSessions ?? 0}</td>
                 <td className="px-6 py-5 text-right">
                   <button onClick={() => onEdit(f)} className="text-muted-foreground hover:text-primary mr-4 transition-colors"><Edit className="h-4 w-4 inline" /></button>
                   <button onClick={() => setDeletingId(f.id)} className="text-destructive hover:text-destructive/80 transition-colors"><Trash2 className="h-4 w-4 inline" /></button>
