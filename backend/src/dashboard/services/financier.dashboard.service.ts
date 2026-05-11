@@ -216,16 +216,29 @@ export class FinancierDashboardService {
       ]);
 
     // Sous-requêtes
-    qb.addSelect(sub => sub.select('COUNT(*)', 'count').from('sessions_apprenants', 'sa').where('sa.sessionId = s.id'), 'inscrits');
-    qb.addSelect(sub => sub.select('SUM(fin.montant)', 'sum').from('finances', 'fin').where('fin.sessionId = s.id AND fin.type = :type', { type: FinanceType.PAIEMENT }), 'caEncaisse');
+    qb.addSelect(sub => {
+    return sub.select('COUNT(*)', 'count')
+      .from('sessions_apprenants', 'sa')
+      .where('sa."sessionId" = s.id'); // ✅ Guillemets pour PostgreSQL
+  }, 'inscrits');
+    qb.addSelect(sub => {
+    return sub.select('SUM(fin.montant)', 'sum')
+      .from('finances', 'fin')
+      .where('fin."sessionId" = s.id') // ✅ Guillemets pour PostgreSQL
+      .andWhere('fin.type = :type', { type: FinanceType.PAIEMENT });
+  }, 'caEncaisse');
+
     qb.where('CAST(s.date AS DATE) BETWEEN :start AND :end', { start: startDate, end: endDate });
 
 
+     if (filter.formationId) {
+    qb.andWhere('f.id = :fid', { fid: filter.formationId });
+  }
     
     const raws = await qb.getRawMany();
 
     let rows: SessionPerformanceRowDto[] = raws.map((row) => {//nbadlou string to number
-      const caEncaisse = Number(row.caEncaisse);
+      const caEncaisse = parseFloat(row.caEncaisse);
       const unitPrice = parseFloat(row.unitPrice) || 0;
       const inscrits = parseInt(row.inscrits) || 0;
        const caFacture = unitPrice * inscrits;
@@ -250,7 +263,7 @@ export class FinancierDashboardService {
 
     });
     
-    if (filter.status) {
+    if (filter.status && filter.status !== "undefined") {
       rows = rows.filter((row) => row.status === filter.status);
     }
     const sortBy = filter.sortBy ?? PerformanceSortBy.DATE;

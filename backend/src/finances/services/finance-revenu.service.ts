@@ -919,7 +919,7 @@ private getBaseSessionQuery(filter: RevenueFilterDto): SelectQueryBuilder<Sessio
   const allRows = await qb.getRawMany();
 
   // CALCUL EN MAPPANT LES RÉSULTATS
-  const items: PaymentManagementTableRowDto[] = allRows.map(row => {
+  let items: PaymentManagementTableRowDto[] = allRows.map(row => {
     const total = parseFloat(row.total) || 0;
     const paid = parseFloat(row.paid) || 0;
     const remaining = Math.max(0, total - paid);
@@ -942,6 +942,12 @@ private getBaseSessionQuery(filter: RevenueFilterDto): SelectQueryBuilder<Sessio
       status: status,
     };
   });
+
+  if (filter.paymentStatus) {
+  // On ne garde que les lignes qui correspondent au statut demandé
+  items = items.filter(item => item.status === filter.paymentStatus);
+}
+
 
   // TRI MANUEL (à faire si besoin)
   // ... Logique de tri sur `items`

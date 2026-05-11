@@ -48,15 +48,18 @@ const TOOLTIP_BASE = {
 // ── Mapper statut back → front ─────────────────────────────
 function mapStatus(s: string): PaymentStatus {
   const normalized = (s ?? "").toLowerCase();
-  if (normalized === "paid" || normalized === "paye") return "Payé";
-  if (normalized === "partial" || normalized === "avance") return "Partiel";
+  if (normalized === "paid") return "Payé";
+  if (normalized === "partial" ) return "Partiel";
   return "Impayé";
 }
 
 // ── Mapper ligne backend → Paiement ───────────────────────
 // Le back retourne : { paymentId, apprenant, formation, montant, date, status }
 // montant = montant_encaisse uniquement (pas de montantTotal séparé dans cette route)
-function mapPaymentRow(raw: any): Paiement {
+function mapPaymentRow(raw: any, index: number): Paiement {
+
+  const formationKey = (raw.formationTitle || raw.formation || 'noform').replace(/\s+/g, '');
+  const uniqueId = `reg-${raw.inscriptionId || index}-${formationKey}-${index}`;
   console.log("RAW:", raw);
   const nom = raw.apprenant ?? "";
   const initiales = nom
@@ -66,12 +69,12 @@ function mapPaymentRow(raw: any): Paiement {
     .slice(0, 2)
     .toUpperCase() || "??";
 
-    const id = raw.inscriptionId ?? raw.id;
+    
 
   return {
-    id: String(id),
-    apprenantId: String(raw.apprenantId ?? raw.userId ?? id),
-    apprenantNom: raw.apprenant ?? "",
+    id: uniqueId,
+    apprenantId: String(raw.apprenantId ?? raw.id ),
+    apprenantNom: nom,
     apprenantInitiales: initiales,
     formation: raw.formation ?? "",
     session: raw.session ?? "",
@@ -668,14 +671,21 @@ export default function PaiementsTab({
     async function load() {
       setLoading(true);
       try {
+
+        const statusToSend = filterStatut !== "Tout" 
+        ? (filterStatut === "Payé" ? "paid" : filterStatut === "Partiel" ? "partial" : "unpaid")
+        : filters.paymentStatus;
+
+        const apiFilters = { ...filters , paymentStatus: statusToSend };
+         
         // Référentiels + données en parallèle
         const [appr, form, k, p, t] = await Promise.all([
           revenueApi.getApprenants().catch(() => []),
           revenueApi.getFormationsList().catch(() => []),
-          revenueApi.getPaymentKpis(filters),
-          revenueApi.getPaymentPie(filters),
+          revenueApi.getPaymentKpis(apiFilters),
+          revenueApi.getPaymentPie(apiFilters),
           
-          revenueApi.getPaymentTable({ ...filters, limit: 200 }), // large page pour le tableau local
+          revenueApi.getPaymentTable(apiFilters), // large page pour le tableau local
           
         ]);
 
@@ -699,7 +709,7 @@ export default function PaiementsTab({
     return () => {
       cancelled = true;
     };
-  }, [filters]);
+  }, [filters, filterStatut]);
 
   // ── KPIs ──────────────────────────────────────────────
   const totalEncaisse = kpis?.totalEncaisse ?? 0;

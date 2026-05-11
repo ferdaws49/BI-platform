@@ -73,10 +73,10 @@ async function fetchCost(
 }
 
 export const costApi = {
-  getKpi:           (f: Record<string, unknown>) => fetchCost("finance/cout/kpi",            f),
-  getTopFormateurs: (f: Record<string, unknown>) => fetchCost("finance/cout/top-formateurs", f),
-  getEfficience:    (f: Record<string, unknown>) => fetchCost("finance/cout/efficience",     f),
-  getRepartition:   (f: Record<string, unknown>) => fetchCost("finance/cout/repartition",    f),
-  getTrend:         (f: Record<string, unknown>) => fetchCost("finance/cout/trend",          f),
-  getSessions:      (f: Record<string, unknown>) => fetchCost("finance/cout/sessions",       f),
+  getKpi:           (f: any) => fetchCost("finance/cout/kpi",            f),
+  getTopFormateurs: (f: any) => fetchCost("finance/cout/top-formateurs", f),
+  getEfficience:    (f: any) => fetchCost("finance/cout/efficience",     f),
+  getRepartition:   (f: any) => fetchCost("finance/cout/repartition",    f),
+  getTrend:         (f: any) => fetchCost("finance/cout/trend",          f),
+  getSessions:      (f: any) => fetchCost("finance/cout/sessions",       f),
 };

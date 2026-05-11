@@ -216,11 +216,7 @@ function ReportCard({
   ],
 };
 
-  const [periods, setPeriods] = useState<Record<ReportType, string>>({
-  mensuel: "current_month",
-  trimestriel: "current_quarter",
-  annuel: "current_year",
-});
+  const [localPeriod, setLocalPeriod] = useState(PERIOD_OPTIONS[type][0].value);
   
 
   return (
@@ -275,12 +271,9 @@ function ReportCard({
         >
           <Calendar size={13} style={{ color: C.dark, opacity: 0.4, flexShrink: 0 }} />
           <select
-  value={periods[type]}
+  value={localPeriod}
   onChange={(e) =>
-    setPeriods((prev) => ({
-      ...prev,
-      [type]: e.target.value,
-    }))
+    setLocalPeriod(( e.target.value ))
   }
   className="text-xs bg-transparent outline-none w-full cursor-pointer"
   style={{ color: C.dark }}

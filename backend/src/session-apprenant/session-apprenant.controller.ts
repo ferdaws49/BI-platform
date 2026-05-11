@@ -21,6 +21,13 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 export class SessionApprenantController {
   constructor(private readonly sessionApprenantService: SessionApprenantService) {}
 
+
+   @Get('apprenants-list') // ✅ L'URL finale : /users/apprenants-list
+  @UseGuards(JwtAuthGuard)
+  async getStudentList() {
+    return this.sessionApprenantService.getApprenantsForSelect();
+  }
+
   // POST: ~/inscription
   @Post()
   @UseGuards(JwtAuthGuard)

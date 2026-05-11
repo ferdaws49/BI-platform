@@ -48,8 +48,8 @@ function getPeriodDates(period: string, customStart?: string, customEnd?: string
 
   // custom
   return {
-    startDate: customStart || format(start),
-    endDate: customEnd || format(now),
+    startDate: period === "custom" && customStart ? customStart : format(start),
+    endDate:  period === "custom" && customEnd ? customEnd : format(now),
   };
 }
 
@@ -78,10 +78,10 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
   }
 }, [period]);
 
-  useEffect(() => {
-    const canSend =
-    period !== "custom" || (customStart !== "" && customEnd !== "");
-    if (!canSend) return;
+   useEffect(() => {
+    // 1. On ne déclenche rien si on est en "custom" sans dates saisies
+    const isCustomInvalid = period === "custom" && (!customStart || !customEnd);
+    if (isCustomInvalid) return;
 
     const dates = getPeriodDates(period, customStart, customEnd);
 
@@ -92,10 +92,10 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
       startDate : dates.startDate,
       endDate : dates.endDate,
     };
-    if (formationId !== "") {
+    if (formationId && formationId !== "") {
       f.formationId = Number(formationId);
     }
-    if (paymentStatus !== "") {
+    if (paymentStatus !== ""  && paymentStatus !== "undefined") {
       f.paymentStatus = paymentStatus;
     }
     console.log("FILTER SENT 👉", f);
@@ -193,9 +193,9 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
             style={{ background: "#efefea", color: "#2d4a3e", fontFamily: "'DM Sans'" }}
           >
             <option value="">Tous statuts</option>
-            <option value="PAYE">Payé</option>
-            <option value="AVANCE">Avance</option>
-            <option value="IMPAYE">Impayé</option>
+            <option value="paid">Payé</option>
+            <option value="partial">Avance</option>
+            <option value="unpaid">Impayé</option>
           </select>
           <svg
             className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"

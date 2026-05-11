@@ -15,6 +15,25 @@ export class SessionApprenantService{
     
     ){}
 
+    async getApprenantsForSelect() {
+    const students = await this.apprenantRepository.find({
+      relations: ['user'],
+      select: {
+        id: true,
+        user: {
+          nom: true,
+          prenom: true,
+        },
+      },
+    });
+
+    return students.map((s) => ({
+      id: s.id,
+      nom: `${s.user?.nom || ''} ${s.user?.prenom || ''}`.trim(),
+      initiales: (s.user?.nom?.[0] || '') + (s.user?.prenom?.[0] || ''),
+    }));
+  }
+
     /**hedi lezem nsallaha 
    *  Permettre à l'élève de s'inscrire à un nouveau programme
    * @param userID l'identifiant de l'apprenant

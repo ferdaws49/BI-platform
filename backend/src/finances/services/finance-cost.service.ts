@@ -12,7 +12,6 @@ import {
 import { resolveCostPeriod } from 'src/utils/cost-period.util';
 import { SortOrder } from '../dto/revenue-filter.dto';
 import {
-  CostBreakEvenDto,
   CostKpiDto,
   CostRepartitionResponseDto,
   CostTrendResponseDto,

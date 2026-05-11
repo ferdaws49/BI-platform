@@ -412,7 +412,7 @@ export default function CATab({ filters }: { filters: Record<string, any> }) {
         <KPICard label="Taux de Recouvrement" value={`${recovery.toFixed(1)}%`}  accentColor="#3b82f6"
           sub="Total encaissé / Total facturé × 100" />
 
-        <KPICard label="Top Formation" value={topForm?.title ?? "—"}  accentColor="#2d4a3e"
+        <KPICard label="Top Formation" value={topForm && topForm !== 'N/A' ? topForm : "—"}  accentColor="#2d4a3e"
           badge={topForm ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(26,113,73,0.12)", color: "#1a7149" }}>{fmtCurrency(topForm.revenue)}</span>: undefined}
           sub={topForm ? `Formation #${topForm.formationId}` : "Aucune donnée"} />
 

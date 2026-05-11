@@ -229,7 +229,7 @@ export default function DetailTable({ rows, pagination, onPageChange }: Props) {
                     {/* Coût total */}
                     <td className="px-4 py-3 text-right">
                       <span className="text-xs font-bold" style={{ color: "#DC2626" }}>
-                        {fmtCurrency(row.coutTotal)}
+                        {fmtCurrency(row.coutTotal ?? 0)}
                       </span>
                     </td>
 
@@ -237,7 +237,7 @@ export default function DetailTable({ rows, pagination, onPageChange }: Props) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex flex-col items-end gap-0.5">
                         <span className="text-xs font-bold" style={{ color: margeColor }}>
-                          {row.marge >= 0 ? "+" : ""}{fmtCurrency(row.marge)}
+                          {row.marge >= 0 ? "+" : ""}{fmtCurrency(row.marge ?? 0)}
                         </span>
                         <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>
                           CA : {fmtCurrency(row.ca)}

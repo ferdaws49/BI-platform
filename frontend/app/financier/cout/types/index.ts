@@ -131,6 +131,7 @@ export interface CostTrendResponseDto {
  * SessionCoutRow is derived from the session title context only.
  */
 export interface SessionCostTableRowDto {
+  sessionId: string
   formation: string;
   session: string;
   formateur: string;

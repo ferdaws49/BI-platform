@@ -44,7 +44,6 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
   secret: process.env.SECRET_KEY,
   signOptions: { expiresIn: '1d' },
 }),
-
     // 2. Configuration de la base de données
     TypeOrmModule.forRoot({
       type: 'postgres',

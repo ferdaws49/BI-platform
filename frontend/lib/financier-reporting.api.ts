@@ -37,23 +37,18 @@ export interface ReportResponse {
   sessions: ReportSessionRow[];
 }
 
-function buildQuery(filter: ReportFilter & { format?: ExportFormat }): string {
-  const params = new URLSearchParams();
-  if (filter.period) params.set("period", filter.period);
-  if (filter.startDate) params.set("startDate", filter.startDate);
-  if (filter.endDate) params.set("endDate", filter.endDate);
-  if (filter.format) params.set("format", filter.format);
-  return params.toString();
-}
-
 function getToken(): string {
   if (typeof window === "undefined") return "";
   return localStorage.getItem("access_token") || "";
 }
 
 export async function fetchReportPreview(filter: ReportFilter): Promise<ReportResponse> {
-  const query = buildQuery(filter);
-  const res = await fetch(`${BASE_URL}/finance/reports/preview?${query}`, {
+  const params = new URLSearchParams();
+  if (filter.period) params.set("period", filter.period);
+  if (filter.startDate) params.set("startDate", filter.startDate);
+  if (filter.endDate) params.set("endDate", filter.endDate);
+  
+  const res = await fetch(`${BASE_URL}/finance/reports/preview?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${getToken()}`,
       "Content-Type": "application/json",
@@ -67,8 +62,14 @@ export async function exportReport(
   filter: ReportFilter,
   format: ExportFormat
 ): Promise<void> {
-  const query = buildQuery({ ...filter, format });
-  const res = await fetch(`${BASE_URL}/finance/reports/export?${query}`, {
+
+  const params = new URLSearchParams();
+  if (filter.period) params.set("period", filter.period);
+  if (filter.startDate) params.set("startDate", filter.startDate);
+  if (filter.endDate) params.set("endDate", filter.endDate);
+  params.set("format", format);
+
+  const res = await fetch(`${BASE_URL}/finance/reports/export?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${getToken()}`,
     },
@@ -80,7 +81,6 @@ export async function exportReport(
   const a = document.createElement("a");
   const ext = format === "excel" ? "xlsx" : format;
   a.href = url;
-  a.download = `finance-report.${ext}`;
+  a.download = `rapport-finance-${new Date().toISOString().split('T')[0]}.${ext}`;
   a.click();
-  URL.revokeObjectURL(url);
 }

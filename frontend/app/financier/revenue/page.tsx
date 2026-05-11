@@ -14,6 +14,8 @@ const PaiementsTab = dynamic(
   { ssr: false, loading: () => <TabSkeleton /> }
 );
 
+
+
 function TabSkeleton() {
   return (
     <div className="space-y-4 animate-pulse">

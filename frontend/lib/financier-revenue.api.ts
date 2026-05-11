@@ -8,35 +8,26 @@ function getToken(): string {
 async function fetchRevenue(endpoint: string, filters: Record<string, any> = {}) {
   const params = new URLSearchParams();
   
-  
   Object.entries(filters).forEach(([key, val]) => {
-    if (val === undefined || val === null || val === "") return;
-    if (typeof val === "number" && isNaN(val)) return; // 🔒 bloque NaN
-    params.append(key, String(val));
+    // ✅ On ne garde QUE les vraies valeurs
+    if (val !== undefined && val !== null && val !== "" && String(val) !== "undefined") {
+      params.append(key, String(val));
+    }
   });
  
-  const token = getToken();
-  console.log("TOKEN DEBUG:", token);
+  const token = localStorage.getItem('access_token'); 
+  const query = params.toString();
+  const url = `${API}/${endpoint}${query ? `?${query}` : ""}`;
 
-  console.log("HEADERS:", {
-  Authorization: `Bearer ${token}`,
-}); 
-  console.log("PARAMS SENT:", params.toString());
-  console.log("TOKEN SENT:", token);
-  const res = await fetch(`${API}/${endpoint}?${params.toString()}`, {
-    
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-  
+  const res = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
   });
-  console.log("AUTH HEADER:", `Bearer ${token}`);
- 
+
   if (!res.ok) throw new Error(`Erreur API ${endpoint}: ${res.status}`);
   return res.json();
-
-
 }
  
 async function fetchJSON(endpoint: string, opts?: RequestInit) {
@@ -63,15 +54,11 @@ async function fetchJSON(endpoint: string, opts?: RequestInit) {
 export const revenueApi = {
   // ── Onglet CA ──
   getKpiCards: (f: any) => fetchRevenue("revenue/kpi-cards", f),
-  getRevenueEvolution: (f: any) =>
-    fetchRevenue("revenue/charts/revenue-evolution-by-formation", f),
-  getTopFormationsBar: (f: any) =>
-    fetchRevenue("revenue/charts/top-formations-bar", f),
-  getCategoryPie: (f: any) =>
-    fetchRevenue("revenue/charts/revenue-by-category-pie", f),
+  getRevenueEvolution: (f: any) =>fetchRevenue("revenue/charts/revenue-evolution-by-formation", f),
+  getTopFormationsBar: (f: any) =>fetchRevenue("revenue/charts/top-formations-bar", f),
+  getCategoryPie: (f: any) =>fetchRevenue("revenue/charts/revenue-by-category-pie", f),
   getBubble: (f: any) => fetchRevenue("revenue/charts/bubble", f),
-  getSessionsTable: (f: any) =>
-    fetchRevenue("revenue/table/sessions-revenue", f),
+  getSessionsTable: (f: any) =>fetchRevenue("revenue/table/sessions-revenue", f),
  
   exportSessionsCsv: async (f: any): Promise<Blob> => {
     const params = new URLSearchParams();
@@ -123,10 +110,10 @@ export const revenueApi = {
  
   // ── Référentiels (pour les selects du modal) ──
   getApprenants: (): Promise<{ id: number; nom: string; initiales: string }[]> =>
-    fetchRevenue("users/apprenants-list"),
+    fetchRevenue("inscriptions/apprenants-list"),
  
   getFormationsList: (): Promise<{ id: number; title: string }[]> =>
-    fetchRevenue("formations/list"),
+    fetchRevenue("student/formations/catalogue"),
 
   async getSessionsByApprenant(id: number) {
     const token = getToken();

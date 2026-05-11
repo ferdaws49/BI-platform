@@ -262,7 +262,7 @@ export default function CoutsRentabilitePage() {
               (r.tauxRemplissagePercent / 100) * ESTIMATED_CAPACITY,
             );
             return {
-              id:                  String(i),
+              id:  r.sessionId ||                String(i),
               sessionNom:          r.session,
               formation:           r.formation,
               formationId:         "",

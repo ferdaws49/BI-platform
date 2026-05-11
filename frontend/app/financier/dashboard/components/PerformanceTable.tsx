@@ -176,36 +176,36 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
                   <td className="px-5 py-4">
                     <p className="font-semibold" style={{ color: "#2d4a3e" }}>{row.session}</p>
                     <p className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.45 }}>
-                      {row.formation} · {new Date(row.date).toLocaleDateString('fr-FR')}
+                      {row.formation} · {row.date ? new Date(row.date).toLocaleDateString('fr-FR'): 'Date inconnue'}
                     </p>
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex flex-col gap-1">
                       <span className="font-semibold" style={{ color: "#2d4a3e" }}>
-                        {row.inscrits}/{row.capacite}
+                        {row.inscrits|| 0}/{row.capacite || 0}
                       </span>
                       <div className="w-16 h-1.5 rounded-full" style={{ background: "#e5eadd" }}>
                         <div
                           className="h-1.5 rounded-full"
                           style={{
-                            width: `${row.capacite ? (row.inscrits / row.capacite) * 100 : 0}%`,
-                            background: row.inscrits / row.capacite >= 0.8 ? "#1a7149" : "#D97706",
+                            width: `${row.capacite  && row.capacite ? (row.inscrits / row.capacite) * 100 : 0}%`,
+                            background: row.inscrits / (row.capacite ||1) >= 0.8 ? "#1a7149" : "#D97706",
                           }}
                         />
                       </div>
                     </div>
                   </td>
                   <td className="px-5 py-4 font-semibold" style={{ color: "#2d4a3e" }}>
-                    {row.caEncaisse.toLocaleString()} TND
+                    {(row.caEncaisse?? 0).toLocaleString()} TND
                   </td>
                   <td className="px-5 py-4" style={{ color: "#DC2626" }}>
-                    {formatCurrency(row.cout)}
+                    {formatCurrency(row.cout ?? 0)}
                   </td>
                   <td className="px-5 py-4 font-bold" style={{ color: "#1a7149" }}>
-                    {row.margeNette.toLocaleString()} TND
+                    {(row.margeNette?? 0).toLocaleString()} TND
                   </td>
                   <td className="px-5 py-4">
-                    <ROIBadge value={row.roi} trend={row.roiTrend} />
+                    <ROIBadge value={row.roi ?? 0} trend={row.roiTrend} />
                   </td>
                   <td className="px-5 py-4">
                     <StatusPill status={row.status} />
