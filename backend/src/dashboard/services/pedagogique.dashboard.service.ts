@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Performance } from '../../performances/entities/performance.entity';
-import { Formation } from '../../formations/entities/formation.entity';
+import { Formation, FormationStatus } from '../../formations/entities/formation.entity';
 import { Formateur } from '../../formateurs/entities/formateur.entity';
 import { Apprenant } from '../../apprenants/entities/apprenant.entity';
 import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
@@ -120,7 +120,7 @@ const satisfactionMoyenne = parseFloat(satisfactionResult?.avg ?? '0');
 
     // ── Formations actives ──
     const formationsActives = await this.formationRepo.count({
-      where: { statut: 'active' }
+      where: { statut: FormationStatus.ACTIVE }
     });
 
     const formationsQuery = this.formationRepo.createQueryBuilder('f');

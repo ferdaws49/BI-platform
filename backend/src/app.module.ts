@@ -18,6 +18,10 @@ import { PerformanceModule } from './performances/performances.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { SettingsModule } from './settings/settings.module';
 import { InscriptionsModule } from './inscriptions/inscriptions.module';
+import { SessionApprenantModule } from './session-apprenant/session-apprenant.module';
+import { SchedulesModule } from './schedule/schedule.module';
+import { JwtModule } from '@nestjs/jwt';
+import { ProfileModule } from './profile/profile.module';
 import { RecommendationModule } from './ai/recommendations/recommendation.module';
 import { ImportModule } from './import/import.module';
 import { ResponsableApprenantsModule } from './apprenants/Responsable.apprenants.module';
@@ -34,6 +38,12 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+
+    JwtModule.register({
+  global: true,
+  secret: process.env.SECRET_KEY,
+  signOptions: { expiresIn: '1d' },
+}),
 
     // 2. Configuration de la base de données
     TypeOrmModule.forRoot({
@@ -66,6 +76,9 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
     SessionsModule,
     SettingsModule,
     InscriptionsModule,
+    SessionApprenantModule,
+    SchedulesModule,
+    ProfileModule,
     RecommendationModule,
     ResponsableApprenantsModule,
   ] /* providers: [
@@ -78,5 +91,6 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
   
     
   ],*/
+  
 })
 export class AppModule {}

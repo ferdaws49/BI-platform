@@ -59,5 +59,8 @@ resetTokenExpiry: Date | null;
  
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ type: 'varchar', nullable: true })
+    profileImage: string | null;
 }
 

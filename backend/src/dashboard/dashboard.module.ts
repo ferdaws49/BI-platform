@@ -15,8 +15,12 @@ import { Finance } from '../finances/entities/finance.entity';
 import { Performance as PerformanceEntity } from '../performances/entities/performance.entity';
 import { Satisfaction } from '../satisfaction/entities/satisfaction.entity';
 import { User } from 'src/users/users.entity';
+import { FinancierDashboardController } from './financier-dashboard.controller';
+import { FinancierDashboardService } from './services/financier.dashboard.service';
+import { Session } from 'src/sessions/entities/session.entity';
+import { ApprennatDashboardService } from './services/apprenant-dashboard.service';
+import { ApprenantDashboardController } from './apprenant-dashboard.controller';
 // ✅ NOUVEAU: Session requis par DirecteurDashboardService
-import { Session } from '../sessions/entities/session.entity';
 import { Inscription } from '../inscriptions/entities/inscriptions.entity';
 import { DirecteurReportsService } from './services/directeur.reports.service';
 
@@ -29,22 +33,21 @@ import { DirecteurReportsService } from './services/directeur.reports.service';
       Finance,
       PerformanceEntity,
       User,
-      Satisfaction,
+      Satisfaction, // 
       Session,
       Inscription,
-    ]),
+    ])
   ],
-  controllers: [
-    DashboardController,
-    PedagogiqueDashboardController,
-    AdminDashboardController,
-  ],
+  controllers: [DashboardController, PedagogiqueDashboardController,AdminDashboardController, FinancierDashboardController, ApprenantDashboardController],
   providers: [
     DashboardService,
     DirecteurDashboardService,
     PedagogiqueDashboardService,
     AdminDashboardService,
+    FinancierDashboardService,
+    ApprennatDashboardService,
     DirecteurReportsService,
+
   ],
 })
 export class DashboardModule {}

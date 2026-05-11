@@ -40,6 +40,16 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Protection Apprenant (Étudiant)
+  if (url.pathname.startsWith("/apprenant") && role !== "apprenant") {
+    return NextResponse.redirect(url);
+  }
+
+  if (url.pathname.startsWith("/financier") && (role !== "financier" && role !== "resp_financier")) {
+  url.pathname = "/auth/login";
+  return NextResponse.redirect(url);
+}
+
   return NextResponse.next();
 }
 

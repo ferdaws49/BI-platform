@@ -50,7 +50,13 @@ export default function LoginPage() {
         router.push("/respedagogique/dashboard");
       } else if (role === "admin") {
         router.push("/admin/dashboard");
-      } else {
+      } else if(role === "apprenant"){
+        router.push("/apprenant/dashboard");
+      } else if(role === "financier" || role ==="resp_financier" ){
+        console.log("Direction dashboard financier...");
+        router.push("/financier/dashboard");
+      }
+       else {
         router.push("/");
       }
     } catch (err: unknown) {

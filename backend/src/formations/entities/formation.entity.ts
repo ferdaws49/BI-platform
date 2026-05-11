@@ -8,7 +8,12 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Session } from '../../sessions/entities/session.entity';
-import { Finance } from '../../finances/entities/finance.entity';
+
+export enum FormationStatus {
+  ACTIVE = 'active',
+  COMPLETED = 'completed',
+}
+
 
 @Entity('formations')
 export class Formation {
@@ -32,10 +37,10 @@ export class Formation {
 
   @Column({
     type: 'enum',
-    enum: ['active', 'completed'],
-    default: 'active',
+    enum: FormationStatus,
+    default: FormationStatus.ACTIVE,
   })
-  statut: 'active' | 'completed';
+  statut: FormationStatus;
 
   @OneToMany(() => Session, (session) => session.formation)
   sessions: Session[];
@@ -49,4 +54,7 @@ export class Formation {
 
   @UpdateDateColumn()
   updatedAt: Date;
+  
+
+  
 }

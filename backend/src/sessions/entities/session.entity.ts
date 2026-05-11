@@ -14,15 +14,16 @@ import { Formation } from '../../formations/entities/formation.entity';
 import { Formateur } from '../../formateurs/entities/formateur.entity';
 import { Apprenant } from '../../apprenants/entities/apprenant.entity';
 import { Presence } from './presence.entity';
+import { Finance } from 'src/finances/entities/finance.entity';
 
 export enum SessionType {
   PRESENTIEL = 'présentiel',
   EN_LIGNE = 'en_ligne',
 }
 export enum SessionStatut {
-  ACTIF = 'Active',
-  TERMINE = 'Completed',
-  ANNULE = 'Cancelled',
+  ACTIF = 'Active',//hedhi kenet actif , w fl base active
+  TERMINE = 'Completed',//kifkif hedhi kekenet terminé ama fl base maktouba completed
+  ANNULE = 'Cancelled',// hedhi kenet annulé
 }
 
 
@@ -33,6 +34,15 @@ export enum SessionStatut {
 export class Session {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({nullable: true})
+  title: string; // Ex: "Groupe Alpha - Hiver 2024"
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Coût formateur pour cette session' })
+  cout_formateur: number;
+  
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Coût matériel/logistique' })
+  cout_logistique: number;
 
   @Column({ type: 'date' })
   date: string;
@@ -93,6 +103,8 @@ export class Session {
   @Column({ nullable: true })
   formateurId: number | null;
 
+
+
   // Apprenants inscrits a cette session.
   @ManyToMany(() => Apprenant, { eager: true })
   @JoinTable({
@@ -100,7 +112,7 @@ export class Session {
     joinColumn: { name: 'sessionId', referencedColumnName: 'id' },
     inverseJoinColumn: { name: 'apprenantId', referencedColumnName: 'id' },
   })
-  apprenants: Apprenant[];
+  apprenants: Apprenant[]; 
 
   // Liste des presences enregistrees pour la session.
   @OneToMany(() => Presence, (p) => p.session, { cascade: true })
@@ -112,4 +124,8 @@ export class Session {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+ @OneToMany(() => Finance, (finance) => finance.session)
+  finances: Finance[];
+
 }

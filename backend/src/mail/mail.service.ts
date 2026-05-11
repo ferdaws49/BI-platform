@@ -1,12 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, RequestTimeoutException } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { MailerService } from "@nestjs-modules/mailer";
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private transporter: nodemailer.Transporter;
+  
 
-  constructor() {
+  constructor(
+    private readonly mailerService: MailerService
+  ) {
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -62,4 +66,38 @@ export class MailService {
 
     this.logger.log(`Email de réinitialisation envoyé à ${to}`);
   }
+
+  public async sendVerifyEmailTemplate(email: string, link: string){
+        try {
+            await this.mailerService.sendMail({
+                to: email,
+                from: `<no-reply@my-nestjs-app.com`,
+                subject: 'Verify your email',
+                template: 'verify-email',
+                context: { link }
+                })
+        
+                } catch (error){
+                    console.log(error);
+                    throw new RequestTimeoutException();
+                }
+  }
+
+  public async sendResetPasswordTemplate(email: string, resetPasswordLink: string){
+        try {
+            await this.mailerService.sendMail({
+                to: email,
+                from: `<no-reply@my-nestjs-app.com`,
+                subject: 'Resetpassword',
+                template: 'reset-password',
+                context: { resetPasswordLink }
+                })
+        
+                } catch (error){
+                    console.log(error);
+                    throw new RequestTimeoutException();
+                }
+
+    }
 }
+

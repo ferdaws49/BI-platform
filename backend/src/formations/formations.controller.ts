@@ -1,12 +1,11 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { FormationsService } from './formations.service';
 import { CreateFormationDto } from './dto/create-formation.dto';
 import { UpdateFormationDto } from './dto/update-formation.dto';
-
-@Controller('responsable/formations')
+@Controller('')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('resp_pedagogique', 'admin')
 export class FormationsController {

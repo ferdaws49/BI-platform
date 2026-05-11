@@ -5,12 +5,16 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+
+  OneToMany,
+ 
+  JoinColumn,
   ManyToMany,
   JoinTable,
-  JoinColumn,
 } from 'typeorm';
+
 import { User } from 'src/users/users.entity';
-import { Session } from '../../sessions/entities/session.entity';
+import { Session } from 'src/sessions/entities/session.entity';
 @Entity('apprenants')
 export class Apprenant {
   @PrimaryGeneratedColumn()
@@ -28,6 +32,8 @@ export class Apprenant {
   @CreateDateColumn()
   dateAccepted: Date;
 
+
+  
   // ✅ Table pivot explicite : sessions_apprenants
   @ManyToMany(() => Session, (session) => session.apprenants)
   @JoinTable({
@@ -42,4 +48,7 @@ export class Apprenant {
     },
   })
   sessions: Session[];
+  
+
+  
 }
