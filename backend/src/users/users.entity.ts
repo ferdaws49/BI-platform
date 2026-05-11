@@ -5,7 +5,6 @@ export enum UserRole {
   RESP_PEDAGOGIQUE = 'resp_pedagogique',
   RESP_FINANCIER = 'resp_financier',
   APPRENANT = 'apprenant',
-  RESP_FINANCIER = 'resp_financier'
 }
 
 export enum UserStatus {

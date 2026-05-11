@@ -21,15 +21,9 @@ export enum SessionType {
   EN_LIGNE = 'en_ligne',
 }
 export enum SessionStatut {
-<<<<<<< HEAD
   ACTIF = 'Active',//hedhi kenet actif , w fl base active
   TERMINE = 'Completed',//kifkif hedhi kekenet terminé ama fl base maktouba completed
   ANNULE = 'Cancelled',// hedhi kenet annulé
-=======
-  ACTIF = 'Active',
-  TERMINE = 'Completed',
-  ANNULE = 'Cancelled',
->>>>>>> 2b077d31bd11532c6659a78b2d09dbd76bf7138b
 }
 
 

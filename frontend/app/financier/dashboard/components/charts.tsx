@@ -133,7 +133,7 @@ function RevenueCostBarChart({ data }: { data: any[] }) {
     chartRef.current = new Chart(canvasRef.current, {
       type: "bar",
       data: {
-        labels: data.map((d) => d.category),
+        labels: data.map((d) => d.categorie),
         datasets: [
           {
             label: "Revenu",

@@ -62,10 +62,10 @@ export default function FiltersBar({ onFilterChange, formations }: FiltersBarPro
 const mapStatus = (s: string) => {
   const map: Record<string, string> = {
     
-    "Payé": "PAID",
-    "En attente": "PARTIAL",
-    "Impayé": "UNPAID",
-    "Tout": "undefined",
+    "Payé": "paid",
+    "En attente": "partial",
+    "Impayé": "unpaid",
+    "Tout": "",
   };
 
   return map[s] ?? "";

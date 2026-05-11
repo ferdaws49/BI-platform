@@ -23,15 +23,9 @@ export class ImportJob {
   @Column({ default: 'pending' })
   status: ImportStatus;
 
-<<<<<<< HEAD
-  @Column({ nullable: true })
-  filePath: string;
-}
-=======
   /** Nom du fichier original uploadé */
   @Column({ default: '' })
   file_path: string;
->>>>>>> 2b077d31bd11532c6659a78b2d09dbd76bf7138b
 
   /** Nombre de lignes valides reçues du frontend */
   @Column({ default: 0 })

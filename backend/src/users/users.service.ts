@@ -21,7 +21,6 @@ const ROLE_LABEL: Record<UserRole, string> = {
   [UserRole.ADMIN]:           'Admin',
   [UserRole.DIRECTEUR]:       'Directeur',
   [UserRole.RESP_PEDAGOGIQUE]: 'Resp. Pédagogique',
-  [UserRole.RESP_FINANCIER]:  'Resp. Financier',
   [UserRole.APPRENANT]:       'Apprenant',
   [UserRole.RESP_FINANCIER]: 'resp_financier'
 };

@@ -1,5 +1,5 @@
 
-const API = "http://localhost:5000";
+const API = "http://localhost:5000/financier";
 
 console.log("API =", API);
 

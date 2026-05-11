@@ -66,7 +66,6 @@ export class FormationsService {
     return { message: `Formation #${id} supprimée` };
   }
 
-<<<<<<< HEAD
 //hedhi wallet tekhdem b structure jdida
   /**
     * Afficher la liste des formations de l'apprenant(espace apprenant)
@@ -243,9 +242,7 @@ public async findAllAvailableFormations() {
 }
 
   // ─── Calcul des métriques depuis session_apprenants ──────────────────────
-=======
   // ─── Calcul des métriques ─────────────────────────────────────────────────
->>>>>>> 2b077d31bd11532c6659a78b2d09dbd76bf7138b
   private computeStats(f: Formation): FormationStats {
     const sessions = f.sessions ?? [];
     const nbSessionsTotal = sessions.length;

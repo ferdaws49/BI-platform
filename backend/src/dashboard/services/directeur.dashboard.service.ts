@@ -280,9 +280,6 @@ export class DirecteurDashboardService {
         end:   dates.endDate.toISOString().split('T')[0],
       });
 
-<<<<<<< HEAD
-      this.formationRepo.count({ where: { statut: FormationStatus.ACTIVE } }),
-=======
     if (filters.formation && filters.formation !== 'Tous') {
       formationsActivesQb.andWhere(
         'session.formationId = (SELECT id FROM formations WHERE titre = :titre)',
@@ -295,7 +292,6 @@ export class DirecteurDashboardService {
         type: typeMap[filters.type] ?? filters.type,
       });
     }
->>>>>>> 2b077d31bd11532c6659a78b2d09dbd76bf7138b
 
     const formationsActivesResult = await formationsActivesQb.getRawOne();
     const formationsActives = parseInt(formationsActivesResult?.count ?? '0');

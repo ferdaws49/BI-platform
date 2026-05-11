@@ -32,7 +32,7 @@ export interface RevenueMonth {
 }
 
 export interface RevenueCost {
-  category: string;
+  categorie : string;
   revenue: number;
   cout: number;
 }

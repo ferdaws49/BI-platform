@@ -60,6 +60,10 @@ export default function FinancialDashboardPage() {
       setKpis(dataKpis);
       setRevenueData(dataRev);
       setCategoryData(dataCat);
+       setFormationData(dataForm.map((f: any, i: number) => ({
+      ...f,
+      color: ["#1a7149", "#2d4a3e", "#D97706", "#3b82f6", "#ef4444", "#8b5cf6"][i % 6]
+    })));
       setFormationData(dataForm);
       setSessions(dataSess.items ?? dataSess); // .items car ton DTO NestJS est paginé
       setFormations(dataFormations);
