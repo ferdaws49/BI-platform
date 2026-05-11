@@ -38,7 +38,7 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
     // 2. Configuration de la base de données
     TypeOrmModule.forRoot({
       type: 'postgres',
-      url: process.env.DIRECT_URL,
+      url: process.env.DATABASE_URL,
       autoLoadEntities: true,
       synchronize: true, // Utile en développement (PFE), à désactiver en prod
       ssl: { rejectUnauthorized: false },
@@ -47,7 +47,7 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
         keepAlive: true,
         idleTimeoutMillis: 60000,
         connectionTimeoutMillis: 15000,
-        max: 10,
+        max: 5,
       },
     }),
 

@@ -19,13 +19,18 @@ export class AdminDashboardService {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [utilisateursActifs, donneesImportees, demandesEnAttente, erreursSysteme] =
-      await Promise.all([
-        this.userRepo.count({ where: { status: UserStatus.ACCEPTED } }),
-        this.userRepo.count({ where: { createdAt: Between(startOfMonth, now) } }),
-        this.inscriptionRepo.count({ where: { statut: InscriptionStatut.PENDING } }),
-        this.userRepo.count({ where: { status: UserStatus.REJECTED } }),
-      ]);
+    const utilisateursActifs = await this.userRepo.count({
+      where: { status: UserStatus.ACCEPTED },
+    });
+    const donneesImportees = await this.userRepo.count({
+      where: { createdAt: Between(startOfMonth, now) },
+    });
+    const demandesEnAttente = await this.inscriptionRepo.count({
+      where: { statut: InscriptionStatut.PENDING },
+    });
+    const erreursSysteme = await this.userRepo.count({
+      where: { status: UserStatus.REJECTED },
+    });
 
     return { utilisateursActifs, donneesImportees, demandesEnAttente, erreursSysteme };
   }
@@ -43,14 +48,12 @@ export class AdminDashboardService {
       const nextDate = new Date(date);
       nextDate.setDate(nextDate.getDate() + 1);
 
-      const [connexions, imports] = await Promise.all([
-        this.userRepo.count({
-          where: { updatedAt: Between(date, nextDate), status: UserStatus.ACCEPTED },
-        }),
-        this.userRepo.count({
-          where: { createdAt: Between(date, nextDate) },
-        }),
-      ]);
+      const connexions = await this.userRepo.count({
+        where: { updatedAt: Between(date, nextDate), status: UserStatus.ACCEPTED },
+      });
+      const imports = await this.userRepo.count({
+        where: { createdAt: Between(date, nextDate) },
+      });
 
       result.push({ jour: days[date.getDay()], connexions, imports });
     }

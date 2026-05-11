@@ -52,7 +52,8 @@ export class PedagogiqueDashboardService {
     const qb = this.performanceRepo
       .createQueryBuilder('perf')
       .leftJoinAndSelect('perf.formation', 'formation')
-      .leftJoinAndSelect('perf.apprenant', 'apprenant');
+      .leftJoinAndSelect('perf.apprenant', 'apprenant')
+      .leftJoinAndSelect('apprenant.user', 'user');
 
     // فلتر الـ periode
     const dateFrom = this.getDateFrom(filters.periode);
@@ -272,7 +273,7 @@ const satisfactionMoyenne = parseFloat(satisfactionResult?.avg ?? '0');
       else if (formations.length > 1) raison = 'Échecs multiples';
 
       return {
-        nom: `${apprenant.prenom} ${apprenant.nom}`,
+        nom: `${apprenant.user?.prenom ?? ''} ${apprenant.user?.nom ?? ''}`.trim() || 'Inconnu',
         formation: formations[0], // الـ formation الأولى
         raison,
         progression,

@@ -170,6 +170,10 @@ export class ImportService {
     );
 
     const tableName = entityMetadata.tableName;
+    const hasConflictConstraint = this.hasUsableConflictConstraint(
+      entityMetadata,
+      uniqueKey,
+    );
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -199,16 +203,59 @@ export class ImportService {
           );
 
           const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-          const columnList = columns.map((c) => `"${c}"`).join(', ');
+          const columnList = columns.map((c) => this.escapeIdentifier(c)).join(', ');
+          const escapedTableName = this.escapeIdentifier(tableName);
+          const escapedUniqueKey = this.escapeIdentifier(uniqueKey);
+          const uniqueValue = row[uniqueKey];
 
-          let query = `INSERT INTO "${tableName}" (${columnList}) VALUES (${placeholders})`;
-          if (strategy === 'ignore') {
-            query += ` ON CONFLICT ("${uniqueKey}") DO NOTHING`;
-          } else if (strategy === 'update') {
+          if (
+            !hasConflictConstraint &&
+            uniqueValue !== undefined &&
+            uniqueValue !== null &&
+            strategy !== 'error'
+          ) {
+            const existing = await queryRunner.query(
+              `SELECT 1 FROM ${escapedTableName} WHERE ${escapedUniqueKey} = $1 LIMIT 1`,
+              [uniqueValue],
+            );
+
+            if (existing.length > 0) {
+              if (strategy === 'ignore') {
+                await queryRunner.query(`RELEASE SAVEPOINT ${savepointName}`);
+                continue;
+              }
+
+              if (strategy === 'update') {
+                const updateColumns = columns.filter((c) => c !== uniqueKey);
+                if (updateColumns.length > 0) {
+                  const updateSet = updateColumns
+                    .map((c, i) => `${this.escapeIdentifier(c)} = $${i + 1}`)
+                    .join(', ');
+                  const updateValues = updateColumns.map(
+                    (c) => values[columns.indexOf(c)],
+                  );
+
+                  await queryRunner.query(
+                    `UPDATE ${escapedTableName} SET ${updateSet} WHERE ${escapedUniqueKey} = $${updateColumns.length + 1}`,
+                    [...updateValues, uniqueValue],
+                  );
+                }
+
+                await queryRunner.query(`RELEASE SAVEPOINT ${savepointName}`);
+                imported++;
+                continue;
+              }
+            }
+          }
+
+          let query = `INSERT INTO ${escapedTableName} (${columnList}) VALUES (${placeholders})`;
+          if (hasConflictConstraint && strategy === 'ignore') {
+            query += ` ON CONFLICT (${escapedUniqueKey}) DO NOTHING`;
+          } else if (hasConflictConstraint && strategy === 'update') {
             const updateSet = columns
-              .map((c) => `"${c}" = EXCLUDED."${c}"`)
+              .map((c) => `${this.escapeIdentifier(c)} = EXCLUDED.${this.escapeIdentifier(c)}`)
               .join(', ');
-            query += ` ON CONFLICT ("${uniqueKey}") DO UPDATE SET ${updateSet}`;
+            query += ` ON CONFLICT (${escapedUniqueKey}) DO UPDATE SET ${updateSet}`;
           }
 
           await queryRunner.query(query, values);
@@ -236,5 +283,29 @@ export class ImportService {
     }
 
     return { imported, errors };
+  }
+
+  private hasUsableConflictConstraint(
+    entityMetadata: DataSource['entityMetadatas'][number],
+    uniqueKey: string,
+  ): boolean {
+    const primaryColumn = entityMetadata.primaryColumns.some(
+      (column) => column.propertyName === uniqueKey || column.databaseName === uniqueKey,
+    );
+
+    if (primaryColumn) {
+      return true;
+    }
+
+    return entityMetadata.uniques.some(
+      (unique) =>
+        unique.columns.length === 1 &&
+        (unique.columns[0].propertyName === uniqueKey ||
+          unique.columns[0].databaseName === uniqueKey),
+    );
+  }
+
+  private escapeIdentifier(identifier: string): string {
+    return `"${identifier.replace(/"/g, '""')}"`;
   }
 }

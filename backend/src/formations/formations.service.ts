@@ -9,6 +9,7 @@ import { SessionStatut } from '../sessions/entities/session.entity';
 // ─── Shape renvoyée au frontend ───────────────────────────────────────────────
 export interface FormationStats {
   id: number;
+  nom: string;       // ← alias de titre pour le frontend
   titre: string;
   categorie: string | null;
   description: string | null;
@@ -31,13 +32,16 @@ export class FormationsService {
   ) {}
 
   // ── GET /responsable/formations ───────────────────────────────────────────
-  async findAll(): Promise<FormationStats[]> {
+  async findAll(filters?: any): Promise<FormationStats[]> {
     const formations = await this.formationRepo.find({
       relations: [
         'sessions',
         'sessions.apprenants',
       ],
     });
+    
+    // TODO: Appliquer les filtres ici si nécessaire
+    
     return formations.map((f) => this.computeStats(f));
   }
 
@@ -126,7 +130,8 @@ export class FormationsService {
 
     return {
       // ── Champs entity Formation ──────────────────────────────────────────
-      id:          f.id,
+      id: f.id,
+      nom: f.titre,
       titre:       f.titre,
       categorie:   f.categorie   ?? null,
       description: f.description ?? null,

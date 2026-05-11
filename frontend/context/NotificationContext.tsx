@@ -6,7 +6,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 export interface Notification {
   id: string;
   type: "success" | "info" | "warning" | "error";
-  category: "learnerRequests" | "accountChanges" | "imports" | "systemAlerts"; // Catégorie liée aux paramètres
+  category: "learnerRequests" | "accountChanges" | "imports" | "systemAlerts" | "sessionAlerts" | "learnerRiskAlerts" | "trainerUpdates" | "feedbackAlerts";
   title: string;
   message: string;
   timestamp: string;

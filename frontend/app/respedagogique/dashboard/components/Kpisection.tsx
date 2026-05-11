@@ -334,13 +334,13 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
             fetch(`${base}/responsable/dashboard/kpis${queryPart}`, {
               headers,
             }),
-            fetch(`${base}/responsable/formateurs/performances${queryPart}`, {
+            fetch(`${base}/responsable/dashboard/formateurs/performances${queryPart}`, {
               headers,
             }),
-            fetch(`${base}/responsable/formations/taux-reussite${queryPart}`, {
+            fetch(`${base}/responsable/dashboard/formations/taux-reussite${queryPart}`, {
               headers,
             }),
-            fetch(`${base}/responsable/apprenants/risque${queryPart}`, {
+            fetch(`${base}/responsable/dashboard/apprenants/risque${queryPart}`, {
               headers,
             }),
           ]);
@@ -424,19 +424,25 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
         // Formateurs
         if (fmtRes.status === "fulfilled" && fmtRes.value.ok) {
           const data = await fmtRes.value.json();
-          setFormateurs(data);
+          if (Array.isArray(data)) {
+            setFormateurs(data);
+          }
         }
 
         // Formations
         if (fmationRes.status === "fulfilled" && fmationRes.value.ok) {
           const data = await fmationRes.value.json();
-          setFormations(data);
+          if (Array.isArray(data)) {
+            setFormations(data);
+          }
         }
 
         // Apprenants à risque
         if (risqueRes.status === "fulfilled" && risqueRes.value.ok) {
           const data = await risqueRes.value.json();
-          setRisque(data);
+          if (Array.isArray(data)) {
+            setRisque(data);
+          }
         }
       } catch (err) {
         console.error("Fetch error:", err);
@@ -784,7 +790,7 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
               .sort((a, b) => b.scoreEfficacite - a.scoreEfficacite)
               .map((f, i) => (
                 <div
-                  key={f.nom}
+                  key={`${f.nom}-${i}`}
                   className="flex items-center gap-3 group hover:bg-green-50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
                 >
                   {/* Rank */}
@@ -1040,17 +1046,19 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {risque.map((a) => (
+          {risque.map((a, i) => (
             <div
-              key={a.nom}
+              key={`${a.nom ?? ''}-${i}`}
               className="rounded-lg border border-amber-100 bg-amber-50 p-3 hover:border-amber-200 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center text-xs font-bold text-amber-800 flex-shrink-0">
-                  {a.nom
+                  {(a.nom ?? "?")
                     .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
+                    .filter(Boolean)
+                    .map((n: string) => n[0])
+                    .join("")
+                    .toUpperCase() || "?"}
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-gray-800 truncate">

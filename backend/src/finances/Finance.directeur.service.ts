@@ -73,17 +73,15 @@ export class FinanceDirecteurService {
   ): Promise<FinanceOverviewResponse> {
     const range = this.getDateRange(filters.periode);
 
-    const [paiements, depenses, impayesList] = await Promise.all([
-      this.buildBaseQB(filters, range)
-        .andWhere('f.type = :t', { t: 'paiement' })
-        .getMany(),
-      this.buildBaseQB(filters, range)
-        .andWhere('f.type = :t', { t: 'depense' })
-        .getMany(),
-      this.buildBaseQB(filters, range)
-        .andWhere('f.type = :t', { t: 'impaye' })
-        .getMany(),
-    ]);
+    const paiements = await this.buildBaseQB(filters, range)
+      .andWhere('f.type = :t', { t: 'paiement' })
+      .getMany();
+    const depenses = await this.buildBaseQB(filters, range)
+      .andWhere('f.type = :t', { t: 'depense' })
+      .getMany();
+    const impayesList = await this.buildBaseQB(filters, range)
+      .andWhere('f.type = :t', { t: 'impaye' })
+      .getMany();
 
     const revenus = paiements.reduce((s, f) => s + Number(f.montant), 0);
     const couts = depenses.reduce((s, f) => s + Number(f.montant), 0);

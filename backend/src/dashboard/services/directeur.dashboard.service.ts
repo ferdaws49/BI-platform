@@ -1,28 +1,12 @@
 // ============================================================================
-// directeur.dashboard.service.ts  (RÉVISÉ — Avril 2026)
+// directeur.dashboard.service.ts  (CORRIGÉ — Mai 2026)
 //
-// Changements vs version précédente:
-//   ✅ getOverview()     → + totalSessions, sessionsActives, tauxRemplissageMoyen
-//   ✅ getKpis()         → formationsActives via sessions (statut='Actif'), pas formation.statut
-//   ✅ getCoursesChart() → top formations par nbApprenants inscrits (via sessions)
-//   ✅ getTopCourses()   → enrichi avec nbSessions + nbApprenants + revenus réels
-//   ✅ Finance joins     → Finance → Session → Formation (sessionId est string/UUID)
-// ============================================================================
-// ============================================================================
-// directeur.dashboard.service.ts  (RÉVISÉ v3 — Filtres complets)
-//
-// Changements vs v2:
-//   ✅ Helper getPeriodeDates()  → calcule startDate/endDate selon periode
-//   ✅ getOverview(filters)      → filtre par periode, formation, type
-//   ✅ getKpis(filters)          → filtre par periode, formation, type
-//   ✅ getEnrollmentsChart(f)    → filtre par formation, formateur, type
-//   ✅ getRevenueChart(f)        → filtre par formation, formateur, type
-//   ✅ getCoursesChart(f)        → filtre par statut, type
-//   ✅ getTopCourses(f)          → filtre existant enrichi + type
-//   ✅ getFinanceKpis(f)         → filtre par periode, formation
-//   ✅ getFinanceDetails(f)      → filtre par periode, formation, statut
-//   ✅ tables réelles            → formateur, performance, satisfaction (singulier)
-//   ✅ sessions_apprenants       → avec 's' selon ta DB
+// Corrections appliquées:
+//   ✅ Import SessionStatut depuis session.entity
+//   ✅ Toutes les comparaisons 'Actif' remplacées par SessionStatut.ACTIF
+//   ✅ getOverview()     → sessionsActives utilise SessionStatut.ACTIF
+//   ✅ getKpis()         → formationsActives utilise SessionStatut.ACTIF
+//   ✅ getAlerts()       → sessionsOrphelines utilise SessionStatut.ACTIF
 // ============================================================================
 
 import { Injectable } from '@nestjs/common';
@@ -35,7 +19,10 @@ import { Formateur } from '../../formateurs/entities/formateur.entity';
 import { Finance } from '../../finances/entities/finance.entity';
 import { Performance } from '../../performances/entities/performance.entity';
 import { Satisfaction } from '../../satisfaction/entities/satisfaction.entity';
-import { Session } from '../../sessions/entities/session.entity';
+
+// ✅ FIX: import SessionStatut pour éviter les strings hardcodées
+import { Session, SessionStatut } from '../../sessions/entities/session.entity';
+
 import { PaginationFilterDto } from '../dto/dashboard-filter.dto';
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
@@ -43,7 +30,7 @@ import { PaginationFilterDto } from '../dto/dashboard-filter.dto';
 interface PeriodeDates {
   startDate: Date;
   endDate: Date;
-  startDatePrev: Date;  // période précédente (pour comparaison)
+  startDatePrev: Date;
   endDatePrev: Date;
 }
 
@@ -76,16 +63,6 @@ export class DirecteurDashboardService {
   // HELPER — Calcul des dates selon la période choisie
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * Transforme le filtre `periode` en dates SQL concrètes.
-   * Utilisé dans TOUTES les méthodes pour uniformiser le filtrage temporel.
-   *
-   * periode = 'month'    → ce mois / mois précédent
-   * periode = 'quarter'  → ce trimestre / trimestre précédent
-   * periode = 'semester' → ce semestre / semestre précédent
-   * periode = 'year'     → cette année / année précédente
-   * periode = undefined  → tout le temps (pas de filtre date)
-   */
   private getPeriodeDates(periode?: string): PeriodeDates | null {
     if (!periode) return null;
 
@@ -106,7 +83,6 @@ export class DirecteurDashboardService {
         break;
 
       case 'quarter':
-        // trimestre courant: mois 0-2, 3-5, 6-8, 9-11
         const quarterStart = Math.floor(m / 3) * 3;
         startDate     = new Date(y, quarterStart, 1);
         startDatePrev = new Date(y, quarterStart - 3, 1);
@@ -114,7 +90,6 @@ export class DirecteurDashboardService {
         break;
 
       case 'semester':
-        // semestre courant: Jan-Jun ou Jul-Dec
         const semStart = m < 6 ? 0 : 6;
         startDate     = new Date(y, semStart, 1);
         startDatePrev = new Date(y, semStart - 6, 1);
@@ -128,7 +103,7 @@ export class DirecteurDashboardService {
         break;
 
       default:
-        return null; // pas de filtre date
+        return null;
     }
 
     return { startDate, endDate, startDatePrev, endDatePrev };
@@ -138,16 +113,10 @@ export class DirecteurDashboardService {
   // SECTION 1 — OVERVIEW
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * Totaux globaux filtrés.
-   * - periode  → filtre les sessions et finances dans la période
-   * - formation → filtre sur une formation spécifique
-   * - type     → filtre sessions par type (présentiel / en_ligne)
-   */
   async getOverview(filters: PaginationFilterDto = {}) {
     const dates = this.getPeriodeDates(filters.periode);
 
-    // ── Base session QueryBuilder (réutilisé pour totalSessions + sessionsActives) ──
+    // ── Base session QueryBuilder ──────────────────────────────────────────
     const sessionQb = () => {
       const qb = this.sessionRepo.createQueryBuilder('session');
       if (dates) {
@@ -157,21 +126,24 @@ export class DirecteurDashboardService {
         });
       }
       if (filters.formation && filters.formation !== 'Tous') {
-        qb.andWhere('session.formationId = (SELECT id FROM formations WHERE titre = :titre)', {
-          titre: filters.formation,
-        });
+        qb.andWhere(
+          'session.formationId = (SELECT id FROM formations WHERE titre = :titre)',
+          { titre: filters.formation },
+        );
       }
       if (filters.type && filters.type !== 'Tous') {
         const typeMap: Record<string, string> = {
           'Présentiel': 'présentiel',
-          'En ligne': 'en_ligne',
+          'En ligne':   'en_ligne',
         };
-        qb.andWhere('session.type = :type', { type: typeMap[filters.type] ?? filters.type });
+        qb.andWhere('session.type = :type', {
+          type: typeMap[filters.type] ?? filters.type,
+        });
       }
       return qb;
     };
 
-    // ── Revenus filtrés ──────────────────────────────────────────────────────
+    // ── Revenus filtrés ────────────────────────────────────────────────────
     const revenusQb = this.financeRepo
       .createQueryBuilder('finance')
       .select('SUM(finance.montant)', 'total')
@@ -190,23 +162,16 @@ export class DirecteurDashboardService {
         .andWhere('formation.titre = :titre', { titre: filters.formation });
     }
 
-    const [
-      totalApprenants,
-      totalFormations,
-      totalFormateurs,
-      totalSessions,
-      sessionsActives,
-      revenusResult,
-    ] = await Promise.all([
-      this.apprenantRepo.count(),
-      this.formationRepo.count(),
-      this.formateurRepo.count(),
-      sessionQb().getCount(),
-      sessionQb().andWhere("session.statut = 'Actif'").getCount(),
-      revenusQb.getRawOne(),
-    ]);
+    const totalApprenants = await this.apprenantRepo.count();
+    const totalFormations = await this.formationRepo.count();
+    const totalFormateurs = await this.formateurRepo.count();
+    const totalSessions = await sessionQb().getCount();
+    const sessionsActives = await sessionQb()
+      .andWhere('session.statut = :statut', { statut: SessionStatut.ACTIF })
+      .getCount();
+    const revenusResult = await revenusQb.getRawOne();
 
-    // Taux de remplissage (non filtré par période — stat globale)
+    // ── Taux de remplissage moyen ──────────────────────────────────────────
     const remplissageResult = await this.sessionRepo
       .createQueryBuilder('session')
       .select(
@@ -244,16 +209,9 @@ export class DirecteurDashboardService {
   // SECTION 2 — KPIs
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * KPIs avec filtres complets.
-   * - periode  → toutes les métriques temporelles respectent la période
-   * - formation → taux réussite et formations actives filtrés
-   * - type     → filtre sur le type de session
-   */
   async getKpis(filters: PaginationFilterDto = {}) {
     const now = new Date();
 
-    // Dates courantes selon filtre
     const dates = this.getPeriodeDates(filters.periode) ?? {
       startDate:     new Date(now.getFullYear(), now.getMonth(), 1),
       endDate:       now,
@@ -261,7 +219,7 @@ export class DirecteurDashboardService {
       endDatePrev:   new Date(now.getFullYear(), now.getMonth(), 0),
     };
 
-    // ── Apprenants dans la période ───────────────────────────────────────────
+    // ── Apprenants dans la période ─────────────────────────────────────────
     const apprenantsCePeriode = await this.apprenantRepo.count({
       where: { dateAccepted: Between(dates.startDate, dates.endDate) },
     });
@@ -270,11 +228,12 @@ export class DirecteurDashboardService {
       where: { dateAccepted: Between(dates.startDatePrev, dates.endDatePrev) },
     });
 
-    // ── Formations actives dans la période ───────────────────────────────────
+    // ── Formations actives dans la période ────────────────────────────────
+    // ✅ FIX: utilise SessionStatut.ACTIF au lieu de 'Actif'
     const formationsActivesQb = this.sessionRepo
       .createQueryBuilder('session')
       .select('COUNT(DISTINCT session.formationId)', 'count')
-      .where("session.statut = 'Actif'")
+      .where('session.statut = :statut', { statut: SessionStatut.ACTIF })
       .andWhere('session.date BETWEEN :start AND :end', {
         start: dates.startDate.toISOString().split('T')[0],
         end:   dates.endDate.toISOString().split('T')[0],
@@ -287,7 +246,10 @@ export class DirecteurDashboardService {
       );
     }
     if (filters.type && filters.type !== 'Tous') {
-      const typeMap: Record<string, string> = { 'Présentiel': 'présentiel', 'En ligne': 'en_ligne' };
+      const typeMap: Record<string, string> = {
+        'Présentiel': 'présentiel',
+        'En ligne':   'en_ligne',
+      };
       formationsActivesQb.andWhere('session.type = :type', {
         type: typeMap[filters.type] ?? filters.type,
       });
@@ -296,22 +258,24 @@ export class DirecteurDashboardService {
     const formationsActivesResult = await formationsActivesQb.getRawOne();
     const formationsActives = parseInt(formationsActivesResult?.count ?? '0');
 
-    // ── Performances filtrées ────────────────────────────────────────────────
+    // ── Performances filtrées ──────────────────────────────────────────────
     const perfQb = () => {
       const qb = this.performanceRepo.createQueryBuilder('perf');
       if (filters.formation && filters.formation !== 'Tous') {
-        qb.innerJoin('perf.formation', 'formation')
-          .andWhere('formation.titre = :titre', { titre: filters.formation });
+        qb.innerJoin('perf.formation', 'formation').andWhere(
+          'formation.titre = :titre',
+          { titre: filters.formation },
+        );
       }
       return qb;
     };
 
-    const [totalPerformances, performancesReussies] = await Promise.all([
-      perfQb().getCount(),
-      perfQb().andWhere('perf.estReussi = true').getCount(),
-    ]);
+    const totalPerformances = await perfQb().getCount();
+    const performancesReussies = await perfQb()
+      .andWhere('perf.estReussi = true')
+      .getCount();
 
-    // ── Revenu mensuel filtré ────────────────────────────────────────────────
+    // ── Revenu mensuel filtré ──────────────────────────────────────────────
     const revenuQb = this.financeRepo
       .createQueryBuilder('finance')
       .select('SUM(finance.montant)', 'total')
@@ -330,7 +294,7 @@ export class DirecteurDashboardService {
 
     const revenuResult = await revenuQb.getRawOne();
 
-    // ── Satisfaction filtrée ─────────────────────────────────────────────────
+    // ── Satisfaction filtrée ───────────────────────────────────────────────
     const satQb = this.satisfactionRepo
       .createQueryBuilder('s')
       .select('AVG(s.note)', 'avg');
@@ -343,7 +307,7 @@ export class DirecteurDashboardService {
 
     const satisfactionResult = await satQb.getRawOne();
 
-    // ── Calculs ──────────────────────────────────────────────────────────────
+    // ── Calculs finaux ─────────────────────────────────────────────────────
     const tauxCroissance =
       apprenantsPeriodePrev === 0
         ? 100
@@ -377,9 +341,6 @@ export class DirecteurDashboardService {
   // SECTION 3 — GRAPHIQUES
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * Inscriptions par mois — filtrées par formation, formateur, type.
-   */
   async getEnrollmentsChart(filters: PaginationFilterDto = {}) {
     const qb = this.sessionRepo
       .createQueryBuilder('session')
@@ -390,18 +351,25 @@ export class DirecteurDashboardService {
       .where("session.date::date >= NOW() - INTERVAL '6 months'");
 
     if (filters.formation && filters.formation !== 'Tous') {
-      qb.innerJoin('formations', 'fo', 'fo.id = session."formationId"')
-        .andWhere('fo.titre = :titre', { titre: filters.formation });
+      qb.innerJoin('formations', 'fo', 'fo.id = session."formationId"').andWhere(
+        'fo.titre = :titre',
+        { titre: filters.formation },
+      );
     }
     if (filters.formateur && filters.formateur !== 'Tous') {
-      qb.innerJoin('formateur', 'fmt', 'fmt.id = session."formateurId"')
-        .andWhere("CONCAT(fmt.prenom, ' ', fmt.nom) = :formateur", {
-          formateur: filters.formateur,
-        });
+      qb.innerJoin('formateur', 'fmt', 'fmt.id = session."formateurId"').andWhere(
+        "CONCAT(fmt.prenom, ' ', fmt.nom) = :formateur",
+        { formateur: filters.formateur },
+      );
     }
     if (filters.type && filters.type !== 'Tous') {
-      const typeMap: Record<string, string> = { 'Présentiel': 'présentiel', 'En ligne': 'en_ligne' };
-      qb.andWhere('session.type = :type', { type: typeMap[filters.type] ?? filters.type });
+      const typeMap: Record<string, string> = {
+        'Présentiel': 'présentiel',
+        'En ligne':   'en_ligne',
+      };
+      qb.andWhere('session.type = :type', {
+        type: typeMap[filters.type] ?? filters.type,
+      });
     }
 
     const result = await qb
@@ -422,9 +390,6 @@ export class DirecteurDashboardService {
     };
   }
 
-  /**
-   * Revenus par mois — filtrés par formation, formateur, type.
-   */
   async getRevenueChart(filters: PaginationFilterDto = {}) {
     const qb = this.financeRepo
       .createQueryBuilder('finance')
@@ -434,7 +399,6 @@ export class DirecteurDashboardService {
       .where("finance.date >= NOW() - INTERVAL '6 months'")
       .andWhere("finance.type = 'paiement'");
 
-    // Si on filtre par formation ou formateur, on doit joindre sessions
     if (
       (filters.formation && filters.formation !== 'Tous') ||
       (filters.formateur && filters.formateur !== 'Tous') ||
@@ -443,18 +407,25 @@ export class DirecteurDashboardService {
       qb.innerJoin('sessions', 'session', 'session.id = finance."sessionId"');
 
       if (filters.formation && filters.formation !== 'Tous') {
-        qb.innerJoin('formations', 'fo', 'fo.id = session."formationId"')
-          .andWhere('fo.titre = :titre', { titre: filters.formation });
+        qb.innerJoin('formations', 'fo', 'fo.id = session."formationId"').andWhere(
+          'fo.titre = :titre',
+          { titre: filters.formation },
+        );
       }
       if (filters.formateur && filters.formateur !== 'Tous') {
-        qb.innerJoin('formateur', 'fmt', 'fmt.id = session."formateurId"')
-          .andWhere("CONCAT(fmt.prenom, ' ', fmt.nom) = :formateur", {
-            formateur: filters.formateur,
-          });
+        qb.innerJoin('formateur', 'fmt', 'fmt.id = session."formateurId"').andWhere(
+          "CONCAT(fmt.prenom, ' ', fmt.nom) = :formateur",
+          { formateur: filters.formateur },
+        );
       }
       if (filters.type && filters.type !== 'Tous') {
-        const typeMap: Record<string, string> = { 'Présentiel': 'présentiel', 'En ligne': 'en_ligne' };
-        qb.andWhere('session.type = :type', { type: typeMap[filters.type] ?? filters.type });
+        const typeMap: Record<string, string> = {
+          'Présentiel': 'présentiel',
+          'En ligne':   'en_ligne',
+        };
+        qb.andWhere('session.type = :type', {
+          type: typeMap[filters.type] ?? filters.type,
+        });
       }
     }
 
@@ -478,9 +449,6 @@ export class DirecteurDashboardService {
     };
   }
 
-  /**
-   * Top formations par nbApprenants — filtré par statut et type.
-   */
   async getCoursesChart(filters: PaginationFilterDto = {}) {
     const qb = this.formationRepo
       .createQueryBuilder('formation')
@@ -493,8 +461,13 @@ export class DirecteurDashboardService {
       qb.where('formation.statut = :statut', { statut: filters.statut });
     }
     if (filters.type && filters.type !== 'Tous') {
-      const typeMap: Record<string, string> = { 'Présentiel': 'présentiel', 'En ligne': 'en_ligne' };
-      qb.andWhere('session.type = :type', { type: typeMap[filters.type] ?? filters.type });
+      const typeMap: Record<string, string> = {
+        'Présentiel': 'présentiel',
+        'En ligne':   'en_ligne',
+      };
+      qb.andWhere('session.type = :type', {
+        type: typeMap[filters.type] ?? filters.type,
+      });
     }
 
     const result = await qb
@@ -510,7 +483,13 @@ export class DirecteurDashboardService {
         {
           label: 'Apprenants inscrits',
           data: result.map((r) => parseInt(r.nbApprenants ?? '0')),
-          backgroundColor: ['#a7f3d0', '#86efac', '#22c55e', '#15803d', '#166534'],
+          backgroundColor: [
+            '#a7f3d0',
+            '#86efac',
+            '#22c55e',
+            '#15803d',
+            '#166534',
+          ],
         },
       ],
     };
@@ -520,9 +499,6 @@ export class DirecteurDashboardService {
   // SECTION 4 — TABLE TOP FORMATIONS
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * Table formations enrichie — tous les filtres appliqués.
-   */
   async getTopCourses(filters: PaginationFilterDto = {}) {
     const {
       page = 1,
@@ -555,10 +531,15 @@ export class DirecteurDashboardService {
       qb.where('formation.statut = :statut', { statut });
     }
     if (formation && formation !== 'Tous') {
-      qb.andWhere('formation.titre ILIKE :formation', { formation: `%${formation}%` });
+      qb.andWhere('formation.titre ILIKE :formation', {
+        formation: `%${formation}%`,
+      });
     }
     if (type && type !== 'Tous') {
-      const typeMap: Record<string, string> = { 'Présentiel': 'présentiel', 'En ligne': 'en_ligne' };
+      const typeMap: Record<string, string> = {
+        'Présentiel': 'présentiel',
+        'En ligne':   'en_ligne',
+      };
       qb.andWhere('session.type = :type', { type: typeMap[type] ?? type });
     }
     if (dates) {
@@ -575,14 +556,15 @@ export class DirecteurDashboardService {
     const sortMap: Record<string, string> = {
       nbApprenants: 'COUNT(DISTINCT sa."apprenantId")',
       nbSessions:   'COUNT(DISTINCT session.id)',
-      revenus:      "COALESCE(SUM(CASE WHEN finance.type = 'paiement' THEN finance.montant ELSE 0 END), 0)",
-      formation:    'formation.titre',
+      revenus:
+        "COALESCE(SUM(CASE WHEN finance.type = 'paiement' THEN finance.montant ELSE 0 END), 0)",
+      formation: 'formation.titre',
     };
     qb.orderBy(sortMap[sortBy] ?? sortMap['nbApprenants'], sortDir);
 
     const rawAll = await qb.getRawMany();
 
-    // Taux de réussite par formation
+    // ── Taux de réussite par formation ────────────────────────────────────
     const reussiteMap = new Map<number, number>();
     const perfQb = this.performanceRepo
       .createQueryBuilder('perf')
@@ -596,7 +578,9 @@ export class DirecteurDashboardService {
     if (formation && formation !== 'Tous') {
       perfQb
         .innerJoin('perf.formation', 'fo')
-        .andWhere('fo.titre ILIKE :formation', { formation: `%${formation}%` });
+        .andWhere('fo.titre ILIKE :formation', {
+          formation: `%${formation}%`,
+        });
     }
 
     const perfData = await perfQb.getRawMany();
@@ -622,11 +606,14 @@ export class DirecteurDashboardService {
     return { data, total, page, totalPages: Math.ceil(total / limit) };
   }
 
-  /**
-   * Top apprenants — inchangé.
-   */
   async getTopStudents(filters: PaginationFilterDto = {}) {
-    const { page = 1, limit = 5, sortBy = 'dateAccepted', sortDir = 'DESC', statut } = filters;
+    const {
+      page = 1,
+      limit = 5,
+      sortBy = 'dateAccepted',
+      sortDir = 'DESC',
+      statut,
+    } = filters;
 
     const qb = this.apprenantRepo
       .createQueryBuilder('apprenant')
@@ -641,9 +628,6 @@ export class DirecteurDashboardService {
     return { data, total, page, totalPages: Math.ceil(total / limit) };
   }
 
-  /**
-   * Inscriptions récentes — inchangé.
-   */
   async getRecentEnrollments(filters: PaginationFilterDto = {}) {
     const { page = 1, limit = 5, periode, statut } = filters;
 
@@ -651,11 +635,19 @@ export class DirecteurDashboardService {
     let startDate: Date;
 
     switch (periode) {
-      case 'week':    startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7); break;
-      case 'quarter': startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1); break;
-      case 'year':    startDate = new Date(now.getFullYear(), 0, 1); break;
+      case 'week':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        break;
+      case 'quarter':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
       case 'month':
-      default:        startDate = new Date(now.getFullYear(), now.getMonth(), 1); break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
     }
 
     const qb = this.apprenantRepo
@@ -694,69 +686,90 @@ export class DirecteurDashboardService {
 
       if (filters.formation && filters.formation !== 'Tous') {
         qb.innerJoin('sessions', 'session', 'session.id = finance."sessionId"')
-          .innerJoin('formations', 'formation', 'formation.id = session."formationId"')
+          .innerJoin(
+            'formations',
+            'formation',
+            'formation.id = session."formationId"',
+          )
           .andWhere('formation.titre = :titre', { titre: filters.formation });
       }
       return qb;
     };
 
-    const [
-      revenuTotalResult,
-      coutTotalResult,
-      revenuCePeriodeResult,
-      revenuPeriodePrevResult,
-      formationPlusRentable,
-    ] = await Promise.all([
-      // Totaux sans filtre de période
-      this.financeRepo.createQueryBuilder('f').select('SUM(f.montant)', 'total').where("f.type = 'paiement'").getRawOne(),
-      this.financeRepo.createQueryBuilder('f').select('SUM(f.montant)', 'total').where("f.type = 'remboursement'").getRawOne(),
+    const revenuTotalResult = await this.financeRepo
+      .createQueryBuilder('f')
+      .select('SUM(f.montant)', 'total')
+      .where("f.type = 'paiement'")
+      .getRawOne();
+    const coutTotalResult = await this.financeRepo
+      .createQueryBuilder('f')
+      .select('SUM(f.montant)', 'total')
+      .where("f.type = 'remboursement'")
+      .getRawOne();
+    const revenuCePeriodeResult = await buildFinQb(
+      dates.startDate,
+      dates.endDate,
+      'paiement',
+    ).getRawOne();
+    const revenuPeriodePrevResult = await buildFinQb(
+      dates.startDatePrev,
+      dates.endDatePrev,
+      'paiement',
+    ).getRawOne();
+    const formationPlusRentable = await this.financeRepo
+      .createQueryBuilder('finance')
+      .select('formation.titre', 'titre')
+      .addSelect('SUM(finance.montant)', 'total')
+      .innerJoin('sessions', 'session', 'session.id = finance."sessionId"')
+      .innerJoin(
+        'formations',
+        'formation',
+        'formation.id = session."formationId"',
+      )
+      .where("finance.type = 'paiement'")
+      .andWhere('finance."sessionId" IS NOT NULL')
+      .groupBy('formation.id')
+      .addGroupBy('formation.titre')
+      .orderBy('SUM(finance.montant)', 'DESC')
+      .limit(1)
+      .getRawOne();
 
-      buildFinQb(dates.startDate, dates.endDate, 'paiement').getRawOne(),
-      buildFinQb(dates.startDatePrev, dates.endDatePrev, 'paiement').getRawOne(),
-
-      // Formation la plus rentable
-      this.financeRepo
-        .createQueryBuilder('finance')
-        .select('formation.titre', 'titre')
-        .addSelect('SUM(finance.montant)', 'total')
-        .innerJoin('sessions', 'session', 'session.id = finance."sessionId"')
-        .innerJoin('formations', 'formation', 'formation.id = session."formationId"')
-        .where("finance.type = 'paiement'")
-        .andWhere('finance."sessionId" IS NOT NULL')
-        .groupBy('formation.id')
-        .addGroupBy('formation.titre')
-        .orderBy('SUM(finance.montant)', 'DESC')
-        .limit(1)
-        .getRawOne(),
-    ]);
-
-    const revenuTotal     = parseFloat(revenuTotalResult?.total ?? '0');
-    const coutTotal       = parseFloat(coutTotalResult?.total ?? '0');
-    const profitTotal     = revenuTotal - coutTotal;
-    const revenuCePeriode = parseFloat(revenuCePeriodeResult?.total ?? '0');
+    const revenuTotal       = parseFloat(revenuTotalResult?.total ?? '0');
+    const coutTotal         = parseFloat(coutTotalResult?.total ?? '0');
+    const profitTotal       = revenuTotal - coutTotal;
+    const revenuCePeriode   = parseFloat(revenuCePeriodeResult?.total ?? '0');
     const revenuPeriodePrev = parseFloat(revenuPeriodePrevResult?.total ?? '0');
 
     const evolutionRevenu =
       revenuPeriodePrev === 0
         ? 100
         : parseFloat(
-            (((revenuCePeriode - revenuPeriodePrev) / revenuPeriodePrev) * 100).toFixed(2),
+            (
+              ((revenuCePeriode - revenuPeriodePrev) / revenuPeriodePrev) *
+              100
+            ).toFixed(2),
           );
 
     return {
       revenuTotal,
       coutTotal,
       profitTotal,
-      margeGlobale: revenuTotal === 0 ? 0 : parseFloat(((profitTotal / revenuTotal) * 100).toFixed(2)),
+      margeGlobale:
+        revenuTotal === 0
+          ? 0
+          : parseFloat(((profitTotal / revenuTotal) * 100).toFixed(2)),
       evolutionRevenu,
       revenuCeMois: revenuCePeriode,
       formationPlusRentable: formationPlusRentable?.titre ?? '—',
-      profitFormationPlusRentable: parseFloat(formationPlusRentable?.total ?? '0'),
+      profitFormationPlusRentable: parseFloat(
+        formationPlusRentable?.total ?? '0',
+      ),
     };
   }
 
   async getFinanceDetails(filters: PaginationFilterDto = {}) {
-    const { page = 1, limit = 5, sortBy = 'revenus', sortDir = 'DESC' } = filters;
+    const { page = 1, limit = 5, sortBy = 'revenus', sortDir = 'DESC' } =
+      filters;
     const dates = this.getPeriodeDates(filters.periode);
 
     const qb = this.financeRepo
@@ -764,17 +777,24 @@ export class DirecteurDashboardService {
       .select('formation.titre', 'formation')
       .addSelect('formation.statut', 'statut')
       .addSelect(
-        "SUM(CASE WHEN finance.type = 'paiement' THEN finance.montant ELSE 0 END)", 'revenus',
+        "SUM(CASE WHEN finance.type = 'paiement' THEN finance.montant ELSE 0 END)",
+        'revenus',
       )
       .addSelect(
-        "SUM(CASE WHEN finance.type = 'remboursement' THEN finance.montant ELSE 0 END)", 'couts',
+        "SUM(CASE WHEN finance.type = 'remboursement' THEN finance.montant ELSE 0 END)",
+        'couts',
       )
       .addSelect(
         "SUM(CASE WHEN finance.type = 'paiement' THEN finance.montant ELSE 0 END) - " +
-        "SUM(CASE WHEN finance.type = 'remboursement' THEN finance.montant ELSE 0 END)", 'profit',
+          "SUM(CASE WHEN finance.type = 'remboursement' THEN finance.montant ELSE 0 END)",
+        'profit',
       )
       .innerJoin('sessions', 'session', 'session.id = finance."sessionId"')
-      .innerJoin('formations', 'formation', 'formation.id = session."formationId"')
+      .innerJoin(
+        'formations',
+        'formation',
+        'formation.id = session."formationId"',
+      )
       .where('finance."sessionId" IS NOT NULL');
 
     if (dates) {
@@ -784,7 +804,9 @@ export class DirecteurDashboardService {
       });
     }
     if (filters.formation && filters.formation !== 'Tous') {
-      qb.andWhere('formation.titre ILIKE :formation', { formation: `%${filters.formation}%` });
+      qb.andWhere('formation.titre ILIKE :formation', {
+        formation: `%${filters.formation}%`,
+      });
     }
 
     qb.groupBy('formation.id')
@@ -816,7 +838,10 @@ export class DirecteurDashboardService {
         revenus,
         couts,
         profit,
-        marge: revenus === 0 ? 0 : parseFloat(((profit / revenus) * 100).toFixed(2)),
+        marge:
+          revenus === 0
+            ? 0
+            : parseFloat(((profit / revenus) * 100).toFixed(2)),
         statut: r.statut,
       };
     });
@@ -827,49 +852,66 @@ export class DirecteurDashboardService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SECTION 6 — ALERTES (pas de filtre — toujours globales)
+  // SECTION 6 — ALERTES
   // ══════════════════════════════════════════════════════════════════════════
 
   async getAlerts() {
     const alerts: any[] = [];
     let idCounter = 1;
 
+    // ── Formations avec taux de réussite < 70% ────────────────────────────
     const formationsReussite = await this.performanceRepo
       .createQueryBuilder('perf')
       .select('formation.titre', 'titre')
       .addSelect(
-        'COUNT(CASE WHEN perf.estReussi = true THEN 1 END) * 100.0 / COUNT(*)', 'tauxReussite',
+        'COUNT(CASE WHEN perf.estReussi = true THEN 1 END) * 100.0 / COUNT(*)',
+        'tauxReussite',
       )
       .innerJoin('perf.formation', 'formation')
       .groupBy('formation.titre')
-      .having('COUNT(CASE WHEN perf.estReussi = true THEN 1 END) * 100.0 / COUNT(*) < 70')
+      .having(
+        'COUNT(CASE WHEN perf.estReussi = true THEN 1 END) * 100.0 / COUNT(*) < 70',
+      )
       .getRawMany();
 
     for (const f of formationsReussite) {
       const taux = parseFloat(parseFloat(f.tauxReussite).toFixed(1));
       alerts.push({
-        id: String(idCounter++), type: taux < 50 ? 'Critique' : 'Avertissement',
-        titre: 'Taux de réussite faible',
+        id:          String(idCounter++),
+        type:        taux < 50 ? 'Critique' : 'Avertissement',
+        titre:       'Taux de réussite faible',
         description: `La formation "${f.titre}" a un taux de réussite de ${taux}%`,
-        formation: f.titre, date: new Date().toISOString().split('T')[0],
-        priorite: taux < 50 ? 9 : 6, statut: 'Non traité',
-        details: `Taux: ${taux}%. Seuil: 70%. Recommandation: revoir le contenu pédagogique.`,
+        formation:   f.titre,
+        date:        new Date().toISOString().split('T')[0],
+        priorite:    taux < 50 ? 9 : 6,
+        statut:      'Non traité',
+        details:     `Taux: ${taux}%. Seuil: 70%. Recommandation: revoir le contenu pédagogique.`,
       });
     }
 
+    // ── Apprenants avec note < 10 ──────────────────────────────────────────
     const apprenantsFaibles = await this.performanceRepo
-      .createQueryBuilder('perf').select('COUNT(*)', 'total').where('perf.note < 10').getRawOne();
+      .createQueryBuilder('perf')
+      .select('COUNT(*)', 'total')
+      .where('perf.note < 10')
+      .getRawOne();
+
     const nbFaibles = parseInt(apprenantsFaibles?.total ?? '0');
     if (nbFaibles > 0) {
       alerts.push({
-        id: String(idCounter++), type: 'Avertissement', titre: 'Apprenants en difficulté',
+        id:          String(idCounter++),
+        type:        'Avertissement',
+        titre:       'Apprenants en difficulté',
         description: `${nbFaibles} apprenant(s) ont une note inférieure à 10`,
-        formation: 'Toutes', date: new Date().toISOString().split('T')[0],
-        priorite: 7, statut: 'Non traité',
-        details: `${nbFaibles} apprenants ont échoué. Recommandation: tutorat ou révision.`,
+        formation:   'Toutes',
+        date:        new Date().toISOString().split('T')[0],
+        priorite:    7,
+        statut:      'Non traité',
+        details:     `${nbFaibles} apprenants ont échoué. Recommandation: tutorat ou révision.`,
       });
     }
 
+    // ── Formations avec satisfaction < 3/5 ────────────────────────────────
     const formationsSatFaible = await this.satisfactionRepo
       .createQueryBuilder('s')
       .select('formation.titre', 'titre')
@@ -882,64 +924,97 @@ export class DirecteurDashboardService {
     for (const f of formationsSatFaible) {
       const moy = parseFloat(parseFloat(f.moyenneSatisfaction).toFixed(1));
       alerts.push({
-        id: String(idCounter++), type: 'Avertissement', titre: 'Satisfaction faible',
+        id:          String(idCounter++),
+        type:        'Avertissement',
+        titre:       'Satisfaction faible',
         description: `La formation "${f.titre}" a une satisfaction moyenne de ${moy}/5`,
-        formation: f.titre, date: new Date().toISOString().split('T')[0],
-        priorite: 6, statut: 'Non traité',
-        details: `Satisfaction: ${moy}/5. Seuil: 3/5. Envisager une révision du programme.`,
+        formation:   f.titre,
+        date:        new Date().toISOString().split('T')[0],
+        priorite:    6,
+        statut:      'Non traité',
+        details:     `Satisfaction: ${moy}/5. Seuil: 3/5. Envisager une révision du programme.`,
       });
     }
 
-    const now = new Date();
+    // ── Revenus en baisse vs mois précédent ───────────────────────────────
+    const now              = new Date();
     const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth   = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    const [revenuCeMois, revenuMoisDernier] = await Promise.all([
-      this.financeRepo.createQueryBuilder('f').select('SUM(f.montant)', 'total')
-        .where("f.type = 'paiement'").andWhere('f.date BETWEEN :s AND :e', { s: startOfThisMonth, e: now }).getRawOne(),
-      this.financeRepo.createQueryBuilder('f').select('SUM(f.montant)', 'total')
-        .where("f.type = 'paiement'").andWhere('f.date BETWEEN :s AND :e', { s: startOfLastMonth, e: endOfLastMonth }).getRawOne(),
-    ]);
+    const revenuCeMois = await this.financeRepo
+      .createQueryBuilder('f')
+      .select('SUM(f.montant)', 'total')
+      .where("f.type = 'paiement'")
+      .andWhere('f.date BETWEEN :s AND :e', { s: startOfThisMonth, e: now })
+      .getRawOne();
+    const revenuMoisDernier = await this.financeRepo
+      .createQueryBuilder('f')
+      .select('SUM(f.montant)', 'total')
+      .where("f.type = 'paiement'")
+      .andWhere('f.date BETWEEN :s AND :e', {
+        s: startOfLastMonth,
+        e: endOfLastMonth,
+      })
+      .getRawOne();
 
-    const rCeMois     = parseFloat(revenuCeMois?.total ?? '0');
+    const rCeMois      = parseFloat(revenuCeMois?.total ?? '0');
     const rMoisDernier = parseFloat(revenuMoisDernier?.total ?? '0');
 
     if (rMoisDernier > 0 && rCeMois < rMoisDernier * 0.8) {
       const baisse = (((rMoisDernier - rCeMois) / rMoisDernier) * 100).toFixed(1);
       alerts.push({
-        id: String(idCounter++), type: 'Critique', titre: 'Revenus en baisse',
+        id:          String(idCounter++),
+        type:        'Critique',
+        titre:       'Revenus en baisse',
         description: `Les revenus ont chuté de ${baisse}% par rapport au mois dernier`,
-        formation: 'Toutes', date: new Date().toISOString().split('T')[0],
-        priorite: 9, statut: 'Non traité',
-        details: `Ce mois: ${rCeMois.toLocaleString()} DT. Mois dernier: ${rMoisDernier.toLocaleString()} DT.`,
+        formation:   'Toutes',
+        date:        new Date().toISOString().split('T')[0],
+        priorite:    9,
+        statut:      'Non traité',
+        details:     `Ce mois: ${rCeMois.toLocaleString()} DT. Mois dernier: ${rMoisDernier.toLocaleString()} DT.`,
       });
     }
 
+    // ── Aucune inscription ce mois ────────────────────────────────────────
     const inscriptionsCeMois = await this.apprenantRepo.count({
       where: { dateAccepted: Between(startOfThisMonth, now) },
     });
     if (inscriptionsCeMois === 0) {
       alerts.push({
-        id: String(idCounter++), type: 'Information', titre: 'Aucune inscription ce mois',
+        id:          String(idCounter++),
+        type:        'Information',
+        titre:       'Aucune inscription ce mois',
         description: 'Aucun nouvel apprenant inscrit ce mois',
-        formation: 'Toutes', date: new Date().toISOString().split('T')[0],
-        priorite: 4, statut: 'Non traité',
-        details: 'Pensez à relancer une campagne de communication.',
+        formation:   'Toutes',
+        date:        new Date().toISOString().split('T')[0],
+        priorite:    4,
+        statut:      'Non traité',
+        details:     'Pensez à relancer une campagne de communication.',
       });
     }
 
+    // ── Sessions actives sans formateur ───────────────────────────────────
+    // ✅ FIX: utilise SessionStatut.ACTIF au lieu de 'Actif'
     const sessionsOrphelines = await this.sessionRepo
-      .createQueryBuilder('session').select('COUNT(*)', 'total')
-      .where('session.formateurId IS NULL').andWhere("session.statut = 'Actif'").getRawOne();
+      .createQueryBuilder('session')
+      .select('COUNT(*)', 'total')
+      .where('session.formateurId IS NULL')
+      .andWhere('session.statut = :statut', { statut: SessionStatut.ACTIF })
+      .getRawOne();
+
     const nbOrphelines = parseInt(sessionsOrphelines?.total ?? '0');
     if (nbOrphelines > 0) {
       alerts.push({
-        id: String(idCounter++), type: 'Avertissement', titre: 'Sessions sans formateur',
+        id:          String(idCounter++),
+        type:        'Avertissement',
+        titre:       'Sessions sans formateur',
         description: `${nbOrphelines} session(s) active(s) n'ont pas de formateur assigné`,
-        formation: 'Toutes', date: new Date().toISOString().split('T')[0],
-        priorite: 8, statut: 'Non traité',
-        details: `${nbOrphelines} sessions actives sans formateur. Action requise avant la date de la session.`,
+        formation:   'Toutes',
+        date:        new Date().toISOString().split('T')[0],
+        priorite:    8,
+        statut:      'Non traité',
+        details:     `${nbOrphelines} sessions actives sans formateur. Action requise avant la date de la session.`,
       });
     }
 
