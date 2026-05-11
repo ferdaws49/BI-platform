@@ -4,6 +4,7 @@ export enum UserRole {
   ADMIN = 'admin',
   RESP_PEDAGOGIQUE = 'resp_pedagogique',
   APPRENANT = 'apprenant',
+  RESP_FINANCIER = 'resp_financier'
 }
 
 export enum UserStatus {
@@ -58,5 +59,8 @@ resetTokenExpiry: Date | null;
  
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ type: 'varchar', nullable: true })
+    profileImage: string | null;
 }
 

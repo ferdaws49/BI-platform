@@ -25,9 +25,9 @@ export class ApprenantsService {
       telephone: a.user?.phone || null,
       dateInscription: a.dateAccepted ? a.dateAccepted.toISOString() : new Date().toISOString(),
       statut: 'accepted',
-      formations: (a.sessions || []).map((s) => ({
-        id: s.formation?.id,
-        titre: s.formation?.titre,
+      formations: (a.sessions || []).map((sa) => ({
+        id: sa.formation?.id,
+        titre: sa.formation?.titre,
       })),
     }));
   }

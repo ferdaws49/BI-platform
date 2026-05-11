@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEnum } from 'class-validator';
+import { FormationStatus } from '../entities/formation.entity';
 
 export class CreateFormationDto {
   @IsString()
@@ -20,7 +21,8 @@ export class CreateFormationDto {
   @IsOptional()
   dureeHeures?: number;
 
+  @IsEnum(FormationStatus)
   @IsString()
   @IsOptional()
-  statut?: 'active' | 'completed';
+  statut?: FormationStatus;
 }

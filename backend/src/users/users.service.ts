@@ -21,6 +21,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   [UserRole.DIRECTEUR]:       'Directeur',
   [UserRole.RESP_PEDAGOGIQUE]: 'Resp. Pédagogique',
   [UserRole.APPRENANT]:       'Apprenant',
+  [UserRole.RESP_FINANCIER]: 'resp_financier'
 };
 
 @Injectable()
@@ -187,4 +188,24 @@ export class UsersService {
  
     return { message: 'Mot de passe mis à jour avec succès' };
   }
+
+   //Get current user(logged in user)
+    // ba3ed el user maya3mel login , bech yotlob/yjib les donnés mte3ou mn DATA , mch mta3 had ekher
+    // el khedma taamlet fi auth.guard
+  public async getCurrentUser(id: number){
+    const user = await this.usersRepository.findOne({ where: { id }})
+    if(!user) throw new NotFoundException("user not found");
+      return user;
+    }
+ 
+
+    // hedhi zedha khater ki na9alt partie profile image 9ali userRepository  privé manajamch nestammalha yekhi a3tani hedhi update
+    //lezem nthabet ken shiha
+    async updateUser(user: User) {
+    return this.usersRepository.save(user);
+    }
+
+    async deleteUser(user: User) {
+        return this.usersRepository.remove(user);
+    }
 }

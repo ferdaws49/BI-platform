@@ -11,7 +11,7 @@ export class ImportJob {
   @Column()
   status: string;
 
-  @Column()
+  @Column({ nullable: true })
   filePath: string;
 }
 

@@ -7,6 +7,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Session } from '../../sessions/entities/session.entity';
+import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
 
 export enum FinanceType {
   PAIEMENT = 'paiement',
@@ -46,4 +47,13 @@ export class Finance {
 
   @CreateDateColumn()
   date: Date;
+
+
+  // ... à l'intérieur de la classe Finance
+  @ManyToOne(() => Apprenant, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'apprenantId' })
+  apprenant: Apprenant | null;
+
+  @Column({ nullable: true })
+  apprenantId: number | null;
 }

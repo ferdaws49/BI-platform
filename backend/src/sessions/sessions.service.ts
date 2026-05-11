@@ -166,7 +166,7 @@ export class SessionsService {
       formateurId: dto.formateurId ?? null,
       formation,
       formateur,
-      apprenants,
+      //apprenants,
     });
 
     const saved = await this.sessionRepo.save(session);
@@ -229,12 +229,21 @@ export class SessionsService {
       }
     }
 
-    if (dto.apprenantIds) {
+    {/** hedhi kifech kenet
+       if (dto.apprenantIds) {
       session.apprenants = await this.apprenantRepo.find({
         where: { id: In(dto.apprenantIds) },
         relations: ['user'], // ✅
       });
-    }
+    }*/}
+
+    let apprenants: Apprenant[] = [];
+if (dto.apprenantIds?.length) {
+  apprenants = await this.apprenantRepo.find({
+    where: { id: In(dto.apprenantIds) },
+    relations: ['user'],
+  });
+}
 
     if (dto.date) session.date = dto.date;
     if (dto.heureDebut) session.heureDebut = dto.heureDebut;
@@ -335,6 +344,7 @@ export class SessionsService {
   }
 
   private serializeSession(s: Session) {
+    //const nbApprenants = s.apprenants?.length ?? 0;
     const nbApprenants = s.apprenants?.length ?? 0;
     const prixEffectif =
       s.prix !== null && s.prix !== undefined
@@ -363,12 +373,21 @@ export class SessionsService {
       formateurId: s.formateurId ?? null,
       formateur: s.formateur ? `${s.formateur.prenom} ${s.formateur.nom}` : '',
       // ✅ nom/prenom من user
-      apprenants: (s.apprenants ?? []).map((a) => ({
+      apprenants: (s.apprenants??[]).map((a) => ({
+      id: a.id,
+      nom: a.user?.nom ?? '',
+      prenom: a.user?.prenom ?? '',
+      email: a.user?.email ?? '',
+    })),
+
+    
+      
+    };
+    {/** apprenants: (s.apprenants ?? []).map((a) => ({
         id: a.id,
         nom: a.user?.nom ?? '',
         prenom: a.user?.prenom ?? '',
         email: a.user?.email ?? '',
-      })),
-    };
+      })),*/}
   }
 }

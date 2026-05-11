@@ -42,6 +42,9 @@ export class Inscription {
   })
   statut: InscriptionStatut;
 
+  @Column({default: false, nullable: true})
+  isAccountVerified: boolean;
+
   @Column({ type: 'varchar', nullable: true })
   verifyToken: string | null; // ← ajoute "| null"
   @CreateDateColumn()

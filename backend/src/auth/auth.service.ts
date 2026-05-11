@@ -1,8 +1,16 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { InscriptionsService } from '../inscriptions/inscriptions.service';
+import { User } from 'src/users/users.entity';
+import { randomBytes } from 'crypto';
+import { MailService } from "src/mail/mail.service";
+import{JWTPayloadType} from "../utils/types"
+import { ResetPasswordDto } from "./dtos/reset-password.dto";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from 'typeorm';
+import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class AuthService {
@@ -10,6 +18,9 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private inscriptionsService: InscriptionsService,
+    private readonly mailService: MailService,
+    private readonly config: ConfigService, 
+    @InjectRepository(User) private readonly usersRepository: Repository<User>,
   ) {}
 
   async login(email: string, password: string) {
@@ -64,4 +75,85 @@ export class AuthService {
   async verifyEmail(token: string) {
     return this.inscriptionsService.verify(token);
   }
+
+
+  public async sendResetPasswordLink(email: string){
+            const user = await this.usersRepository.findOne({ where: { email}});
+            if(!user) throw new BadRequestException("user with given email does not exist");
+            //les etapes hedhom zedthom bech lien ywalli andou timing 
+            //heya fel assel kenet user.resetPasswordToken = randomBytes(32).toString('hex');
+
+            // 1. Générer la chaîne aléatoire
+           const randomString = randomBytes(32).toString('hex');
+    
+           // 2. Calculer l'expiration (Maintenant + 1 heure en millisecondes)
+          const expirationTime = Date.now() + 3600000; // 3600000 ms = 1h
+
+          // 3. On stocke les deux dans la même colonne, séparés par un point
+          user.resetToken = `${randomString}.${expirationTime}`;
+            const result = await this. usersRepository.save(user);
+
+            const resetPasswordLink= `${this.config.get<string>("USER_DOMAIN")}/reset-password/${user.id}/${result.resetToken}`;
+            await this.mailService.sendResetPasswordTemplate(email, resetPasswordLink);
+
+            return{ message: "Password reset link sent to your email, please check your inbox"}
+        }
+
+         //2eme etape: get reset password link
+         public async getResetPasswordLink(userId: number, resetPasswordToken: string){
+            const user = await this.usersRepository.findOne({ where: { id: userId}});
+            if(!user) throw new BadRequestException("invalid link");
+
+            if(user.resetToken === null || user.resetToken !== resetPasswordToken)
+                throw new BadRequestException("invalid link");
+            //hedha zedneh bech nett2akdou ken el temps mta3 e lien mzel ou non
+            //najmou nahiwah juste tkhallli return { message: 'valid link'}
+
+            const [token, expiresAt] = resetPasswordToken.split('.');
+            // VÉRIFICATION DU TEMPS
+            if (Date.now() > Number(expiresAt)) {
+            // Optionnel : on nettoie la base si c'est expiré
+                user.resetToken = null;
+                await this.usersRepository.save(user);
+                throw new BadRequestException("link has expired");
+            } 
+            return { message: 'valid link'}
+
+         }
+         //3eme etape : reset password
+         public async resetPassword(dto: ResetPasswordDto){
+            const { userId, resetPasswordToken, newPassword} = dto;
+            const user = await this.usersRepository.findOne({ where: { id: userId}});
+            if(!user) throw new BadRequestException("invalid link");
+
+            if(user.resetToken === null || user.resetToken !== resetPasswordToken)
+                throw new BadRequestException("invalid link");
+            
+            //hedha kif kif najmou nahiwah
+            // VÉRIFICATION DE L'EXPIRATION AVANT DE CHANGER LE MOT DE PASSE
+            const expiresAt = Number(resetPasswordToken.split('.')[1]);
+            if (Date.now() > expiresAt) {
+                throw new BadRequestException("link has expired");
+            }
+            
+            const hashedPassword = await this.hashPassword(newPassword);
+            user.password = hashedPassword;
+            user.resetToken = null;
+            await this.usersRepository.save(user);
+
+            return { message: 'password reset successfully, please log in '};
+         }
+    public async hashPassword(password: string): Promise<string> {
+            const salt = await bcrypt.genSalt(10);
+            return bcrypt.hash(password, salt);
+    
+        }
+
+
+         // fi3oudh ahna fi kol marra n3awdou nektbou jwt nwalliw naamlou class privé
+    // dima classe privé nhotouha fel  ekher
+    private generateJWT(payload: JWTPayloadType) : Promise<string>{
+        return this.jwtService.signAsync(payload);
+
+    }
 }

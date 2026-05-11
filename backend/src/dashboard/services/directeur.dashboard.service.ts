@@ -14,7 +14,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 
 import { Apprenant } from '../../apprenants/entities/apprenant.entity';
-import { Formation } from '../../formations/entities/formation.entity';
+import { Formation, FormationStatus } from '../../formations/entities/formation.entity';
 import { Formateur } from '../../formateurs/entities/formateur.entity';
 import { Finance } from '../../finances/entities/finance.entity';
 import { Performance } from '../../performances/entities/performance.entity';
@@ -114,7 +114,7 @@ export class DirecteurDashboardService {
         where: { dateAccepted: Between(startOfLastMonth, endOfLastMonth) },
       }),
 
-      this.formationRepo.count({ where: { statut: 'active' } }),
+      this.formationRepo.count({ where: { statut: FormationStatus.ACTIVE } }),
 
       // Nombre total de performances enregistrées (= nombre d'évaluations)
       this.performanceRepo.count(),
