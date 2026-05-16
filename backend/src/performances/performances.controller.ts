@@ -4,9 +4,13 @@ import { Controller, Get, Param, ParseIntPipe, UseGuards } from "@nestjs/common"
 import { CurrentUser } from "src/users/decorators/current-user.decorator";
 import { PerformanceService } from "./performances.service";
 import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
+import { Roles } from "src/auth/roles.decorator";
+import { RolesGuard } from "src/auth/guards/roles.guard";
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard,RolesGuard)
+@Roles('apprenant')
 @Controller('results')
+
 export class PerformanceController {
   constructor(private readonly performanceService: PerformanceService) {}
 
@@ -21,7 +25,7 @@ export class PerformanceController {
   @Get('formation/:id')
   async getFormationResults(
     @Param('id', ParseIntPipe) formationId: number,
-    @CurrentUser('id') user: any
+    @CurrentUser() user: any
   ) {
     return this.performanceService.getResultsByFormation(user.userId, formationId);
   }

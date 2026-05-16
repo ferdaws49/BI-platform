@@ -31,7 +31,7 @@ export interface TableRow {
 export interface TableResp { items: TableRow[]; page: number; limit: number; total: number; totalPages: number; }
 
 export interface Paiement {
-  id: string;
+  id: number;
   apprenantId: string;
   apprenantNom: string;
   apprenantInitiales: string;
@@ -47,7 +47,7 @@ export interface Paiement {
 }
 
 export interface Apprenant {
-  id: string;
+  id: number;
   nom: string;
   initiales: string;
 }
@@ -65,3 +65,4 @@ export interface BubblePt {
   bubbleSize: number;
    bubbleMetric: 'margin' | 'price';
 }
+

@@ -18,6 +18,8 @@ import { PaymentsController } from './controllers/finance-paiement.controller';
 import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
 import { FinanceReportingController } from './controllers/finance-reporting.controller';
 import { FinanceReportingService } from './services/finance-reporting.service';
+import { StudentFinanceService } from './services/apprenant-finance.service';
+import { StudentFinanceController } from './controllers/apprenant-finance.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Finance, Formation, Session, User, Apprenant ])],
@@ -27,7 +29,8 @@ import { FinanceReportingService } from './services/finance-reporting.service';
     FinanceRevenueController,
     FinanceCostController,
     PaymentsController,
-    FinanceReportingController
+    FinanceReportingController,
+    StudentFinanceController
   
    
   ],
@@ -36,9 +39,10 @@ import { FinanceReportingService } from './services/finance-reporting.service';
     FinanceDirecteurService,
     FinanceRevenueService,
     FinanceCostService,
-    FinanceReportingService
+    FinanceReportingService,
+    StudentFinanceService
   ],
-  exports: [FinanceDirecteurService], // pour AlertsModule plus tard
+  exports: [FinanceDirecteurService, FinanceCostService, FinanceRevenueService], // pour AlertsModule plus tard
   
 })
 

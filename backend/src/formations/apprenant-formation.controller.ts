@@ -22,39 +22,30 @@ export class ApprenantFormationsController {
 
     @Get('catalogue')
     async getFormationCatalogue(@CurrentUser() user: any) {
-      const userId = user.id || user.userId || user.sub;
-       return this.formationsService.findAllAvailableFormations();
+      const userId = user?.id || user?.userId || user?.sub;
+      if (!userId) {
+      throw new BadRequestException("Impossible d'identifier l'utilisateur");
+    }
+       return this.formationsService.findAllAvailableFormations(Number(userId));
     }
 
   
-//GET: ~/student/formations  
-    //@UseGuards(AuthGuard) // on a besoin du Token pour savoir qui est l'élève
-    @Get('my-list') 
-   async findStudentFormations(
-   @CurrentUser() user: any, // On le reçoit souvent en string depuis l'URL
+  //GET: ~/student/formations  
+  //@UseGuards(AuthGuard) // on a besoin du Token pour savoir qui est l'élève
+  @Get('my-list') 
+  async findStudentFormations(
+  @CurrentUser() user: any, // On le reçoit souvent en string depuis l'URL
   @Query('page') page: number = 1,
   @Query('status') status: FormationStatus
 ) {
+  const userId = user?.userId || user?.sub || user?.id;
+  if (!userId) {
+    throw new BadRequestException("ID utilisateur manquant dans le token");
+  }
   // On convertit explicitement ici en nombre
-  return this.formationsService.findStudentFormations(user.id, page, 10, status);
+  return this.formationsService.findStudentFormations(Number(userId), page, 10, status);
 }
 
-     /**
-   * ENDPOINT : GET /formations/:id
-   * Objectif : Afficher les détails d'un cours quand l'apprenant clique dessus
-   */
-    @UseGuards(JwtAuthGuard)
-    @Get('formations/:id')
-    async getFormationDetails(
-        @Param('id', ParseIntPipe) id: number, // ParseIntPipe vérifie que l'ID est bien un nombre
-        @CurrentUser() user: JWTPayloadType
-        ) {
-             if (!user || !user.userId) {
-        console.error("ERREUR : L'ID utilisateur est introuvable dans le token JWT");
-        throw new BadRequestException("ID utilisateur manquant dans le token");
-    }
-            return this.formationsService.findFormation(id, user.userId);
-        }
   
    //elli yabda fehom id lezem thotthom fl lekher   , ken thotthom mellouwel ell ft elli mafihomch id maadch yekhdmou
     @UseGuards(JwtAuthGuard)
@@ -70,6 +61,21 @@ export class ApprenantFormationsController {
          throw new BadRequestException("Impossible d'identifier l'utilisateur (ID manquant dans le token)");
        }
 
-       return this.formationsService.findAllAvailableSessions(formationId, user.id);
+       return this.formationsService.findAllAvailableSessions(formationId, Number(userId));
     }
+
+      /**
+   * ENDPOINT : GET /formations/:id
+   * Objectif : Afficher les détails d'un cours quand l'apprenant clique dessus
+   */
+    @UseGuards(JwtAuthGuard)
+    @Get(':id')
+    async getFormationDetails(
+        @Param('id', ParseIntPipe) id: number, // ParseIntPipe vérifie que l'ID est bien un nombre
+        @CurrentUser() user: any
+        ) {
+             const userId = user?.userId || user?.sub || user?.id;
+    if (!userId) throw new BadRequestException("ID manquant");
+    return this.formationsService.findFormation(id, Number(userId));
+        }
 }

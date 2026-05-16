@@ -12,7 +12,7 @@ import{EjsAdapter} from "@nestjs-modules/mailer/adapters/ejs.adapter";
             useFactory: (config: ConfigService) => {
                 return{
                     transport: {
-                        host: config.get<string>("DB_HOST"),
+                        host: config.get<string>("SMTP_HOST"),
                         port: config.get<number>("SMTP_PORT"),
                         secure: false, //dans la production on met true(//https)
                         auth:{

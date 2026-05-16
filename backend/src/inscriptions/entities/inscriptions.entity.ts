@@ -30,10 +30,10 @@ export class Inscription {
   telephone: string;
 
   @Column({ nullable: true })
-  programme: string; // text بسيط ✅
+  programme: string; 
 
   @Column()
-  password: string; // hashed ✅
+  password: string;
 
   @Column({
     type: 'enum',

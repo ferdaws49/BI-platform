@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, BookOpen, ClipboardList, 
-  BarChart3, Calendar, User, LogOut 
+  BarChart3, Calendar, User, LogOut, 
+  DollarSign
 } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
@@ -15,7 +16,9 @@ const navItems = [
   { name: 'My Registrations', href: '/apprenant/registrations', icon: ClipboardList },
   { name: 'My Results', href: '/apprenant/results', icon: BarChart3 },
   { name: 'Session Schedule', href: '/apprenant/schedule', icon: Calendar },
+  { name: 'My Paiements', href: '/apprenant/paiement', icon: DollarSign },
   { name: 'My Profile', href: '/apprenant/profile', icon: User },
+
 ];
 
 
@@ -30,7 +33,7 @@ export default function Sidebar() {
     localStorage.removeItem('user');
 
     // 2. Rediriger vers la page de connexion
-    router.push('/login');
+    router.push('/auth/login');
     
     // Optionnel : Forcer un rafraîchissement pour vider tous les états React
     // window.location.href = '/login'; 

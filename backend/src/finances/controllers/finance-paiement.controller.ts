@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { AuthGuard } from 'src/auth/guards/auth.guard';
 import {
   ApiBearerAuth,
@@ -15,6 +15,7 @@ import { FinanceRevenueService } from '../services/finance-revenu.service';
 import { AddPaymentDto } from '../dto/add-payement.dto';
 import { RevenueFilterDto } from '../dto/revenue-filter.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { Formation } from 'src/formations/entities/formation.entity';
 
 
 /**
@@ -24,7 +25,7 @@ import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 @ApiTags('Finance — Paiements')
 @ApiBearerAuth()
 @Controller('finance/payments')
-@UseGuards(JwtAuthGuard)
+//@UseGuards(JwtAuthGuard)
 export class PaymentsController {
   
   constructor(private readonly dashboard: FinanceRevenueService) {}
@@ -68,6 +69,35 @@ export class PaymentsController {
     @Body() dto: AddPaymentDto,
   ): Promise<{ finance: unknown }> {
     return this.dashboard.addPayment(dto);
+  }
+  @Get('formations')
+@ApiOperation({ summary: 'Formations avec au moins une session/paiement dans la période' })
+@ApiOkResponse({ type: [Formation] })
+getFormationsForPayments(@Query() filter: RevenueFilterDto) {
+  return this.dashboard.getFormationsForPayments(filter);
+}
+
+
+  @Get('apprenants/:id/sessions')
+  async getSessionsByApprenant(@Param('id', ParseIntPipe) id: number) {
+    return this.dashboard.getSessionsByApprenant(id);
+  }
+  
+  @Patch(':id')
+  @ApiOperation({ summary: 'Modifier un paiement' })
+  @ApiOkResponse({ description: 'Paiement mis à jour' })
+  updatePayment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddPaymentDto,
+  ) {
+    return this.dashboard.updatePayment(id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Supprimer un paiement' })
+  @ApiOkResponse({ description: 'Paiement supprimé' })
+  deletePayment(@Param('id', ParseIntPipe) id: number) {
+    return this.dashboard.deletePayment(id);
   }
 /** 
   @Get("apprenants/:id/sessions")

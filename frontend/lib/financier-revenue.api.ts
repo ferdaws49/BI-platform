@@ -84,20 +84,21 @@ export const revenueApi = {
  
   // ── CRUD Paiements ──
   addPayment: (dto: {
-    userId: number;
+    apprenantId: number;
     formationId: number;
     montant: number;
     paymentDate: string;
-    sessionId?: number;
+    sessionId?: string | number;
   }) => fetchJSON("finance/payments", { method: "POST", body: JSON.stringify(dto) }),
  
   updatePayment: (
     id: number,
     dto: {
-      userId: number;
+      apprenantId: number;
       formationId: number;
       montant: number;
       paymentDate: string;
+      sessionId?: string | number;
     }
   ) =>
     fetchJSON(`finance/payments/${id}`, {
@@ -115,14 +116,12 @@ export const revenueApi = {
   getFormationsList: (): Promise<{ id: number; title: string }[]> =>
     fetchRevenue("student/formations/catalogue"),
 
-  async getSessionsByApprenant(id: number) {
-    const token = getToken();
-
+  async getSessionsByApprenant(id: number): Promise<{ id: number | string; title: string; formationId: number }[]> {
+  const token = getToken();
   const res = await fetch(`${API}/finance/payments/apprenants/${id}/sessions`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-
   if (!res.ok) throw new Error(`Erreur sessions: ${res.status}`);
   return res.json();
-},
+}
 };

@@ -6,9 +6,10 @@ import { FormationsService } from './formations.service';
 import { AuthModule } from 'src/auth/auth.module';
 import { ApprenantFormationsController } from './apprenant-formation.controller';
 import { Session } from 'src/sessions/entities/session.entity';
+import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Formation, Session]), AuthModule],
+  imports: [TypeOrmModule.forFeature([Formation, Session, Apprenant]), AuthModule],
   controllers: [FormationsController, ApprenantFormationsController],
   providers: [FormationsService],
   exports: [TypeOrmModule, FormationsService],

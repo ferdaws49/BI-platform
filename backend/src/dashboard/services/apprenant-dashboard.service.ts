@@ -42,7 +42,8 @@ export class ApprennatDashboardService {
 
       course: r.session?.formation?.titre,
       exam: r.session?.title,
-      note: Number(r.note),
+      score: Number(r.note),
+      max:20,
       date: r.date,
       status: Number(r.note) >= 10 ? 'Passed' : 'Failed'
   
@@ -70,18 +71,20 @@ export class ApprennatDashboardService {
 
     // 4. Retour formaté
     return {
-      stats: { totalEnrolled, upcomingSessions, average: avg.toFixed(2), upcomingCount: upcomingSessions.length  },
+      stats: { totalEnrolled, upcomingSessions,completedCourses, average: avg.toFixed(2), upcomingCount: upcomingSessions.length  },
       upcomingSessions,
       recentGrades: formattedRecentGrades,
       
       myTrainings: sessionApprenant.slice(0, 3).map(s => ({ // Ajouté
         title: s.formation?.titre,
         teacher: s.formateur ? `${s.formateur.nom} ${s.formateur.prenom}`: 'Non assigné',
-        status: s.statut
+        status: s.statut,
+        progress: s.statut === SessionStatut.TERMINE ? 100 : 25 // Simulé
       })),
       myRegistrations: sessionApprenant.slice(0, 3).map(s => ({ // Ajouté
         title: s.formation?.titre,
         date: s.createdAt,
+        status: 'validated'
         
       })),
 

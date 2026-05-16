@@ -1,12 +1,10 @@
 import { createParamDecorator, ExecutionContext } from "@nestjs/common";
-import { CURRENT_USER_KEY } from "src/utils/constants";
-import { JWTPayloadType } from "src/utils/types";
 
 //currentUser parameter decorator
 export const CurrentUser = createParamDecorator(
-    (data, context: ExecutionContext) => {
+    (data: string, context: ExecutionContext) => {
         const request = context.switchToHttp().getRequest();
-        const payload : JWTPayloadType = request[CURRENT_USER_KEY];
-        return payload;
+        const user = request.user;
+        return data ? user?.[data] : user;
     }
 )

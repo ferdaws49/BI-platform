@@ -16,13 +16,13 @@ import {
   SessionEfficienceDto,
   TopFormateurCostDto,
 } from '../dto/cost-response.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 
 
 @ApiTags('Finance — Coûts & rentabilité')
-@ApiBearerAuth()
 @Controller('finance/cout')
-//@UseGuards(AuthGuard)
+@UseGuards(AuthGuard)
 export class FinanceCostController {
   constructor(private readonly financeCostService: FinanceCostService) {}
 

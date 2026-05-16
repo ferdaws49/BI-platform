@@ -49,5 +49,6 @@ import { DirecteurReportsService } from './services/directeur.reports.service';
     DirecteurReportsService,
 
   ],
+  exports: [FinancierDashboardService]
 })
 export class DashboardModule {}

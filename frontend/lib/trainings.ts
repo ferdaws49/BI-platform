@@ -2,7 +2,7 @@
 const API_URL ='http://localhost:5000';
 
 const getHeaders = () => ({
-  'Authorization': `Bearer ${localStorage.getItem('token')}`,
+  'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
   'Content-Type': 'application/json',
 });
 
@@ -17,12 +17,8 @@ export async function getMyFormations(status = '', page = 1) {
   
   if (status) params.append('status', status);
 
-  const res = await fetch(`http://localhost:5000/student/formations/my-list?page=${page}&status=${status}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    }
+  const res = await fetch(`${API_URL}/student/formations/my-list?${params.toString()}`, {
+    headers: getHeaders(),
   });
   if (!res.ok) return { data: [], meta: { totalPages: 1 } };
   return res.json();
@@ -33,5 +29,23 @@ export async function getMyFormations(status = '', page = 1) {
 export async function getFormationDetails(id: number) {
   const res = await fetch(`${API_URL}/student/formations/${id}`, { headers: getHeaders() });
   if (!res.ok) throw new Error('Failed to fetch details');
+  return res.json();
+}
+
+export async function rateFormation(formationId: number, note: number, commentaire?: string) {
+  const res = await fetch(`${API_URL}/satisfaction`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({
+      formationId,
+      note,
+      commentaire
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(errorData.message || 'Erreur lors de la notation');
+  }
   return res.json();
 }

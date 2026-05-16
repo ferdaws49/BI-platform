@@ -1,17 +1,21 @@
 'use client'
-//  C'est lui le "chef d'orchestre" pour l'apprenant. Il appelle le Shell et lui donne la Sidebar de l'apprenant.
+
+import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/apprenant/Sidebar';
 import Navbar from '@/components/apprenant/Navbar';
 import DashboardShell from '@/components/apprenant/dashboardShared';
 
-
 export default function ApprenantLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  
+  // ✅ SEULE la page d'accueil n'a pas de sidebar
+  const isWelcomePage = pathname === '/apprenant';
+
   return (
     <DashboardShell
-      sidebar={<Sidebar />}
+      sidebar={isWelcomePage ? null : <Sidebar />}
       navbar={<Navbar />}
     >
-      {/* Le contenu des pages (Dashboard, Trainings, etc.) */}
       {children}
     </DashboardShell>
   );

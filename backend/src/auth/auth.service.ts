@@ -11,6 +11,11 @@ import { ResetPasswordDto } from "./dtos/reset-password.dto";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from 'typeorm';
 import { ConfigService } from "@nestjs/config";
+import { RegisterDto } from './dtos/register-dto';
+import { Inscription, InscriptionStatut } from 'src/inscriptions/entities/inscriptions.entity';
+import { resolveMx } from 'dns/promises';
+import { validate } from 'deep-email-validator';
+
 
 @Injectable()
 export class AuthService {
@@ -21,6 +26,7 @@ export class AuthService {
     private readonly mailService: MailService,
     private readonly config: ConfigService, 
     @InjectRepository(User) private readonly usersRepository: Repository<User>,
+    @InjectRepository(Inscription) private readonly inscriptionsRepository: Repository<Inscription>,
   ) {}
 
   async login(email: string, password: string) {
@@ -78,6 +84,76 @@ export class AuthService {
     });
   }
 
+  
+
+  public async registerapprenant(registerDto: RegisterDto) {/**ena lenna bech nthabet ken el user maamalch inscript 9bal b nafs email */
+     /** mademe staamalt await lezem nhot async */
+    const { email, password, nom, prenom, programme, telephone} = registerDto ;
+    
+    const userFromDb = await this.usersRepository.findOne({ where: { email }})
+     /** ken tkoun famma inscrit bl email   */
+    if(userFromDb) throw new BadRequestException("user already exist");
+    const inscExists = await this.inscriptionsRepository.findOne({ where: {email} });
+    if (inscExists) {
+      throw new BadRequestException("inscription en attente de validation");
+    }
+    const emailCheck = await this.isRealEmail(email);
+    if (!emailCheck.valid) {
+      throw new BadRequestException(
+        `Email invalide${emailCheck.reason ? ` : ${emailCheck.reason}` : ''}. Veuillez utiliser une adresse email réelle.`
+      );
+    }
+
+
+    /** tawa ken mal9inech email */
+    /**bech naamlou tachfir lel password elli 3tah */
+    /** salt y9awwi akther fi tachfir*/
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    
+    /** lenna bech naamlou creation de new user */
+    let newUser = this.inscriptionsRepository.create({
+      email,
+      nom,
+      prenom,
+      password : hashedPassword,
+      telephone,
+      programme,
+      statut: InscriptionStatut.NOT_VERIFIED,
+      verifyToken: randomBytes(32).toString('hex'),
+      isAccountVerified: false
+    })
+    newUser = await this.inscriptionsRepository.save(newUser);
+            
+    const link = `${this.config.get<string>("USER_DOMAIN")}/auth/verify-email/${newUser.id}/${newUser.verifyToken}`;
+    await this.mailService.sendVerifyEmailTemplate(email, link);
+    
+    //JWT
+    return{ message: 'verification token has been sent to your email, please verify your email adress ' };
+        }
+
+
+  public async verifyemail(id: number, token: string) {
+        const inscription = await this.inscriptionsRepository.findOne({ where: { id }});
+        if (!inscription) {
+            throw new BadRequestException("Invalid link");
+        }
+        if (inscription.verifyToken !== token) {
+            throw new BadRequestException("Invalid token");
+        }
+        // تحقق إذا déjà verified
+        if (inscription.statut !== InscriptionStatut.NOT_VERIFIED) {
+            throw new BadRequestException("Email already verified");
+        }
+            
+        inscription.statut = InscriptionStatut.PENDING;
+        inscription.verifyToken = null;
+
+        await this.inscriptionsRepository.save(inscription);
+
+        return { message: "Email verified successfully, waiting for admin approval" };
+        }
+        
   async verifyEmail(token: string) {
     return this.inscriptionsService.verify(token);
   }
@@ -85,7 +161,7 @@ export class AuthService {
 
   public async sendResetPasswordLink(email: string){
             const user = await this.usersRepository.findOne({ where: { email}});
-            if(!user) throw new BadRequestException("user with given email does not exist");
+            if(!user) return { success: false, error: 'Aucun compte associé à cet email' }
             //les etapes hedhom zedthom bech lien ywalli andou timing 
             //heya fel assel kenet user.resetPasswordToken = randomBytes(32).toString('hex');
 
@@ -99,19 +175,22 @@ export class AuthService {
           user.resetToken = `${randomString}.${expirationTime}`;
             const result = await this. usersRepository.save(user);
 
-            const resetPasswordLink= `${this.config.get<string>("USER_DOMAIN")}/reset-password/${user.id}/${result.resetToken}`;
+            const resetPasswordLink= `${this.config.get<string>("USER_DOMAIN")}/auth/reset-password/${user.id}/${user.resetToken}`;
             await this.mailService.sendResetPasswordTemplate(email, resetPasswordLink);
 
-            return{ message: "Password reset link sent to your email, please check your inbox"}
+            return {
+      success: true,
+      message: 'Password reset link sent to your email, please check your inbox',
+    }
         }
 
          //2eme etape: get reset password link
          public async getResetPasswordLink(userId: number, resetPasswordToken: string){
             const user = await this.usersRepository.findOne({ where: { id: userId}});
-            if(!user) throw new BadRequestException("invalid link");
+            if(!user) return { success: false, error: 'invalid link' }
 
             if(user.resetToken === null || user.resetToken !== resetPasswordToken)
-                throw new BadRequestException("invalid link");
+                return { success: false, error: 'invalid link' }
             //hedha zedneh bech nett2akdou ken el temps mta3 e lien mzel ou non
             //najmou nahiwah juste tkhallli return { message: 'valid link'}
 
@@ -121,23 +200,23 @@ export class AuthService {
             // Optionnel : on nettoie la base si c'est expiré
                 user.resetToken = null;
                 await this.usersRepository.save(user);
-                throw new BadRequestException("link has expired");
+                return { success: false, error: 'link has expired' }
             } 
-            return { message: 'valid link'}
+            return { success: true, message: 'valid link'}
 
          }
          //3eme etape : reset password
          public async resetPassword(dto: ResetPasswordDto){
             const { userId, resetPasswordToken, newPassword} = dto;
             const user = await this.usersRepository.findOne({ where: { id: userId}});
-            if(!user) throw new BadRequestException("invalid link");
+            if(!user) return { success: false, error: 'invalid link' }
 
             if(user.resetToken === null || user.resetToken !== resetPasswordToken)
-                throw new BadRequestException("invalid link");
+                return { success: false, error: 'invalid link' }
             
             //hedha kif kif najmou nahiwah
             // VÉRIFICATION DE L'EXPIRATION AVANT DE CHANGER LE MOT DE PASSE
-            const expiresAt = Number(resetPasswordToken.split('.')[1]);
+            const expiresAt = Number(resetPasswordToken.split('__')[1]);
             if (Date.now() > expiresAt) {
                 throw new BadRequestException("link has expired");
             }
@@ -147,7 +226,10 @@ export class AuthService {
             user.resetToken = null;
             await this.usersRepository.save(user);
 
-            return { message: 'password reset successfully, please log in '};
+            return {
+      success: true,
+      message: 'password reset successfully, please log in',
+    };
          }
     public async hashPassword(password: string): Promise<string> {
             const salt = await bcrypt.genSalt(10);
@@ -162,4 +244,46 @@ export class AuthService {
         return this.jwtService.signAsync(payload);
 
     }
+
+
+
+
+// 🔥 VÉRIFICATION COMPLÈTE
+  private async isRealEmail(email: string): Promise<{ valid: boolean; reason?: string }> {
+    // Option A : deep-email-validator (SMTP + MX + typo + disposable)
+    try {
+      const res = await validate({
+        email,
+        validateRegex: true,
+        validateMx: true,
+        validateTypo: true,
+        validateDisposable: true,
+        validateSMTP: true,
+      });
+      return {
+        valid: res.valid,
+        reason: res.reason,
+      };
+    } catch (err) {
+      // Fallback : au moins vérifier le MX si deep-email-validator plante
+      return this.fallbackMxCheck(email);
+    }
+  }
+
+  private async fallbackMxCheck(email: string): Promise<{ valid: boolean; reason?: string }> {
+    const domain = email.split('@')[1];
+    if (!domain) return { valid: false, reason: 'format invalide' };
+
+    try {
+      const records = await resolveMx(domain);
+      const hasMx = records && records.length > 0;
+      return {
+        valid: hasMx,
+        reason: hasMx ? undefined : 'domaine sans serveur mail',
+      };
+    } catch {
+      return { valid: false, reason: 'domaine introuvable' };
+    }
+  }
+
 }

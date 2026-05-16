@@ -1,12 +1,16 @@
 'use client'
+import { StarRating } from '@/components/apprenant/StarRating';
+import { ReviewModal } from '@/components/apprenant/ReviewModal';
 import React, { useEffect, useState } from 'react';
-import { Search, Clock, BookOpen, ChevronRight, ChevronLeft } from 'lucide-react';
-import { getMyFormations } from '@/lib/trainings';
+import { Search, Clock, BookOpen, ChevronRight, ChevronLeft, Star} from 'lucide-react';
+import { getMyFormations, rateFormation  } from '@/lib/trainings';
 import { useRouter } from 'next/navigation';
 
 export default function TrainingsPage() {
   const [trainings, setTrainings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTraining, setSelectedTraining] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   // États pour le filtre et la pagination
   const [statusFilter, setStatusFilter] = useState(''); // "" signifie "All Status"
@@ -45,6 +49,34 @@ export default function TrainingsPage() {
     setStatusFilter(e.target.value);
     setCurrentPage(1); 
   };
+
+  const handleRate = async (formationId: number, note: number) => {
+    try {
+      await rateFormation(formationId, note);
+      // Optionnel : Recharger les formations pour voir la note mise à jour
+      loadTrainings(); 
+      alert("Merci pour votre note !");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleOpenReview = (training: any) => {
+    setSelectedTraining(training);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmitReview = async (note: number, comment: string) => {
+    try {
+      await rateFormation(selectedTraining.id, note, comment);
+      setIsModalOpen(false);
+      loadTrainings(); // Recharger pour afficher la nouvelle note
+      alert("Avis enregistré !");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+  
 
   return (
     <div className="space-y-8 min-h-screen">
@@ -97,6 +129,24 @@ export default function TrainingsPage() {
                     <Clock size={14} className="text-[#1b5333]" /> {training.duration}
                   </div>
 
+                  <div className="mb-4 flex items-center justify-between">
+                <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">Rate this training</p>
+                    <div className="flex items-center gap-1">
+                        {[1,2,3,4,5].map(s => (
+                            <Star key={s} size={14} className={s <= (training.userRating || 0) ? "fill-yellow-400 text-yellow-400" : "text-gray-200"} />
+                        ))}
+                    </div>
+                </div>
+                <button 
+                  onClick={() => handleOpenReview(training)}
+                  className="text-[10px] font-bold text-[#1b5333] hover:underline"
+                >
+                  {training.userRating ? "Modifier l'avis" : "Noter"}
+                </button>
+              </div>
+        
+
                   <div className="space-y-2">
                     <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase">
                       <span>Progress</span>
@@ -116,6 +166,17 @@ export default function TrainingsPage() {
               </div>
             ))}
           </div>
+
+          {selectedTraining && (
+        <ReviewModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSubmit={handleSubmitReview}
+          trainingTitle={selectedTraining.title}
+          initialNote={selectedTraining.userRating}
+          initialComment={selectedTraining.userComment}
+        />
+      )}
 
           {/* PAGINATION UI */}
           <div className="flex items-center justify-center gap-4 pt-8">

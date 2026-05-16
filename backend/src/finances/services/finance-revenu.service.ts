@@ -94,7 +94,7 @@ export class FinanceRevenueService {
       .select('SUM(finance.montant)', 'sum')
       .where('CAST(finance.date AS DATE) BETWEEN :start AND :end', { start, end })
       // On compte les paiements ET les impayés pour savoir ce qu'on attendait au total
-      .andWhere('finance.type IN (:...types)', { types: [FinanceType.PAIEMENT, FinanceType.IMPAYE] });
+      .andWhere('finance.type IN (:...types)', { types: [FinanceType.PAIEMENT, FinanceType.IMPAYE] });/** */
 
     if (formationId) {
       qb.innerJoin('finance.session', 'session')
@@ -969,26 +969,15 @@ private getBaseSessionQuery(filter: RevenueFilterDto): SelectQueryBuilder<Sessio
 
 
 
-  async getSessionsByApprenant(apprenantId: number) {
-    return this.sessionRepository
-      .createQueryBuilder("s")
-      .innerJoin("s.apprenants", "a")
-      .select("s.id", "id")
-      .addSelect("s.title", "title")
-      .where("a.id = :id OR a.userId = :id", { id: apprenantId })
-      .distinct(true)
-      .getRawMany();
-  }
+
 
   async addPayment(dto: AddPaymentDto): Promise<{ finance: Finance }> {
     // 1. On cherche l'APPRENANT lié au userId (car c'est l'ID apprenant qu'on veut stocker)
     const apprenant = await this.apprenantRepository.findOne({ 
-      where: { userId: dto.userId },
-      relations: ['user'] // On charge le user pour avoir le nom dans la description
-    });
+      where: { id: dto.apprenantId }, relations: ['user'],});
 
     if (!apprenant) {
-      throw new NotFoundException(`Aucun profil apprenant trouvé pour l'utilisateur ID ${dto.userId}`);
+      throw new NotFoundException(`Aucun profil apprenant trouvé pour l'utilisateur ID ${dto.apprenantId}`);
     }
 
     // 2. Vérification de la session (Attention : ton entité Session utilise des UUID 'string')
@@ -1003,7 +992,9 @@ private getBaseSessionQuery(filter: RevenueFilterDto): SelectQueryBuilder<Sessio
 
     // 3. Création de la ligne de finance avec le LIEN apprenant
     const finance = this.financeRepository.create({
+      apprenant,
       montant: Number(dto.montant),
+      
       type: FinanceType.PAIEMENT,
       date: new Date(dto.paymentDate),
       
@@ -1032,6 +1023,137 @@ private getBaseSessionQuery(filter: RevenueFilterDto): SelectQueryBuilder<Sessio
 
     return { finance: result };
 }
+
+ async updatePayment(id: number, dto: AddPaymentDto): Promise<{ finance: Finance }> {
+    const existing = await this.financeRepository.findOne({
+      where: { id },
+      relations: ['apprenant', 'apprenant.user', 'session', 'session.formation'],
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Paiement #${id} introuvable`);
+    }
+
+    // Vérifier le nouvel apprenant (si changé)
+    if (dto.apprenantId && dto.apprenantId !== existing.apprenantId) {
+      const apprenant = await this.apprenantRepository.findOne({
+        where: { id: dto.apprenantId },
+        relations: ['user'],
+      });
+      if (!apprenant) {
+        throw new NotFoundException(`Apprenant #${dto.apprenantId} introuvable`);
+      }
+      existing.apprenant = apprenant;
+      existing.apprenantId = apprenant.id;
+    }
+
+    // Vérifier la nouvelle session (si changée) → récupère aussi la formation
+    if (dto.sessionId) {
+      const session = await this.sessionRepository.findOne({
+        where: { id: dto.sessionId },
+        relations: ['formation'],
+      });
+      if (!session) {
+        throw new NotFoundException(`Session #${dto.sessionId} introuvable`);
+      }
+      existing.sessionId = String(session.id);
+      existing.session = session; // met à jour la relation
+    }
+
+    // Mettre à jour le montant et la date
+    existing.montant = Number(dto.montant ?? existing.montant);
+    existing.date = dto.paymentDate ? new Date(dto.paymentDate) : existing.date;
+    
+    // Recalculer la description
+    const app = existing.apprenant;
+    if (app?.user) {
+      existing.description = `${app.user.nom || ''} ${app.user.prenom || ''} - Paiement ${existing.date.toISOString().split('T')[0]}`.trim();
+    }
+
+    const saved = await this.financeRepository.save(existing);
+
+    // Recharger avec relations
+    const result = await this.financeRepository.findOne({
+      where: { id: saved.id },
+      relations: ['apprenant', 'apprenant.user', 'session', 'session.formation'],
+    });
+
+    if (!result) {
+      throw new NotFoundException('Paiement mis à jour mais non retrouvé');
+    }
+
+    return { finance: result };
+  }
+
+  // ── DELETE PAYMENT ──
+  async deletePayment(id: number): Promise<{ message: string; deletedId: number }> {
+    const existing = await this.financeRepository.findOne({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Paiement #${id} introuvable. Impossible de supprimer.`);
+    }
+
+    await this.financeRepository.remove(existing);
+
+    return {
+      message: 'Paiement supprimé avec succès',
+      deletedId: id,
+    };
+  }
+
+async getSessionsByApprenant(apprenantId: number) {
+    const apprenant = await this.apprenantRepository.findOne({
+      where: { id: apprenantId },
+      relations: ['sessions'], // Charge la relation Many-to-Many
+    });
+
+    if (!apprenant) {
+      return []; // ou throw new NotFoundException('Apprenant introuvable');
+    }
+
+    // Retourne exactement ce que le front attend
+    return apprenant.sessions.map((session) => ({
+      id: session.id,              // UUID (string)
+      title: session.title || 'Session sans nom',
+      formationId: session.formationId, // number
+    }));
+  }
+
+
+  async getFormationsForPayments(filter: RevenueFilterDto): Promise<{ id: number; title: string }[]> {
+  const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
+
+  const qb = this.sessionRepository.createQueryBuilder('session')
+    .innerJoin('session.formation', 'formation')
+    .leftJoin('finances', 'finance', 'finance.sessionId = session.id AND finance.type = :type', {
+      type: FinanceType.PAIEMENT,
+    })
+    .select('DISTINCT formation.id', 'id')
+    .addSelect('formation.titre', 'title')
+    .where('CAST(session.date AS DATE) BETWEEN :start AND :end', {
+      start: currentStart,
+      end: currentEnd,
+    })
+    // Ne garder que les formations qui ont au moins une session avec des apprenants inscrits
+    .andWhere(qb => {
+      const sub = qb.subQuery()
+        .select('1')
+        .from('sessions_apprenants', 'sa')
+        .where('sa.sessionId = session.id')
+        .getQuery();
+      return `EXISTS ${sub}`;
+    });
+
+  const rows = await qb.getRawMany();
+
+  return rows.map(r => ({
+    id: Number(r.id),
+    title: r.title,
+  }));
+}
+
 
 
 

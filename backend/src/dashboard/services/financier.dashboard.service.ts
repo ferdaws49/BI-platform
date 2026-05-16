@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { Repository, DataSource, SelectQueryBuilder } from 'typeorm';
 import { Session } from 'src/sessions/entities/session.entity';
 import { Formation } from 'src/formations/entities/formation.entity';
 import { Finance, FinanceType } from 'src/finances/entities/finance.entity';
@@ -15,6 +15,7 @@ export class FinancierDashboardService {
     @InjectRepository(Session) private sessionRepository: Repository<Session>,
     @InjectRepository(Finance) private financeRepository: Repository<Finance>,
     @InjectRepository(Formation) private formationRepository: Repository<Formation>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getAllFormations() {
@@ -24,57 +25,46 @@ export class FinancierDashboardService {
 }
   
   async getKpisGlobaux(filter: FinancierDashboardFilterDto): Promise<DashboardKpisDto> {
+  const { startDate, endDate } = await this.getResolvedDates(filter);
 
-    const { startDate, endDate } = this.getResolvedDates(filter);
-    //on calcule le totale du chiffre d'affaire realisé(montant reel elli daf3ouh les apprenants)
-    const caRealiseQb = this.financeRepository//On cherche dans la table des finance
-      .createQueryBuilder('f')//permet d'écrire requête SQL avec un code typescripte
-    .select('COALESCE(SUM(f.montant), 0)', 'total')//on additionne tous les montants , 
-      // Si aucun paiement n'existe, on renvoie 0 (au lieu de null) c'est le role du COALESCE pour que la base de données ne renvoie NULL
-    .where('f.type = :type', { type: FinanceType.PAIEMENT });
-    this.applyFinanceFilters(caRealiseQb, filter);
-
-    // On applique les filtres de date proprement
-  if (filter.startDate && filter.endDate) {
-    caRealiseQb.andWhere('CAST(f.date AS DATE) BETWEEN :start AND :end', { 
-      start: startDate, 
-      end: endDate 
-    });
-  }
+  // 1. Préparation des paramètres pour éviter les injections SQL
+  const params: any[] = [startDate, endDate];
+  let formationFilter = '';
 
   if (filter.formationId) {
-    // Si on filtre par formation, il faut joindre la session
-    caRealiseQb.innerJoin('f.session', 's_f')
-               .andWhere('s_f.formationId = :fid', { fid: filter.formationId });
+    params.push(filter.formationId);
+    // On ajoute le filtre dynamiquement
+    formationFilter = `AND fo.formation_id = $${params.length}`;
   }
 
-  const caRealiseRaw = await caRealiseQb.getRawOne();
-  const caRealise =  parseFloat(caRealiseRaw?.total ?? 0);
+  // 2. Exécution de la requête en SQL brut
+  const rawResult = await this.dataSource.query(`
+    SELECT 
+      SUM(CASE WHEN f.est_paiement THEN f.montant ELSE 0 END) AS "caRealise",
+      SUM(CASE WHEN f.est_depense THEN f.montant ELSE 0 END) AS "caFacture",
+      -- Somme des coûts uniques par session pour éviter les doublons si plusieurs paiements
+      SUM(CASE WHEN f.est_depense THEN (f.cout_formateur + f.cout_logistique) ELSE 0 END) AS "totalCouts"
+    FROM dw.fact_finance f
+    INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+    WHERE t.date_complete BETWEEN $1 AND $2
+    ${formationFilter}
+  `, params);
 
-    // 2. CA Facturé (Ce qui est attendu : Inscrits * Prix) et Coûts
-  const sessionKpiQb = this.sessionRepository.createQueryBuilder('s')
-    .leftJoin('s.formation', 'fo')
-    .leftJoin('sessions_apprenants', 'sa', 'sa.sessionId = s.id')
-    .select([
-      'SUM(COALESCE(s.prix, fo.prix, 0)) AS "totalFacture"',
-      'SUM(COALESCE(s.cout_formateur, 0) + COALESCE(s.cout_logistique, 0)) AS "totalCouts"'
-    ])
-      // On applique TOUJOURS le filtre ici aussi
-    .where('CAST(s.date AS DATE) BETWEEN :start AND :end', { 
-      start: startDate, 
-      end: endDate 
-    });
-    if (filter.formationId) {
-    sessionKpiQb.andWhere('s.formationId = :fid', { fid: filter.formationId });
-  }
+  // 3. Extraction des résultats (PostgreSQL renvoie un tableau)
+  const res = rawResult[0];
 
-  const sessionKpis = await sessionKpiQb.getRawOne();
-  const caFacture = parseFloat(sessionKpis?.totalFacture) || 0;
-  const couts = parseFloat(sessionKpis?.totalCouts) || 0;
+  const caRealise = parseFloat(res?.caRealise || 0);
+  const caFacture = parseFloat(res?.caFacture || 0);
+  const couts = parseFloat(res?.totalCouts || 0);
+
+  // 4. Calculs Business
   const encoursClient = caFacture - caRealise;
-  const margeBrute = caRealise - couts; // Marge basée sur le réel encaissé
+  const margeBrute = caRealise - couts;
   const tauxMarge = caRealise > 0 ? (margeBrute / caRealise) * 100 : 0;
-  const croissance = await this.computeCroissance(filter);
+  
+  // Utilise aussi la version DWH pour la croissance
+  const croissance = await this.computeCroissanceDwh(filter);
 
   return {
     caRealise: Number(caRealise.toFixed(2)),
@@ -86,203 +76,230 @@ export class FinancierDashboardService {
   };
 }
 
+private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise<number> {
+  const { currentStart, currentEnd, previousStart, previousEnd } = this.resolvePeriods(filter);
+
+  const getCa = async (start: string, end: string) => {
+    const res = await this.dataSource.query(`
+      SELECT SUM(f.montant) as total
+      FROM dw.fact_finance f
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+      WHERE f.est_paiement = true 
+      AND t.date_complete BETWEEN $1 AND $2
+    `, [start, end]);
+    return parseFloat(res[0]?.total) || 0;
+  };
+
+  const current = await getCa(
+    currentStart.toISOString().split('T')[0], 
+    currentEnd.toISOString().split('T')[0]
+  );
+  
+  const previous = await getCa(
+    previousStart.toISOString().split('T')[0], 
+    previousEnd.toISOString().split('T')[0]
+  );
+
+  return previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
+}
+
   private getResolvedDates(filter: FinancierDashboardFilterDto) {
   const now = new Date();
-  // Par défaut : du 1er Janvier de l'année en cours jusqu'à aujourd'hui
-  const defaultStart = `${now.getFullYear()}-01-01`;
-  const defaultEnd = now.toISOString().split('T')[0];
+  const currentYear = now.getFullYear();
 
-  return {
-    startDate: filter.startDate || defaultStart,
-    endDate: filter.endDate || defaultEnd,
-  };
+  const startDate = filter.startDate || `${currentYear - 1}-01-01`; // Janvier de l'année dernière
+  const endDate = filter.endDate || `${currentYear + 5}-12-31`;     // Décembre dans 5 ans (inclut 2026)
+
+  return { startDate, endDate };
 }
 
 
 
-  async getRevenueByMonth(filter: FinancierDashboardFilterDto,): Promise<MonthlyRevenueItemDto[]> {
-      const { startDate, endDate } = this.getResolvedDates(filter);
-    const qb = this.financeRepository.createQueryBuilder('f')
-      .select(`TO_CHAR(f."date", 'YYYY-MM')`, 'month')// to char pour transformer la date en un texte simple, pour que le graphique peut lire facilement
-      .addSelect('COALESCE(SUM(f.montant), 0)', 'caRealise')
-      .where('f.type = :type', { type: FinanceType.PAIEMENT })
-      .andWhere('CAST(f.date AS DATE) BETWEEN :start AND :end', { 
-      start: startDate, 
-      end: endDate 
-    });
-       this.applyFinanceFilters(qb, filter);
-    
-    const rows = await qb
-      .groupBy("TO_CHAR(f.date, 'YYYY-MM')")
-      .orderBy("month", 'ASC')
-      .getRawMany();
-    
+  async getRevenueByMonth(filter: FinancierDashboardFilterDto): Promise<MonthlyRevenueItemDto[]> {
+    // 1. Récupération des dates (on utilise ta fonction dynamique)
+    const { startDate, endDate } = await this.getResolvedDates(filter);
+
+    // 2. Préparation des paramètres
+    const params: any[] = [startDate, endDate];
+    let formationFilter = '';
+
+    if (filter.formationId) {
+        params.push(filter.formationId);
+        formationFilter = `AND fo.formation_id = $${params.length}`;
+    }
+
+    // 3. Requête sur la Data Warehouse
+    // LPAD permet de transformer le mois "5" en "05" pour avoir le format YYYY-MM
+    const rows = await this.dataSource.query(`
+        SELECT 
+            t.annee || '-' || LPAD(t.mois::text, 2, '0') as "month",
+            SUM(f.montant) as "caRealise"
+        FROM dw.fact_finance f
+        INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+        LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+        WHERE f.est_paiement = true
+          AND t.date_complete BETWEEN $1 AND $2
+          ${formationFilter}
+        GROUP BY t.annee, t.mois
+        ORDER BY t.annee ASC, t.mois ASC
+    `, params);
+
+    // 4. Mapping des résultats
     return rows.map((row) => ({
-      month: row.month,
-      caRealise: Number(row.caRealise),
+        month: row.month,
+        caRealise: Number(parseFloat(row.caRealise || 0).toFixed(2)),
     }));
-  }
+}
 
 
   async getRevenuCoutByCategory(filter: FinancierDashboardFilterDto): Promise<CategoryRevenueCostItemDto[]> {
-    const { startDate, endDate } = this.getResolvedDates(filter);
+    // 1. Récupération des dates (toujours avec ta fonction dynamique)
+    const { startDate, endDate } = await this.getResolvedDates(filter);
 
-    // 1. REVENU par catégorie (basé sur la date du paiement f.date)
-    const revenueRows = await this.financeRepository.createQueryBuilder('f')
-        .innerJoin('f.session', 's')
-        .innerJoin('s.formation', 'form')
-        .select("COALESCE(form.categorie, 'Non classée')", 'categorie')
-        .addSelect('SUM(f.montant)', 'revenue')
-        .where('f.type = :type', { type: FinanceType.PAIEMENT }) // Premier filtre
-        // ✅ Utilise .andWhere pour ne pas effacer le type, et utilise f.date
-        .andWhere('CAST(f.date AS DATE) BETWEEN :start AND :end', { start: startDate, end: endDate })
-        .groupBy('form.categorie')
-        .getRawMany();
-        
-    // 2. COÛT par catégorie (basé sur la date de la session s.date)
-    const costRows = await this.sessionRepository.createQueryBuilder('s')
-        .innerJoin('s.formation', 'form')
-        .select("COALESCE(form.categorie, 'Non classée')", 'categorie')
-        .addSelect('SUM(COALESCE(s.cout_formateur, 0) + COALESCE(s.cout_logistique, 0))', 'cout')
-        .where('CAST(s.date AS DATE) BETWEEN :start AND :end', { start: startDate, end: endDate })
-        .groupBy('form.categorie')
-        .getRawMany();
+    // 2. Requête unique sur la table de fait
+    // On utilise l'agrégation conditionnelle (SUM CASE WHEN)
+    const rows = await this.dataSource.query(`
+        SELECT 
+            COALESCE(fo.categorie, 'Non classée') as "categorie",
+            -- Somme des revenus (lignes de paiements)
+            SUM(CASE WHEN f.est_paiement THEN f.montant ELSE 0 END) as "revenue",
+            -- Somme des coûts (lignes d'initialisation de session)
+            SUM(CASE WHEN f.est_depense THEN (f.cout_formateur + f.cout_logistique) ELSE 0 END) as "cout"
+        FROM dw.fact_finance f
+        INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+        INNER JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+        WHERE t.date_complete BETWEEN $1 AND $2
+        GROUP BY fo.categorie
+        ORDER BY "revenue" DESC
+    `, [startDate, endDate]);
 
-    // 3. Fusion des données
-    const map = new Map<string, CategoryRevenueCostItemDto>();
-
-    for (const row of revenueRows) {
-        map.set(row.categorie, {
-            categorie: row.categorie,
-            revenue: parseFloat(row.revenue) || 0,
-            cout: 0,
-        });
-    }
-
-    for (const row of costRows) {
-        const entry = map.get(row.categorie) || { categorie: row.categorie, revenue: 0, cout: 0 };
-        entry.cout = parseFloat(row.cout) || 0;
-        map.set(row.categorie, entry);
-    }
-
-    // Retourne le tableau trié par revenu décroissant
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }
+    // 3. Mapping direct des résultats
+    return rows.map((r) => ({
+        categorie: r.categorie,
+        revenue: Number(parseFloat(r.revenue || 0).toFixed(2)),
+        cout: Number(parseFloat(r.cout || 0).toFixed(2)),
+    }));
+}
 
   async getCaByFormation(filter: FinancierDashboardFilterDto): Promise<FormationRevenueItemDto[]> {
-    const { startDate, endDate } = this.getResolvedDates(filter);
-    const qb = this.financeRepository.createQueryBuilder('f')
-      .innerJoin('f.session', 's')
-      .innerJoin('s.formation', 'form')
-      .select(['form.id AS "formationId"', 'form.titre AS "formationTitle"'])
-      .addSelect('SUM(f.montant)', 'caRealise')
-      .where('f.type = :type', { type: FinanceType.PAIEMENT })
-    .andWhere('CAST(f.date AS DATE) BETWEEN :start AND :end', { 
-      start: startDate, 
-      end: endDate 
-    });
+    // 1. Récupération des dates (Dynamique)
+    const { startDate, endDate } = await this.getResolvedDates(filter);
+
+    // 2. Préparation des paramètres
+    const params: any[] = [startDate, endDate];
+    let formationFilter = '';
 
     if (filter.formationId) {
-    qb.andWhere('form.id = :fid', { fid: filter.formationId });
-  }
-
-     const rows = await qb
-      .groupBy('form.id, form.titre')
-      .orderBy('"caRealise"', 'DESC')
-      .limit(6)
-      .getRawMany();
-
-    return rows.map((row) => ({
-      formationId: Number(row.formationId),
-      formationTitle: row.formationTitle,
-      caRealise: Number(row.caRealise),//necessaire à convertir pour que chart pouvait l'afficher correctement
-    }));
-    
-  }
-
-  async getSessionsPerformance(filter: FinancierDashboardFilterDto,): Promise<SessionsPerformanceResponseDto> {
-    const { startDate, endDate } = this.getResolvedDates(filter);
-    const qb = this.sessionRepository.createQueryBuilder('s')//bech nekhdem ala table de session
-      .leftJoin('s.formation' ,'f')// w hachti b essem el formation donc ayat le table du formation
-      .select([
-        's.id AS "sessionId"',
-        's.title AS "sessionTitle"',
-        's.date AS "date"',
-        'f.titre AS "formationTitle"',
-        'COALESCE(s.capacite, 0) AS "capacite"',
-        'COALESCE(s.prix, f.prix, 0) AS "unitPrice"',
-        'COALESCE(s.cout_formateur, 0) AS "coutFormateur"',
-        'COALESCE(s.cout_logistique, 0) AS "coutLogistique"',
-      ]);
-
-    // Sous-requêtes
-    qb.addSelect(sub => {
-    return sub.select('COUNT(*)', 'count')
-      .from('sessions_apprenants', 'sa')
-      .where('sa."sessionId" = s.id'); // ✅ Guillemets pour PostgreSQL
-  }, 'inscrits');
-    qb.addSelect(sub => {
-    return sub.select('SUM(fin.montant)', 'sum')
-      .from('finances', 'fin')
-      .where('fin."sessionId" = s.id') // ✅ Guillemets pour PostgreSQL
-      .andWhere('fin.type = :type', { type: FinanceType.PAIEMENT });
-  }, 'caEncaisse');
-
-    qb.where('CAST(s.date AS DATE) BETWEEN :start AND :end', { start: startDate, end: endDate });
-
-
-     if (filter.formationId) {
-    qb.andWhere('f.id = :fid', { fid: filter.formationId });
-  }
-    
-    const raws = await qb.getRawMany();
-
-    let rows: SessionPerformanceRowDto[] = raws.map((row) => {//nbadlou string to number
-      const caEncaisse = parseFloat(row.caEncaisse);
-      const unitPrice = parseFloat(row.unitPrice) || 0;
-      const inscrits = parseInt(row.inscrits) || 0;
-       const caFacture = unitPrice * inscrits;
-      const cout = (parseInt(row.coutFormateur)|| 0) + (parseInt(row.coutLogistique)|| 0);
-      const margeNette = caEncaisse - cout;
-      const roi = cout > 0 ? (margeNette / cout) * 100 : 0;
-      const status = this.resolveSessionStatus(caEncaisse, caFacture);
-    
-    return {
-        sessionId: row.sessionId,
-        session: row.sessionTitle,
-        formation: row.formationTitle,
-        date: row.date,
-        inscrits,
-        capacite:  parseInt(row.capacite),
-        caEncaisse,
-        cout,
-        margeNette,
-        roi,
-        status,
-    };
-
-    });
-    
-    if (filter.status && filter.status !== "undefined") {
-      rows = rows.filter((row) => row.status === filter.status);
+        params.push(filter.formationId);
+        formationFilter = `AND fo.formation_id = $${params.length}`;
     }
-    const sortBy = filter.sortBy ?? PerformanceSortBy.DATE;
-    const sortOrder = filter.sortOrder ?? SortOrder.DESC;
-    rows = this.sortPerformanceRows(rows, sortBy, sortOrder);
-    const page = filter.page ?? 1;
-    const limit = filter.limit ?? 10;
-    const total = rows.length;
-    const start = (page - 1) * limit;
-    const paginatedRows = rows.slice(start, start + limit);
-    return {
-         items: paginatedRows,
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit) || 1,
-    };
+
+    // 3. Requête sur la Table de Fait et la Dimension Formation
+    const rows = await this.dataSource.query(`
+        SELECT 
+            fo.formation_id as "formationId", 
+            fo.titre as "formationTitle", 
+            SUM(f.montant) as "caRealise"
+        FROM dw.fact_finance f
+        INNER JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+        INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+        WHERE f.est_paiement = true
+          AND t.date_complete BETWEEN $1 AND $2
+          ${formationFilter}
+        GROUP BY fo.formation_id, fo.titre
+        ORDER BY "caRealise" DESC
+        LIMIT 6
+    `, params);
+
+    // 4. Mapping final
+    return rows.map((row) => ({
+        formationId: Number(row.formationId),
+        formationTitle: row.formationTitle,
+        caRealise: Number(parseFloat(row.caRealise || 0).toFixed(2)),
+    }));
+}
+
+  async getSessionsPerformance(filter: FinancierDashboardFilterDto): Promise<SessionsPerformanceResponseDto> {
+  const { startDate, endDate } = await this.getResolvedDates(filter);
+
+  const raws = await this.dataSource.query(`
+    WITH target_sessions AS (
+      -- 1. On sélectionne les sessions de la période
+      SELECT DISTINCT f_filter.sk_session
+      FROM dw.fact_finance f_filter
+      JOIN dw.dim_temps dt_filter ON f_filter.sk_temps = dt_filter.sk_temps
+      WHERE f_filter.est_depense = true 
+        AND dt_filter.date_complete BETWEEN $1 AND $2
+    )
+    SELECT 
+      ds.session_id as "sessionid",
+      COALESCE(df.titre, 'Formation non liée') as "formationtitle",
+      COALESCE(ds.type_session, '') || ' - ' || COALESCE(df.titre, 'Inconnue') as "sessiontitle",
+      -- Date de la session
+      (SELECT dt2.date_complete FROM dw.dim_temps dt2 
+       JOIN dw.fact_finance ff2 ON ff2.sk_temps = dt2.sk_temps 
+       WHERE ff2.sk_session = ds.sk_session AND ff2.est_depense = true LIMIT 1) as "date",
+      ds.capacite as "capacite",
+      -- SOMMES
+      MAX(f.nb_inscrits) as "inscrits",
+      SUM(CASE WHEN f.est_paiement = true THEN f.montant ELSE 0 END) as "ca_encaisse",
+      SUM(CASE WHEN f.est_depense = true THEN f.montant ELSE 0 END) as "ca_facture",
+      SUM(CASE WHEN f.est_depense = true THEN (f.cout_formateur + f.cout_logistique) ELSE 0 END) as "cout_total"
+    FROM dw.dim_session ds
+    INNER JOIN target_sessions ts ON ds.sk_session = ts.sk_session
+    LEFT JOIN dw.fact_finance f ON ds.sk_session = f.sk_session
+    LEFT JOIN dw.dim_formation df ON f.sk_formation = df.sk_formation
+    GROUP BY ds.session_id, ds.type_session, df.titre, ds.capacite, ds.sk_session
+  `, [startDate, endDate]);
+
+  // DEBUG POUR VOIR LES VALEURS BRUTES DANS LA CONSOLE VS CODE
+  if (raws.length > 0) {
+     const testRow = raws.find(r => r.sessionid === '229a5030-87d4-411c-aba4-248efd62559a');
+     console.log('--- TEST SESSION 229a50 ---', testRow);
   }
 
+  let rows: SessionPerformanceRowDto[] = raws.map((row) => {
+    // ⚠️ On utilise bien les noms en minuscules définis dans le AS de la requête
+    const caEncaisse = parseFloat(row.ca_encaisse || 0);
+    const caFacture = parseFloat(row.ca_facture || 0);
+    const cout = parseFloat(row.cout_total || 0);
+    
+    return {
+      sessionId: row.sessionid,
+      session: row.sessiontitle,
+      formation: row.formationtitle,
+      date: row.date,
+      inscrits: parseInt(row.inscrits || 0),
+      capacite: parseInt(row.capacite || 0),
+      caEncaisse: caEncaisse,
+      cout: cout,
+      margeNette: caEncaisse - cout,
+      roi: cout > 0 ? ((caEncaisse - cout) / cout) * 100 : 0,
+      status: this.resolveSessionStatus(caEncaisse, caFacture),
+    };
+  });
+
+  // 3. Filtrage Status, Tri et Pagination (Inchangé)
+  if (filter.status && filter.status !== 'undefined') {
+    rows = rows.filter((row) => row.status === filter.status);
+  }
+
+  const sortBy = filter.sortBy ?? PerformanceSortBy.DATE;
+  const sortOrder = filter.sortOrder ?? SortOrder.DESC;
+  rows = this.sortPerformanceRows(rows, sortBy, sortOrder);
+
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 10;
+  const total = rows.length;
+  
+  return {
+    items: rows.slice((page - 1) * limit, page * limit),
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit) || 1,
+  };
+}
     //partie des filtres
   private applyFinanceFilters(qb: SelectQueryBuilder<Finance>,//hedha yekhdem ala el finance
     filter: FinancierDashboardFilterDto,) {

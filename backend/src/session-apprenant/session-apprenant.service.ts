@@ -42,67 +42,61 @@ export class SessionApprenantService{
    */
 
  async create(userId: number, dto: ParticipateSessionDto) {
-  let { sessionId } = dto;
+  const { sessionId } = dto;
 
-  
-
-   // 🔥 1. نلقاو apprenant من user
+  // 1. Récupérer l'apprenant par son userId (FK)
   const apprenant = await this.apprenantRepository.findOne({
-    where: { userId},
+    where: { userId: Number(userId) },
   });
 
   if (!apprenant) {
     throw new NotFoundException("Apprenant introuvable");
   }
 
-  // 1. check session exists + capacity + formation relation
+  // 🔍 DEBUG : confirme le type réel
+  console.log('Apprenant trouvé :', apprenant);
+  console.log('Type de apprenant.id :', typeof apprenant.id, apprenant.id);
+
+  // 2. Vérifier la session
   const session = await this.sessionsRepository.findOne({
     where: { id: sessionId },
-    relations: ['apprenants']
+    relations: ['apprenants'],
   });
 
   if (!session) {
     throw new NotFoundException("Session introuvable");
   }
 
- 
-
-  // 3. VÉRIFICATION SÉCURISÉE (On évite le some() qui peut tromper)
-  // On vérifie si l'ID de l'apprenant existe REELLEMENT dans la liste
+  // 3. Vérifier doublon
   const isAlreadyIn = (session.apprenants || []).find(
-    (a) => a.id !== undefined && a.id !== null && Number(a.id) === Number(apprenant.id)
+    (a) => Number(a.id) === Number(apprenant.id)
   );
-
   if (isAlreadyIn) {
     throw new BadRequestException("Déjà inscrit à cette session");
   }
 
-
-
-  // 3. check capacity
+  // 4. Vérifier capacité
   const count = session.apprenants?.length ?? 0;
   const capacite = session.capacite ?? 0;
   if (capacite > 0 && count >= capacite) {
     throw new BadRequestException('Session complète');
   }
 
-  if (!session.apprenants) {
-   session.apprenants = [];
- }
+  // ✅ FIX : Insertion manuelle contrôlée dans la table de jointure
+  // session.id = UUID (string)  → colonne sessionId
+  // apprenant.id = number       → colonne apprenantId
+  await this.sessionsRepository.query(
+    `INSERT INTO "sessions_apprenants"("sessionId", "apprenantId") VALUES ($1, $2)`,
+    [session.id, apprenant.id]
+  );
 
-  // 🔥 relation ManyToMany
-  session.apprenants.push(apprenant);
-
-   // 6. Sauvegarder la session (TypeORM gérera la table pivot automatiquement)
-  await this.sessionsRepository.save(session);
 
   return {
     message: "Inscription réussie",
     sessionId: session.id,
-    sessionTitle: session.title
+    sessionTitle: session.title,
   };
-
- }
+} 
   /**Khdmet
    * Objectif : Récupérer l'historique complet des inscriptions de l'apprenant connecté
    * @param userId l'identifiant de l'apprenant

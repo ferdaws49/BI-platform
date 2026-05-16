@@ -18,7 +18,7 @@ export class Satisfaction {
   note: number; // 1 à 5
 
   @Column({ nullable: true })
-  commentaire: string;
+  commentaire?: string;
 
   @CreateDateColumn()
   createdAt: Date;

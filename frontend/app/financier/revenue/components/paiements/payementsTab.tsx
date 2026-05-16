@@ -54,13 +54,8 @@ function mapStatus(s: string): PaymentStatus {
 }
 
 // ── Mapper ligne backend → Paiement ───────────────────────
-// Le back retourne : { paymentId, apprenant, formation, montant, date, status }
-// montant = montant_encaisse uniquement (pas de montantTotal séparé dans cette route)
 function mapPaymentRow(raw: any, index: number): Paiement {
-
-  const formationKey = (raw.formationTitle || raw.formation || 'noform').replace(/\s+/g, '');
-  const uniqueId = `reg-${raw.inscriptionId || index}-${formationKey}-${index}`;
-  console.log("RAW:", raw);
+    console.log("RAW from backend:", raw); // ← AJOUTE ÇA
   const nom = raw.apprenant ?? "";
   const initiales = nom
     .split(" ")
@@ -69,11 +64,9 @@ function mapPaymentRow(raw: any, index: number): Paiement {
     .slice(0, 2)
     .toUpperCase() || "??";
 
-    
-
   return {
-    id: uniqueId,
-    apprenantId: String(raw.apprenantId ?? raw.id ),
+    id: Number(raw.paymentId ?? raw.financeId ?? raw.id ?? index),
+    apprenantId: String(raw.apprenantId ?? raw.userId ?? ""),
     apprenantNom: nom,
     apprenantInitiales: initiales,
     formation: raw.formation ?? "",
@@ -276,240 +269,285 @@ function PaymentPie({
   );
 }
 
+// ── Toast de succès ────────────────────────────────────────
+function SuccessToast({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div className="fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg border"
+      style={{ background: "rgba(26,113,73,0.95)", borderColor: "rgba(255,255,255,0.2)" }}>
+      <span className="text-lg">✅</span>
+      <span className="text-sm font-medium text-white">{message}</span>
+      <button onClick={onClose} className="ml-2 text-white/70 hover:text-white text-xs">✕</button>
+    </div>
+  );
+}
+
+// ── Types locaux ────────────────────────────────────────────
+interface ApprenantOption {
+  id: number;
+  nom: string;
+  initiales: string;
+}
+
+interface SessionOption {
+  id: number | string;
+  title: string;
+  formationId: number;
+}
+
+interface PaymentFormData {
+  apprenantId: number | null;
+  sessionId: string | number | null;
+  formationId: number | null;
+  montant: string;
+  paymentDate: string;
+}
+
 // ── Modal Add/Edit ─────────────────────────────────────────
-function PaiementModal({
-  
+interface PaiementModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSave: (dto: {
+    id?: number;
+    apprenantId: number;
+    formationId: number;
+    montant: number;
+    paymentDate: string;
+    sessionId?: string | number;
+  }) => void | Promise<void>;
+  editItem: Paiement | null;
+  apprenants: ApprenantOption[];
+  formations: { id: number; title: string }[];
+}
+
+export function PaiementModal({
   open,
   onClose,
   onSave,
   editItem,
   apprenants,
-  formations,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSave: (p: Omit<Paiement, "id">) => void;
-  editItem?: Paiement | null;
-  apprenants: { id: number; nom: string; initiales: string }[];
-  formations: { id: number; title: string }[];
-}) {
-  const [form, setForm] = useState({
-    apprenantId: "",
-    sessionId: "",
-    montantTotal: "",
-    montantEncaisse: "",
-    date: "",
-    statut: "Payé" as PaymentStatus,
+}: PaiementModalProps) {
+  const isEditing = Boolean(editItem);
+
+  const [form, setForm] = useState<PaymentFormData>({
+    apprenantId: null,
+    sessionId: null,
+    formationId: null,
+    montant: "",
+    paymentDate: new Date().toISOString().split("T")[0],
   });
 
-  const [searchApprenant, setSearchApprenant] = useState("");
-  const [showList, setShowList] = useState(false);0
+  const [sessions, setSessions] = useState<SessionOption[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [searchNom, setSearchNom] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const [sessions, setSessions] = useState<{ id: number; title: string }[]>([]);
-
-//hedhi bechh ki yabda yekteb fi nom de l'apprenant , ken yabda el apprenant amel barcha inscriptions , ywalli yatla3lou une seule fois
-  const uniqueApprenants = useMemo(() => {
-  const seen = new Set();
-
-  return apprenants.filter((a) => {
-    const key = `${a.id}-${a.nom}`;
-
-    if (seen.has(key)) return false;
-
-    seen.add(key);
-    return true;
-  });
-}, [apprenants]);
-
-  const filteredApprenants = useMemo(() => {
-  const q = searchApprenant.toLowerCase().trim();
-
-  if (!q) return uniqueApprenants;
-
-  return uniqueApprenants.filter((a) =>
-    a.nom.toLowerCase().includes(q)
-  );
-}, [searchApprenant, uniqueApprenants]);
-
-
-//hedhi bech ki yabda yamel recherche lel apprenant ki bech yzid payement , awel mayabda yekteb fl hrouf , ken mafamech toul y9ollou aucun apprenant trouvé
-
+  // ── Reset / Pré-remplissage ──
   useEffect(() => {
+    if (!open) return;
+
     if (editItem) {
       setForm({
-        apprenantId: editItem.apprenantId,
-        sessionId: editItem.sessionId,
-        montantTotal: String(editItem.montantTotal),
-        montantEncaisse: String(editItem.montantEncaisse),
-        date: editItem.date,
-        statut: editItem.statut,
+        apprenantId: Number(editItem.apprenantId) || null,
+        sessionId: editItem.sessionId || null,
+        formationId: Number(editItem.formationId) || null,
+        montant: String(editItem.montantEncaisse ?? ""),
+        paymentDate: editItem.date || new Date().toISOString().split("T")[0],
       });
-      setSearchApprenant(editItem.apprenantNom);
+
+      const app = apprenants.find(
+        (a) => String(a.id) === String(editItem.apprenantId)
+      );
+      setSearchNom(app?.nom ?? "");
+
+      const uid = Number(editItem.apprenantId);
+      if (uid) loadSessions(uid);
     } else {
       setForm({
-        apprenantId: "",
-        sessionId: "",
-        montantTotal: "",
-        montantEncaisse: "",
-        date: "",
-        statut: "Payé",
+        apprenantId: null,
+        sessionId: null,
+        formationId: null,
+        montant: "",
+        paymentDate: new Date().toISOString().split("T")[0],
       });
+      setSearchNom("");
+      setSessions([]);
     }
-  }, [editItem, open]);
+    setError(null);
+  }, [open, editItem, apprenants]);
+
+  // ── Fermer dropdown si clic extérieur ──
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // ── Charger les sessions d'un apprenant ──
+  const loadSessions = async (apprenantId: number) => {
+    setLoadingSessions(true);
+    try {
+      const data = await revenueApi.getSessionsByApprenant(apprenantId);
+      setSessions(data);
+    } catch (e: any) {
+      setError(e.message || "Erreur lors du chargement des sessions");
+      setSessions([]);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  // ── Sélection apprenant (création uniquement) ──
+  const selectApprenant = (app: ApprenantOption) => {
+    setSearchNom(app.nom);
+    setShowDropdown(false);
+    setForm((prev) => ({
+      ...prev,
+      apprenantId: app.id,
+      sessionId: null,
+      formationId: null,
+    }));
+    setSessions([]);
+    loadSessions(app.id);
+  };
+
+  // ── Changement session → récupère formationId auto ──
+  const handleSessionChange = (val: string) => {
+    const session = sessions.find((s) => String(s.id) === val);
+    setForm((prev) => ({
+      ...prev,
+      sessionId: session?.id ?? null,
+      formationId: session?.formationId ?? null,
+    }));
+  };
+
+  // ── Filtre local apprenants ──
+  const filteredApprenants = useMemo(() => {
+    if (!searchNom.trim()) return apprenants;
+    const q = searchNom.toLowerCase();
+    return apprenants.filter(
+      (a) =>
+        a.nom.toLowerCase().includes(q) ||
+        a.initiales.toLowerCase().includes(q)
+    );
+  }, [searchNom, apprenants]);
+
+  // ── Submit ──
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.apprenantId || !form.sessionId || !form.formationId || !form.montant || !form.paymentDate) {
+      setError("Veuillez remplir tous les champs obligatoires.");
+      return;
+    }
+    setError(null);
+    onSave({
+      ...(editItem ? { id: editItem.id } : {}),
+      apprenantId: form.apprenantId,
+      formationId: form.formationId,
+      montant: Number(form.montant),
+      paymentDate: form.paymentDate,
+      sessionId: form.sessionId,
+    });
+  };
 
   if (!open) return null;
-  console.log("APPS RAW:", apprenants);
-
-  const appr = apprenants.find((a) => String(a.id) === form.apprenantId);
-  const form_ = formations.find((f) => String(f.id) === form.sessionId);
-
-  function handleSave() {
-    if (!form.apprenantId || !form.sessionId || !form.montantEncaisse || !form.date)
-      return;
-    const selectedSession = sessions.find(
-    (s) => String(s.id) === form.sessionId
-  );
-
-    onSave({
-      apprenantId: form.apprenantId,
-      apprenantNom: appr?.nom || "",
-      apprenantInitiales: appr?.initiales || "??",
-      session: selectedSession?.title || "",
-      sessionId: form.sessionId,
-       formation: "",        // elformation w formation ID hatithom khater mawjoudin fi type paiement , w ken nahihom famma des fonction bech
-       formationId: "",
-      montantTotal: Number(form.montantTotal || form.montantEncaisse),
-      montantEncaisse: Number(form.montantEncaisse),
-      date: form.date,
-      statut: form.statut,
-    });
-    onClose();
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "9px 12px",
-    borderRadius: 10,
-    border: "1px solid #e5eadd",
-    background: "#efefea",
-    color: "#2d4a3e",
-    fontFamily: "'DM Sans', sans-serif",
-    fontSize: 13,
-    outline: "none",
-  };
-  const labelStyle: React.CSSProperties = {
-    fontSize: 12,
-    color: "#2d4a3e",
-    opacity: 0.6,
-    marginBottom: 5,
-    display: "block",
-  };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{
-        background: "rgba(45,74,62,0.3)",
-        backdropFilter: "blur(6px)",
-      }}
-    >
-      <div
-        className="w-full max-w-md mx-4 rounded-2xl p-6 shadow-2xl"
-        style={{ background: "#f9f8f3", border: "1px solid #e5eadd" }}
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h2
-            className="font-bold text-base"
-            style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}
-          >
-            {editItem ? "Modifier le paiement" : "Enregistrer un Règlement"}
-          </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white transition-colors"
-            style={{ color: "#2d4a3e" }}
-          >
-            ✕
-          </button>
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-full max-w-lg rounded-2xl p-6 shadow-xl" style={{ background: "#f8faf6", border: "1px solid #e5eadd" }}>
+        <h2 className="mb-4 text-xl font-bold" style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}>
+          {isEditing ? "Modifier le paiement" : "Ajouter un paiement"}
+        </h2>
 
-        <div className="space-y-4">
-          <div>
-            <label style={labelStyle}>Apprenant</label>
-            <div style={{ position: "relative" }}>
-  <input
-    type="text"
-    value={searchApprenant}
-    onChange={(e) => {
-      setSearchApprenant(e.target.value);
-      setShowList(true);
-    }}
-    onFocus={() => setShowList(true)}
-    onBlur={() => setTimeout(() => setShowList(false), 200)}
-    placeholder="Rechercher apprenant..."
-    style={inputStyle}
-  />
-  {/* 👇 هذا هو المكان الصحيح */}
-{showList && searchApprenant && (
-  <div
-    className="absolute z-50 w-full mt-2 rounded-2xl overflow-hidden"
-    style={{
-      background: "#f9f8f3",
-      border: "1px solid #e5eadd",
-      boxShadow: "0 10px 30px rgba(45,74,62,0.1)",
-    }}
-  >
-    {filteredApprenants.length > 0 ? (
-      filteredApprenants.map((a) => (
-        <div
-          key={a.id}
-          onClick={async () => {
-  const id = Number(a.id) ;
-
-  setForm((f) => ({
-    ...f,
-    apprenantId: String(id),
-    sessionId: "",
-  }));
-
-  setSearchApprenant(a.nom);
-  setShowList(false);
-
-   
-  const data = await revenueApi.getSessionsByApprenant(id);
-
-  console.log("RAW SESSIONS:", data);
-
-  setSessions(data);
-}}
-          className="px-4 py-2 cursor-pointer transition-all hover:bg-white"
-          style={{ color: "#2d4a3e" }}
-        >
-          {a.nom}
-        </div>
-      ))
-    ) : (
-      <div
-        className="px-4 py-3 text-sm"
-        style={{ color: "#2d4a3e", opacity: 0.6 }}
-      >
-        Aucun apprenant trouvé
-      </div>
-    )}
-  </div>
-)}
-</div>
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+            {error}
           </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* ─── Apprenant (autocomplete) ─── */}
+          <div className="relative" ref={dropdownRef}>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+              Apprenant <span style={{ color: "#DC2626" }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={searchNom}
+              disabled={isEditing}
+              onChange={(e) => {
+                if (isEditing) return;
+                setSearchNom(e.target.value);
+                setShowDropdown(true);
+                if (!e.target.value) {
+                  setForm((p) => ({ ...p, apprenantId: null, sessionId: null, formationId: null }));
+                  setSessions([]);
+                }
+              }}
+              onFocus={() => !isEditing && setShowDropdown(true)}
+              placeholder="Tapez le nom de l'apprenant..."
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none transition-all"
+              style={{ borderColor: "#e5eadd", color: "#2d4a3e", background: "#fff" }}
+              autoComplete="off"
+            />
+
+            {showDropdown && !isEditing && (
+              <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border shadow-lg" style={{ borderColor: "#e5eadd", background: "#fff" }}>
+                {filteredApprenants.length === 0 ? (
+                  <div className="p-3 text-sm" style={{ color: "#2d4a3e", opacity: 0.5 }}>
+                    Aucun apprenant trouvé
+                  </div>
+                ) : (
+                  filteredApprenants.map((app) => (
+                    <button
+                      key={app.id}
+                      type="button"
+                      onClick={() => selectApprenant(app)}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[rgba(26,113,73,0.06)]"
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold" style={{ background: "rgba(26,113,73,0.12)", color: "#1a7149" }}>
+                        {app.initiales}
+                      </span>
+                      <span style={{ color: "#2d4a3e" }}>{app.nom}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ─── Session (cascade) ─── */}
           <div>
-            <label style={labelStyle}>Session</label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+              Session <span style={{ color: "#DC2626" }}>*</span>
+            </label>
             <select
-              value={form.sessionId}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, sessionId: e.target.value }))
-              }
-              style={{ ...inputStyle, appearance: "none" }}
+              value={form.sessionId ?? ""}
+              onChange={(e) => handleSessionChange(e.target.value)}
+              disabled={!form.apprenantId || loadingSessions || sessions.length === 0}
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={{ borderColor: "#e5eadd", color: "#2d4a3e", background: "#fff" }}
             >
-              <option value="">Sélectionner...</option>
+              <option value="" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+                {loadingSessions
+                  ? "Chargement des sessions…"
+                  : !form.apprenantId
+                  ? "Sélectionnez d'abord un apprenant"
+                  : sessions.length === 0
+                  ? "Aucune session trouvée"
+                  : "Choisir une session"}
+              </option>
               {sessions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title}
@@ -517,80 +555,59 @@ function PaiementModal({
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label style={labelStyle}>Montant total (TND)</label>
-              <input
-                type="number"
-                value={form.montantTotal}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, montantTotal: e.target.value }))
-                }
-                style={inputStyle}
-                placeholder="1500"
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Montant encaissé (TND)</label>
-              <input
-                type="number"
-                value={form.montantEncaisse}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, montantEncaisse: e.target.value }))
-                }
-                style={inputStyle}
-                placeholder="750"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label style={labelStyle}>Date</label>
-              <input
-                type="date"
-                value={form.date}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, date: e.target.value }))
-                }
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Statut</label>
-              <select
-                value={form.statut}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    statut: e.target.value as PaymentStatus,
-                  }))
-                }
-                style={{ ...inputStyle, appearance: "none" }}
-              >
-                <option value="Payé">Payé</option>
-                <option value="Partiel">Partiel</option>
-                <option value="Impayé">Impayé</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium border transition-all hover:bg-white"
-            style={{ borderColor: "#e5eadd", color: "#2d4a3e" }}
-          >
-            Annuler
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
-            style={{ background: "#1a7149" }}
-          >
-            {editItem ? "Enregistrer" : "Ajouter"}
-          </button>
-        </div>
+          {/* ─── Montant ─── */}
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+              Montant (DT) <span style={{ color: "#DC2626" }}>*</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              value={form.montant}
+              onChange={(e) => setForm((p) => ({ ...p, montant: e.target.value }))}
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={{ borderColor: "#e5eadd", color: "#2d4a3e", background: "#fff" }}
+              placeholder="0.00"
+            />
+          </div>
+
+          {/* ─── Date ─── */}
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+              Date de paiement <span style={{ color: "#DC2626" }}>*</span>
+            </label>
+            <input
+              type="date"
+              required
+              value={form.paymentDate}
+              onChange={(e) => setForm((p) => ({ ...p, paymentDate: e.target.value }))}
+              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+              style={{ borderColor: "#e5eadd", color: "#2d4a3e", background: "#fff" }}
+            />
+          </div>
+
+          {/* ─── Actions ─── */}
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border px-4 py-2 text-sm font-semibold transition-all hover:bg-white"
+              style={{ borderColor: "#e5eadd", color: "#2d4a3e" }}
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90"
+              style={{ background: "#1a7149" }}
+            >
+              {isEditing ? "Modifier" : "Valider le paiement"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -634,6 +651,88 @@ function SortTh({
   );
 }
 
+// ── Pagination avec flèches ───────────────────────────────
+function Pagination({
+  page,
+  pages,
+  onChange,
+}: {
+  page: number;
+  pages: number;
+  onChange: (p: number) => void;
+}) {
+  if (pages <= 1) return null;
+
+  const getRange = () => {
+    const delta = 1;
+    const range: (number | string)[] = [];
+    for (let i = 1; i <= pages; i++) {
+      if (i === 1 || i === pages || (i >= page - delta && i <= page + delta)) {
+        range.push(i);
+      } else if (range[range.length - 1] !== "...") {
+        range.push("...");
+      }
+    }
+    return range;
+  };
+
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: "#e5eadd" }}>
+      <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+        Page {page}/{pages} · {pages} pages
+      </span>
+      <div className="flex items-center gap-1">
+        {/* Précédent */}
+        <button
+          onClick={() => onChange(Math.max(1, page - 1))}
+          disabled={page === 1}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-all disabled:opacity-30"
+          style={{
+            background: page === 1 ? "transparent" : "rgba(229,234,221,0.5)",
+            color: "#2d4a3e",
+          }}
+        >
+          ‹
+        </button>
+
+        {/* Numéros */}
+        {getRange().map((item, idx) =>
+          item === "..." ? (
+            <span key={`dots-${idx}`} className="px-1 text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+              ...
+            </span>
+          ) : (
+            <button
+              key={item}
+              onClick={() => onChange(Number(item))}
+              className="h-7 min-w-[28px] rounded-lg px-1.5 text-xs font-medium transition-all"
+              style={{
+                background: page === item ? "#1a7149" : "transparent",
+                color: page === item ? "#fff" : "#2d4a3e",
+              }}
+            >
+              {item}
+            </button>
+          )
+        )}
+
+        {/* Suivant */}
+        <button
+          onClick={() => onChange(Math.min(pages, page + 1))}
+          disabled={page === pages}
+          className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-all disabled:opacity-30"
+          style={{
+            background: page === pages ? "transparent" : "rgba(229,234,221,0.5)",
+            color: "#2d4a3e",
+          }}
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Onglet principal ───────────────────────────────────────
 export default function PaiementsTab({
   filters,
@@ -660,37 +759,29 @@ export default function PaiementsTab({
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<Paiement | null>(null);
   const [page, setPage] = useState(1);
+  const [toast, setToast] = useState<string | null>(null);
   const PER = 6;
 
   // ── Chargement des données ─────────────────────────────
   useEffect(() => {
-
-    
-    
     let cancelled = false;
     async function load() {
       setLoading(true);
       try {
-
         const statusToSend = filterStatut !== "Tout" 
         ? (filterStatut === "Payé" ? "paid" : filterStatut === "Partiel" ? "partial" : "unpaid")
         : filters.paymentStatus;
 
         const apiFilters = { ...filters , paymentStatus: statusToSend };
          
-        // Référentiels + données en parallèle
         const [appr, form, k, p, t] = await Promise.all([
           revenueApi.getApprenants().catch(() => []),
           revenueApi.getFormationsList().catch(() => []),
           revenueApi.getPaymentKpis(apiFilters),
           revenueApi.getPaymentPie(apiFilters),
-          
-          revenueApi.getPaymentTable(apiFilters), // large page pour le tableau local
-          
+          revenueApi.getPaymentTable(apiFilters),
         ]);
 
-       
-        
         if (cancelled) return;
 
         setApprenants(appr);
@@ -698,7 +789,6 @@ export default function PaiementsTab({
         setKpis(k);
         setPieData(p);
         setRows((t.items ?? []).map(mapPaymentRow));
-        
       } catch (e) {
         console.error("Erreur chargement paiements:", e);
       } finally {
@@ -800,19 +890,21 @@ export default function PaiementsTab({
   }
 
   // ── Sauvegarde (create / update) ──────────────────────
-  async function handleSave(p: Omit<Paiement, "id">) {
+  async function handleSave(dto: {
+    id?: number;
+    apprenantId: number;
+    formationId: number;
+    montant: number;
+    paymentDate: string;
+    sessionId?: string | number;
+  }) {
     try {
-      const dto = {
-        userId: Number(p.apprenantId),
-        formationId: Number(p.formationId),
-        montant: p.montantEncaisse,
-        paymentDate: p.date,
-      };
-
-      if (editItem) {
-        await revenueApi.updatePayment(Number(editItem.id), dto);
+      if (dto.id) {
+        await revenueApi.updatePayment(dto.id, dto);
+        setToast("Paiement modifié avec succès ✅");
       } else {
         await revenueApi.addPayment(dto);
+        setToast("Paiement ajouté avec succès ✅");
       }
 
       await reload();
@@ -820,82 +912,59 @@ export default function PaiementsTab({
       setEditItem(null);
     } catch (e) {
       console.error(e);
-      alert("Erreur lors de l'enregistrement du paiement.");
+      alert('Erreur lors de l\'enregistrement du paiement.');
     }
   }
 
   // ── Suppression ────────────────────────────────────────
-  async function handleDelete(id: string) {
+  async function handleDelete(id: number) {
     if (!confirm("Supprimer ce paiement ?")) return;
     try {
-      await revenueApi.deletePayment(Number(id));
+      await revenueApi.deletePayment(id);
       setRows((prev) => prev.filter((r) => r.id !== id));
+      setToast("Paiement supprimé ✅");
     } catch (e) {
       console.error(e);
       alert("Erreur lors de la suppression.");
     }
   }
 
-
-  // ── Recherche de l'apprenant dans la partie add payement ─────────────────
-
-  const apprenantsFromTable = useMemo(() => {
-  const map = new Map();
-
-  rows.forEach((r) => {
-    if (!map.has(r.apprenantId)) {
-      map.set(r.apprenantId, {
-        id: r.apprenantId,
-        nom: r.apprenantNom,
-        initiales: r.apprenantInitiales,
-      });
-    }
-  });
-
-  return Array.from(map.values());
-}, [rows]);
-
-
-
   // ── export ───────────────────────────────
   function handleExport() {
-  const data = sorted;
+    const data = sorted;
+    if (!data || data.length === 0) return;
 
-  if (!data || data.length === 0) return;
+    const headers = [
+      "Apprenant",
+      "Session",
+      "Total",
+      "Encaissé",
+      "Restant",
+      "Statut",
+    ];
 
-  const headers = [
-    "Apprenant",
-    "Session",
-    "Total",
-    "Encaissé",
-    "Restant",
-    "Statut",
-  ];
+    const csvRows = data.map((r) => [
+      r.apprenantNom,
+      r.session,
+      r.montantTotal,
+      r.montantEncaisse,
+      r.montantTotal - r.montantEncaisse,
+      r.statut,
+    ]);
 
-  const rows = data.map((r) => [
-    r.apprenantNom,
-    r.session,
-    r.montantTotal,
-    r.montantEncaisse,
-    r.montantTotal - r.montantEncaisse,
-    r.statut,
-  ]);
+    const csv =
+      [headers, ...csvRows]
+        .map((e) => e.join(","))
+        .join("\n");
 
-  const csv =
-    [headers, ...rows]
-      .map((e) => e.join(","))
-      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
 
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "paiements.csv";
-  a.click();
-}
-
-
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "paiements.csv";
+    a.click();
+  }
 
   // ── Skeleton ──────────────────────────────────────────
   if (loading) {
@@ -920,6 +989,9 @@ export default function PaiementsTab({
 
   return (
     <div className="space-y-6">
+      {/* ── Toast ── */}
+      {toast && <SuccessToast message={toast} onClose={() => setToast(null)} />}
+
       {/* ── Filtres locaux ── */}
       <div
         className="flex flex-wrap items-center gap-2 p-4 rounded-2xl"
@@ -935,7 +1007,7 @@ export default function PaiementsTab({
           options={[
             { label: "Toutes", value: "Tout" },
             ...formations.map((f) => ({
-              label: f.title.split(" ")[0],
+              label: f.title,
               value: String(f.id),
             })),
           ]}
@@ -1114,7 +1186,6 @@ export default function PaiementsTab({
                   sortDir={sortDir}
                   onSort={toggleSort}
                 />
-                
                 <SortTh
                   label="Statut"
                   col="statut"
@@ -1134,7 +1205,7 @@ export default function PaiementsTab({
               {paged.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={7}
                     className="text-center py-10 text-sm"
                     style={{ color: "#2d4a3e", opacity: 0.35 }}
                   >
@@ -1213,7 +1284,6 @@ export default function PaiementsTab({
                           {fmtCurrency(encours)}
                         </span>
                       </td>
-                      
                       <td className="px-4 py-3">
                         <StatusPill status={row.statut} />
                       </td>
@@ -1254,36 +1324,8 @@ export default function PaiementsTab({
           </table>
         </div>
 
-        {/* Pagination */}
-        {pages > 1 && (
-          <div
-            className="flex items-center justify-between px-5 py-3 border-t"
-            style={{ borderColor: "#e5eadd" }}
-          >
-            <span
-              className="text-xs"
-              style={{ color: "#2d4a3e", opacity: 0.4 }}
-            >
-              Page {page}/{pages} · {filtered.length} résultats
-            </span>
-            <div className="flex gap-1">
-              {Array.from({ length: pages }, (_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setPage(i + 1)}
-                  className="w-7 h-7 rounded-lg text-xs font-medium transition-all"
-                  style={{
-                    background:
-                      page === i + 1 ? "#1a7149" : "transparent",
-                    color: page === i + 1 ? "#fff" : "#2d4a3e",
-                  }}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* ── Pagination avec flèches ── */}
+        <Pagination page={page} pages={pages} onChange={setPage} />
       </div>
 
       {/* ── Modal ── */}
@@ -1295,7 +1337,7 @@ export default function PaiementsTab({
         }}
         onSave={handleSave}
         editItem={editItem}
-        apprenants={apprenantsFromTable}
+        apprenants={apprenants}
         formations={formations}
       />
     </div>

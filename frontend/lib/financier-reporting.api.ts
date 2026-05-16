@@ -1,14 +1,12 @@
-// src/api/financeReporting.ts
+const BASE_URL =  "http://localhost:5000";
 
-const BASE_URL ="http://localhost:5000";
-
-export type Period = "current_month" | "current_quarter" | "current_year" | "custom";
 export type ExportFormat = "pdf" | "excel" | "csv";
+export type BackendPeriod = "custom"; // on force toujours custom + dates explicites
 
 export interface ReportFilter {
-  period?: Period;
-  startDate?: string;
-  endDate?: string;
+  period: BackendPeriod;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
 }
 
 export interface ReportKpis {
@@ -29,7 +27,7 @@ export interface ReportSessionRow {
   margin: number;
   recoveryRate: number;
   fillRate: number;
-  status: "rentable" | "seuil" | "deficitaire";
+  status: string;
 }
 
 export interface ReportResponse {
@@ -42,45 +40,62 @@ function getToken(): string {
   return localStorage.getItem("access_token") || "";
 }
 
-export async function fetchReportPreview(filter: ReportFilter): Promise<ReportResponse> {
+function buildQueryParams(filter: ReportFilter): URLSearchParams {
   const params = new URLSearchParams();
-  if (filter.period) params.set("period", filter.period);
-  if (filter.startDate) params.set("startDate", filter.startDate);
-  if (filter.endDate) params.set("endDate", filter.endDate);
+  params.set("period", filter.period);
+  params.set("startDate", filter.startDate);
+  params.set("endDate", filter.endDate);
+  return params;
+}
+
+export async function fetchReportPreview(filter: ReportFilter): Promise<ReportResponse> {
+  const params = buildQueryParams(filter);
+  const url = `${BASE_URL}/finance/reports/preview?${params.toString()}`;
   
-  const res = await fetch(`${BASE_URL}/finance/reports/preview?${params.toString()}`, {
+  console.log("[API] fetchReportPreview →", url); // debug
+
+  const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${getToken()}`,
-      "Content-Type": "application/json",
+      Accept: "application/json",
     },
   });
-  if (!res.ok) throw new Error(`Erreur ${res.status}`);
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Erreur ${res.status}`);
+  }
+
   return res.json();
 }
 
-export async function exportReport(
-  filter: ReportFilter,
-  format: ExportFormat
-): Promise<void> {
-
-  const params = new URLSearchParams();
-  if (filter.period) params.set("period", filter.period);
-  if (filter.startDate) params.set("startDate", filter.startDate);
-  if (filter.endDate) params.set("endDate", filter.endDate);
+export async function exportReport(filter: ReportFilter, format: ExportFormat): Promise<void> {
+  const params = buildQueryParams(filter);
   params.set("format", format);
 
-  const res = await fetch(`${BASE_URL}/finance/reports/export?${params.toString()}`, {
+  const url = `${BASE_URL}/finance/reports/export?${params.toString()}`;
+  console.log("[API] exportReport →", url); // debug
+
+  const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${getToken()}`,
+      Accept: "*/*",
     },
   });
-  if (!res.ok) throw new Error(`Erreur export ${res.status}`);
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Erreur export ${res.status}`);
+  }
 
   const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  const urlBlob = URL.createObjectURL(blob);
   const a = document.createElement("a");
   const ext = format === "excel" ? "xlsx" : format;
-  a.href = url;
-  a.download = `rapport-finance-${new Date().toISOString().split('T')[0]}.${ext}`;
+  a.href = urlBlob;
+  a.download = `rapport-finance-${new Date().toISOString().split("T")[0]}.${ext}`;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
+  URL.revokeObjectURL(urlBlob);
 }

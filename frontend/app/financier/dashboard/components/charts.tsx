@@ -33,6 +33,18 @@ const glassCard = {
   border: "1px solid rgba(229,234,221,0.9)",
 };
 
+const colors = [
+  "rgb(44, 149, 83)", // foncé (accent)
+  "rgb(20, 123, 73)",
+  "rgb(43, 155, 85)",
+  "rgb(17, 101, 85)",
+  "rgb(32, 101, 62)",
+  "rgb(32, 101, 85)",
+  "rgb(32, 101, 62)",
+  "rgb(45, 86, 62)",
+  "rgb(45, 106, 62)",
+];
+
 function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl p-5 flex flex-col gap-4" style={glassCard}>
@@ -204,8 +216,10 @@ function RevenueCostBarChart({ data }: { data: any[] }) {
   return <div style={{ height: 220 }}><canvas ref={canvasRef} /></div>;
 }
 
+
 // ─── Doughnut Chart: CA par type ─────────────────────────────────────────────
 function FormationDoughnutChart({ data }: { data: any[] }) {
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
 
@@ -220,7 +234,7 @@ function FormationDoughnutChart({ data }: { data: any[] }) {
         datasets: [
           {
             data: data.map((d) => d.caRealise),
-            backgroundColor: data.map((d) => d.color),
+            backgroundColor: data.map((_, i) => colors[i % colors.length]),
             borderWidth: 0,
             hoverOffset: 8,
           },

@@ -5,6 +5,8 @@ import { Formation, FormationStatus } from './entities/formation.entity';
 import { CreateFormationDto } from './dto/create-formation.dto';
 import { UpdateFormationDto } from './dto/update-formation.dto';
 import { Session, SessionStatut } from '../sessions/entities/session.entity';
+import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
+import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
 
 // ─── Shape renvoyée au frontend ───────────────────────────────────────────────
 export interface FormationStats {
@@ -31,6 +33,8 @@ export class FormationsService {
     private readonly formationRepo: Repository<Formation>,
     @InjectRepository(Session)
     private readonly sessionRepo: Repository<Session>,
+    @InjectRepository(Apprenant)
+    private readonly apprenantRepo: Repository<Apprenant>,
     
   ) {}
 
@@ -84,8 +88,14 @@ export class FormationsService {
       // On joint la table inscriptions pour vérifier que l'utilisateur y est
       .innerJoin('formation.sessions', 'session')
       .innerJoin('session.apprenants', 'apprenant')
-      .where('(apprenant.userId = :userId OR apprenant.id = :userId)', { userId })
-      query.distinct(true); //Si un apprenant est inscrit à deux sessions différentes (ex: un rattrapage et une session normale) pour la même formation, getManyAndCount pourrait parfois compter la formation deux fois selon la configuration. 
+      .leftJoinAndMapOne(
+        'formation.mySatisfaction', 
+        Satisfaction, 
+        'satisfaction', 
+        'satisfaction.formationId = formation.id AND satisfaction.apprenantId = apprenant.id'
+    )
+      .where('apprenant.userId = :userId', { userId })
+      .distinct(true); //Si un apprenant est inscrit à deux sessions différentes (ex: un rattrapage et une session normale) pour la même formation, getManyAndCount pourrait parfois compter la formation deux fois selon la configuration. 
       // TypeORM gère généralement cela, mais si ya des doubleons on utilise cet ft
       
 
@@ -95,17 +105,26 @@ export class FormationsService {
     }
     // PAGINATION : On saute les pages précédentes et on prend la limite
     const [items, total] = await query
+    .leftJoinAndSelect('session.formateur', 'formateur')
       .skip((pageNumber - 1) * formationPerPage) //9aadech bech yamel mn skip. exp(skip:1 w take:5 maneha bech ywarri juste el 5 ethenyn ) 
       .take(formationPerPage) //9adeh mn formation bech todhor fl page 
       .getManyAndCount();
       
 
     const formattedData = items.map(formation => {
+      const firstSession = formation.sessions?.[0];
+  const instructorName = firstSession?.formateur 
+    ? `${firstSession.formateur.nom} ${firstSession.formateur.prenom}`
+    : 'Centre de Formation';
       return{
       id: formation.id,
       title: formation.titre,
+      userRating: (formation as any).mySatisfaction?.note || null, // On ajoute la note ici
+      userComment: (formation as any).mySatisfaction?.commentaire || null,
       description: formation.description,
-      statut: formation.statut,
+      instructor: instructorName,
+      duration: `${formation.dureeHeures || 0}h`, 
+      progress: formation.statut === 'completed' ? 100 : 35, // Simulé ou calculé
       createdAt: formation.createdAt,
       }
     });
@@ -127,7 +146,6 @@ export class FormationsService {
     * @returns tout le contenu + dates
     */
  public async findFormation(id: number, userId: number) {
-  // 1. On charge la formation avec ses relations
   const formation = await this.formationRepo.findOne({
     where: { id: Number(id) },
     relations: { sessions: { formateur: true, apprenants: true } },
@@ -135,34 +153,20 @@ export class FormationsService {
 
   if (!formation) throw new BadRequestException(`Formation introuvable`);
 
-  console.log("--- VÉRIFICATION INSCRIPTION ---");
-  console.log("Recherche pour userId (JWT):", userId);
-
-  // 2. On vérifie l'inscription avec une conversion forcée en Number
-  let isEnrolled = false;
-
-  if (formation.sessions) {
-    for (const session of formation.sessions) {
-      // LOG de debug pour voir si les apprenants sont bien chargés
-      console.log(`Session ${session.id} : ${session.apprenants?.length || 0} apprenants chargés.`);
-      
-      if (session.apprenants) {
-        const found = session.apprenants.find(a => Number(a.userId) === Number(userId));
-        if (found) {
-          console.log(`Utilisateur trouvé dans la session ${session.id} (Apprenant ID: ${found.id})`);
-          isEnrolled = true;
-          break;
-        }
-      }
-    }
-  }
+  // 1. Vérifier que l'apprenant est inscrit à au moins une session
+  const isEnrolled = formation.sessions?.some(session =>
+    session.apprenants?.some(a => Number(a.userId) === Number(userId))
+  );
 
   if (!isEnrolled) {
-    // On affiche plus de détails dans l'erreur pour comprendre pendant le test
     throw new BadRequestException(`Accès refusé: l'utilisateur ${userId} n'est inscrit à aucune session de cette formation`);
   }
 
-  // 3. Retour des données
+  // 2. ✅ FILTRER : ne garder que les sessions où l'apprenant est inscrit
+  const enrolledSessions = formation.sessions?.filter(session =>
+    session.apprenants?.some(a => Number(a.userId) === Number(userId))
+  ) || [];
+
   return {
     id: formation.id,
     title: formation.titre,
@@ -170,7 +174,7 @@ export class FormationsService {
     categorie: formation.categorie,
     statut: formation.statut,
     createdAt: formation.createdAt,
-    sessions: formation.sessions.map(session => ({
+    sessions: enrolledSessions.map(session => ({
       id: session.id,
       title: session.title,
       date: session.date,
@@ -181,68 +185,102 @@ export class FormationsService {
   };
 }
 //hedhi tekhdem zeda
-public async findAllAvailableFormations() {
-  const formations = await this.formationRepo.find({
-    where: { statut: FormationStatus.ACTIVE },
-    select: ['id', 'titre', 'description', 'dureeHeures'],
-  });
+public async findAllAvailableFormations(userId: number) {
+  // 1. Charger l'apprenant une fois pour toutes
+  const apprenant = await this.apprenantRepo.findOne({ where: { userId } });
+   if (!apprenant) {
+    // Retourner TOUTES les formations actives (nouveau compte = aucune inscription possible)
+    const formations = await this.formationRepo.find({
+      where: { statut: FormationStatus.ACTIVE },
+      select: ['id', 'titre', 'description', 'dureeHeures'],
+    });
+    
+    return formations.map(f => ({
+      id: f.id,
+      title: f.titre,
+      description: f.description,
+      duration: `${f.dureeHeures}h`,
+      instructor: "Centre de formation"
+    }));
+  }
 
-  // ✅ On mappe pour que le frontend reçoive les bons noms
+  const formations = await this.formationRepo
+    .createQueryBuilder('formation')
+    .where('formation.statut = :statut', { statut: FormationStatus.ACTIVE })
+    .andWhere(qb => {
+      const subQuery = qb
+        .subQuery()
+        .select('1')
+        .from(Session, 'session')
+        .leftJoin(
+          'sessions_apprenants',
+          'sa',
+          'sa."sessionId" = session.id AND sa."apprenantId" = :apprenantId'
+        )
+        .where('session.formationId = formation.id')
+        .andWhere('session.statut = :sessionStatut')
+        .andWhere('sa."apprenantId" IS NULL')
+        .setParameter('apprenantId', apprenant.id)
+        .setParameter('sessionStatut', SessionStatut.ACTIF)
+        .getQuery();
+      return `EXISTS ${subQuery}`;
+    })
+    .select(['formation.id', 'formation.titre', 'formation.description', 'formation.dureeHeures'])
+    .getMany();
+
   return formations.map(f => ({
     id: f.id,
-    title: f.titre, // titre -> title
+    title: f.titre,
     description: f.description,
-    duration: `${f.dureeHeures}h`, // dureeHeures -> duration
-    instructor: "Centre de formation" // Optionnel
+    duration: `${f.dureeHeures}h`,
+    instructor: "Centre de formation"
   }));
 }
+
 
 //hedhi tekhdem zeda
    // pour afficher les sessions disponibles d'une formation (celles qui ne sont pas complètes et auxquelles l'apprenant n'est pas encore inscrit)
   public async findAllAvailableSessions(formationId: number, userId: number) {
-  // On part de sessionRepo pour avoir une liste de sessions propre
+  // 1. Charger l'apprenant
+  const apprenant = await this.apprenantRepo.findOne({ where: { userId } });
+  if (!apprenant) {
+    console.log('ℹ️ No apprenant found, returning all active sessions');
+    const sessions = await this.sessionRepo.find({
+      where: { 
+        formationId,
+        statut: SessionStatut.ACTIF 
+      },
+      select: ['id', 'title', 'date', 'capacite'],
+    });
+    return sessions;
+  }
+
   const query = this.sessionRepo.createQueryBuilder('session')
     .where('session.formationId = :formationId', { formationId })
     .andWhere('session.statut = :statut', { statut: SessionStatut.ACTIF })
-
-    // FILTRE 1 : L'utilisateur ne doit pas être déjà inscrit
-    // On utilise NOT EXISTS pour exclure les sessions où l'utilisateur apparaît
-    .andWhere((qb) => {
-      const subQuery = qb
-        .subQuery()
+    // Exclure les sessions où l'apprenant est déjà inscrit (via sa PK number)
+    .andWhere(qb => {
+      const subQuery = qb.subQuery()
         .select('1')
-        .from('session_apprenants', 'sa') // Vérifiez si c'est sessions_apprenants ou session_apprenants
-        .innerJoin('apprenants', 'app', 'app.id = sa.apprenantId')
-        .where('sa.sessionId = session.id')
-        .andWhere('app.userId = :userId')
+        .from('sessions_apprenants', 'sa')
+        .where('sa."apprenantId" = :apprenantId')
+        .andWhere('sa."sessionId" = session.id')
         .getQuery();
-      return 'NOT EXISTS ' + subQuery;
+      return `NOT EXISTS ${subQuery}`;
     })
-
-    // FILTRE 2 : La capacité ne doit pas être atteinte
+    .setParameter('apprenantId', apprenant.id)
+    // Capacité non atteinte
     .andWhere((qb) => {
       const subQuery = qb
         .subQuery()
-        .select('COUNT(sa2.apprenantId)')
-        .from('session_apprenants', 'sa2')
-        .where('sa2.sessionId = session.id')
+        .select('COUNT(sa2."apprenantId")')
+        .from('sessions_apprenants', 'sa2')
+        .where('sa2."sessionId" = session.id')
         .getQuery();
-      // Attention : Correction de "capacity" en "capacite" (nom de votre entité)
       return `(${subQuery}) < session.capacite`;
-    })
-    
-    // On injecte le paramètre userId pour la sous-requête
-    .setParameter('userId', userId)
+    });
 
-    .select([
-      'session.id',
-      'session.title',
-      'session.date',
-      'session.capacite',
-      'session.prix',
-    ]);
-
-  return await query.getMany();
+  return query.getMany();
 }
 
   // ─── Calcul des métriques depuis session_apprenants ──────────────────────

@@ -1,29 +1,45 @@
-// lib/student.service.ts
 const API_URL = 'http://localhost:5000';
 
 export async function getStudentDashboardData() {
-  const token = localStorage.getItem('access_token'); // Ou votre méthode de stockage
-   console.log("TOKEN ENVOYÉ :", token);
-
-  const response = await fetch(`${API_URL}/dashboard/student`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    // On récupère le message d'erreur du backend s'il existe
-    const errorData = await response.json().catch(() => ({}));
-    console.error("Erreur Backend détaillée:", {
-      status: response.status,
-      message: errorData.message || "No message"
-    });
-    throw new Error(`Error ${response.status}: ${errorData.message || 'Failed to fetch'}`);
+  const token = localStorage.getItem('access_token');
+  
+  if (!token) {
+    throw new Error('No token found');
   }
 
-  return response.json();
+  try {
+    const response = await fetch(`${API_URL}/dashboard/student`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    // 🔍 Lire le body UNE SEULE FOIS
+    const text = await response.text();
+    console.log('Dashboard API response:', response.status, text.substring(0, 200));
+
+    if (!response.ok) {
+      // Essayer de parser l'erreur
+      let errorMsg = `HTTP ${response.status}`;
+      try {
+        const errJson = JSON.parse(text);
+        errorMsg = errJson.message || errorMsg;
+      } catch {
+        // Pas du JSON, garder le texte brut
+        errorMsg = text || errorMsg;
+      }
+      throw new Error(errorMsg);
+    }
+
+    // Parser le JSON
+    return text ? JSON.parse(text) : null;
+    
+  } catch (err: any) {
+    console.error('Dashboard fetch error:', err);
+    throw err;
+  }
 }
 //Pour éviter qu'un apprenant n'aille manuellement sur /admin/dashboard en tapant l'URL :
 //Côté Frontend : Utilisez un Middleware Next.js pour vérifier le rôle stocké ou le token.

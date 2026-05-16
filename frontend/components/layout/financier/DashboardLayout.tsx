@@ -5,10 +5,8 @@ import {
   LayoutDashboard,
   TrendingUp,
   Users,
-  BookOpen,
   Calendar,
   Settings,
-  Bell,
   Search,
   ChevronDown,
   GraduationCap,
@@ -17,9 +15,15 @@ import {
   DollarSign,
   LogOut,
   Menu,
+  BellDot,
+  BellIcon,
+  Wallet,
+  Receipt,
+  User,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { getProfile } from "@/lib/profile.api";
+import AlertDropdown from "@/app/financier/alerts/components/AlertDropdown";
 
 interface NavItem {
   icon: React.ElementType;
@@ -34,17 +38,15 @@ interface NavItem {
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Tableau de bord", href: "/financier/dashboard" },
   { icon: DollarSign, label: "Revenue", href: "/financier/revenue"},
-  { icon: Users, label: "Cout", href: "/financier/cout" },
+  { icon: Wallet, label: "Cout", href: "/financier/cout" },
   { icon:  FileText, label: "Report & Export", href: "/financier/report-export" },
-  { icon: Calendar, label: "Alerts", href: "#", badge: 3 },
-  { icon: BarChart2, label: "Profile", href: "/apprenant/profile" },
-  { icon: TrendingUp, label: "Rapports", href: "#" },
-  { icon: DollarSign, label: "Facturation", href: "#" },
+  { icon: BellIcon, label: "Alerts", href: "/financier/alerts"},
+  { icon: User, label: "Profile", href: '/apprenant/profile' },
 ];
 
 const bottomItems: NavItem[] = [
   { icon: Settings, label: "Paramètres", href: "#" },
-  { icon: LogOut, label: "Déconnexion", href: "#" },
+  { icon: LogOut, label: "Déconnexion", href: "/auth/login" },
 ];
 
 
@@ -197,10 +199,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       {/* Main Area */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col overflow-visible min-w-0">
         {/* Navbar */}
         <header
-          className="flex items-center justify-between px-6 py-4 border-b"
+          className="relative z-50 flex items-center justify-between px-6 py-4 border-b "
           style={{
             background: "rgba(249,248,243,0.85)",
             backdropFilter: "blur(12px)",
@@ -241,16 +243,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {/* Notifications */}
-            <button
-              className="relative p-2.5 rounded-xl border transition-all hover:shadow-md"
-              style={{ background: "#efefea", borderColor: "#e5eadd" }}
-            >
-              <Bell size={18} style={{ color: "#2d4a3e" }} />
-              <span
-                className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
-                style={{ background: "#DC2626" }}
-              />
-            </button>
+            <AlertDropdown />
 
             {/* Profile */}
             <button

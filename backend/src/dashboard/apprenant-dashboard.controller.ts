@@ -8,8 +8,7 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
 
 @Controller('dashboard')
-@UseGuards(JwtAuthGuard, RolesGuard) // Protection par JWT
-@Roles('apprenant')
+@UseGuards(JwtAuthGuard) // Protection par JWT
 export class ApprenantDashboardController {
   constructor(private readonly apprenantdashboardService: ApprennatDashboardService) {}
 

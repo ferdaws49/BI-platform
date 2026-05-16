@@ -12,6 +12,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/users/users.entity';
 import { AuthGuard } from './guards/auth.guard';
 import { UsersService } from 'src/users/users.service';
+import { Inscription } from 'src/inscriptions/entities/inscriptions.entity';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { UsersService } from 'src/users/users.service';
       signOptions: { expiresIn: '1d' },
     }),
     
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User,  Inscription]),
   ],
   providers: [AuthService, JwtStrategy, AuthGuard ],        // ← add JwtStrategy
   controllers: [AuthController, ResetPasswordController],

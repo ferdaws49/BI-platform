@@ -9,6 +9,7 @@ import type { JWTPayloadType } from "../utils/types";
 import { UsersService } from 'src/users/users.service';
 import { ForgotPasswordDto } from './dtos/forgot-password.dto';
 import { ResetPasswordDto } from "./dtos/reset-password.dto";
+import { RegisterDto } from './dtos/register-dto';
 
 @Controller('auth')
 export class AuthController {
@@ -22,10 +23,27 @@ export class AuthController {
     return this.authService.login(body.email, body.password);
   }
 
+  @Post("register-apprenant")
+    public registerapprenant(@Body() body: RegisterDto){
+        return this.authService.registerapprenant(body);
+
+    }
+
   @Post('register')
   register(@Body() body: any) {
     return this.authService.register(body);
   }
+
+
+  @Get("verify-email/:id/:verificationToken")
+    public verifyEmail(
+        @Param('id', ParseIntPipe) id: number,
+        @Param('verificationToken') verificationToken: string
+    ){
+        return this.authService.verifyemail(id, verificationToken);
+    }
+
+
 
   @Get('verify/:token')
   verify(@Param('token') token: string) {

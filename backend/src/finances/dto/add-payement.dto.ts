@@ -16,7 +16,7 @@ export class AddPaymentDto {
   @ApiProperty({ description: 'Identifiant apprenant (user)' })
   @IsInt()
   @Min(1)
-  userId: number;
+  apprenantId: number;
 
   @ApiProperty({ description: 'Formation concernée' })
   @IsInt()

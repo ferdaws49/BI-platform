@@ -32,11 +32,11 @@ export class SessionApprenantController {
   @Post()
   @UseGuards(JwtAuthGuard)
   public async create(@CurrentUser() user: any, @Body() createDto: ParticipateSessionDto) {
-    const userId = user.id || user.userId || user.sub;
+    const userId = user?.id || user?.userId || user?.sub;
   if (!userId) throw new BadRequestException("Utilisateur non identifié");
     // On récupère l'ID de l'élève depuis le Token (req.user.id)
     // On récupère l'ID du cours depuis le Body (createDto.formationId)
-    return this.sessionApprenantService.create(userId, createDto);
+    return this.sessionApprenantService.create(Number(userId), createDto);
   }
 
   // GET: ~inscriptions/student
@@ -44,14 +44,9 @@ export class SessionApprenantController {
   @UseGuards(JwtAuthGuard)
   async getMyHistory (@CurrentUser() user: any) {
     // On demande au service de chercher toutes les inscriptions liées à cet ID utilisateur
-    const idFromToken = user?.userId; 
-
-  console.log('ID extrait du token:', idFromToken);
-
-  if (!idFromToken) {
-    throw new BadRequestException("ID utilisateur manquant dans le token (clé userId non trouvée)");
-  }
-    return this.sessionApprenantService.getStudentHistory(Number(idFromToken));
+    const userId = user?.userId || user?.sub || user?.id;
+    if (!userId) throw new BadRequestException("ID manquant");
+    return this.sessionApprenantService.getStudentHistory(Number(userId));
   }
 
   /**
@@ -61,12 +56,14 @@ export class SessionApprenantController {
   @Delete(':sessionId')
   @UseGuards(JwtAuthGuard)
   async cancel(
-    @CurrentUser() user: JWTPayloadType,
+    @CurrentUser() user: any,
     @Param('sessionId') sessionId: string
   ) {
     // On passe l'ID de l'inscription ET l'ID de l'utilisateur pour vérifier
     // que l'élève n'annule pas l'inscription de quelqu'un d'autre par erreur.
-    return this.sessionApprenantService.cancel(sessionId, user.id);
+   const userId = user?.userId || user?.sub || user?.id;
+    if (!userId) throw new BadRequestException("ID manquant");
+    return this.sessionApprenantService.cancel(sessionId, Number(userId));
   }
 
 

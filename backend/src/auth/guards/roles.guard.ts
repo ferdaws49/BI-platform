@@ -29,6 +29,7 @@ export class RolesGuard implements CanActivate {
     if (!roles.includes(user.role)) {
       throw new ForbiddenException("Accès refusé: rôle non autorisé");
     }
+    
 
     // ✅ accès autorisé
     return true;
