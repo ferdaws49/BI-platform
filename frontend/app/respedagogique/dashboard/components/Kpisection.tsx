@@ -1,7 +1,8 @@
 "use client";
 
 import type { FilterOptions } from "@/context/FilterContext";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -299,160 +300,168 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
   const pageSize = 5;
 
   // ── Fetch from backend ──────────────────────────────────────────────────────
-  useEffect(() => {
-    const fetchAll = async () => {
-      setLoading(true);
-      try {
-        const token =
-          typeof window !== "undefined"
-            ? localStorage.getItem("access_token")
-            : null;
-        const headers: HeadersInit = token
-          ? { Authorization: `Bearer ${token}` }
-          : {};
-        const base = "http://localhost:5000";
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("access_token")
+          : null;
+      const headers: HeadersInit = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+      const base = "http://localhost:5000";
 
-        // Build query params
-        const params = new URLSearchParams();
-        if (filters.periode && filters.periode !== "Ce mois")
-          params.append("periode", filters.periode);
-        if (filters.formation && filters.formation !== "Tous")
-          params.append("formation", filters.formation);
-        if (filters.formateur && filters.formateur !== "Tous")
-          params.append("formateur", filters.formateur);
-        if (filters.type && filters.type !== "Tous")
-          params.append("type", filters.type);
-        if (filters.statut && filters.statut !== "Tous")
-          params.append("statut", filters.statut);
+      // Build query params
+      const params = new URLSearchParams();
+      if (filters.periode && filters.periode !== "Tous")
+        params.append("periode", filters.periode);
+      if (filters.formation && filters.formation !== "Tous")
+        params.append("formation", filters.formation);
+      if (filters.formateur && filters.formateur !== "Tous")
+        params.append("formateur", filters.formateur);
+      if (filters.type && filters.type !== "Tous")
+        params.append("type", filters.type);
+      if (filters.statut && filters.statut !== "Tous")
+        params.append("statut", filters.statut);
 
-        const queryString = params.toString();
-        const queryPart = queryString ? `?${queryString}` : "";
+      const queryString = params.toString();
+      const queryPart = queryString ? `?${queryString}` : "";
 
-        // ── Parallel Data Fetching ──────────────────────────────────────────
-        const [kpiRes, fmtRes, fmationRes, risqueRes] =
-          await Promise.allSettled([
-            fetch(`${base}/responsable/dashboard/kpis${queryPart}`, {
-              headers,
-            }),
-            fetch(`${base}/responsable/dashboard/formateurs/performances${queryPart}`, {
-              headers,
-            }),
-            fetch(`${base}/responsable/dashboard/formations/taux-reussite${queryPart}`, {
-              headers,
-            }),
-            fetch(`${base}/responsable/dashboard/apprenants/risque${queryPart}`, {
-              headers,
-            }),
-          ]);
+      // ── Parallel Data Fetching ──────────────────────────────────────────
+      const [kpiRes, fmtRes, fmationRes, risqueRes] = await Promise.allSettled([
+        fetch(`${base}/responsable/dashboard/kpis${queryPart}`, {
+          headers,
+        }),
+        fetch(
+          `${base}/responsable/dashboard/formateurs/performances${queryPart}`,
+          {
+            headers,
+          },
+        ),
+        fetch(
+          `${base}/responsable/dashboard/formations/taux-reussite${queryPart}`,
+          {
+            headers,
+          },
+        ),
+        fetch(`${base}/responsable/dashboard/apprenants/risque${queryPart}`, {
+          headers,
+        }),
+      ]);
 
-        // ── Main KPI Processing ─────────────────────────────────────────────
-        if (kpiRes.status === "fulfilled" && kpiRes.value.ok) {
-          const data = await kpiRes.value.json();
-          setKpis([
-            {
-              title: "Taux de Réussite Global",
-              value: `${data.tauxReussiteGlobal ?? 86.4}%`,
-              trend: (data.evolutionReussite ?? 2.3) >= 0 ? "up" : "down",
-              delta: `${(data.evolutionReussite ?? 2.3) > 0 ? "+" : ""}${data.evolutionReussite ?? 2.3}% vs mois dernier`,
-              icon: "🎯",
-              color: "green",
-            },
-            {
-              title: "Taux d'Abandon",
-              value: `${data.tauxAbandon ?? 4.2}%`,
-              trend: (data.evolutionAbandon ?? -0.8) <= 0 ? "up" : "down",
-              delta: `${data.evolutionAbandon ?? -0.8}% vs mois dernier`,
-              icon: "📉",
-              color: "amber",
-            },
-            {
-              title: "Satisfaction Moyenne",
-              value: `${data.satisfactionMoyenne ?? 4.6}/5`,
-              trend: (data.evolutionSatisfaction ?? 0.3) >= 0 ? "up" : "stable",
-              delta: `+${data.evolutionSatisfaction ?? 0.3} vs trimestre`,
-              icon: "⭐",
-              color: "green",
-            },
-            {
-              title: "Formations Actives",
-              value: `${data.formationsActives ?? 12}`,
-              trend: "stable",
-              delta: `+${data.nouvellesFormations ?? 2} ce mois`,
-              icon: "📚",
-              color: "green",
-            },
-          ]);
-          setTauxCompletion(data.tauxCompletion ?? 73);
-        } else {
-          // fallback KPIs
-          setKpis([
-            {
-              title: "Taux de Réussite Global",
-              value: "86.4%",
-              trend: "up",
-              delta: "+2.3% vs mois dernier",
-              icon: "🎯",
-              color: "green",
-            },
-            {
-              title: "Taux d'Abandon",
-              value: "4.2%",
-              trend: "up",
-              delta: "-0.8% vs mois dernier",
-              icon: "📉",
-              color: "amber",
-            },
-            {
-              title: "Satisfaction Moyenne",
-              value: "4.6/5",
-              trend: "up",
-              delta: "+0.3 vs trimestre",
-              icon: "⭐",
-              color: "green",
-            },
-            {
-              title: "Formations Actives",
-              value: "12",
-              trend: "stable",
-              delta: "+2 ce mois",
-              icon: "📚",
-              color: "green",
-            },
-          ]);
-        }
-
-        // Formateurs
-        if (fmtRes.status === "fulfilled" && fmtRes.value.ok) {
-          const data = await fmtRes.value.json();
-          if (Array.isArray(data)) {
-            setFormateurs(data);
-          }
-        }
-
-        // Formations
-        if (fmationRes.status === "fulfilled" && fmationRes.value.ok) {
-          const data = await fmationRes.value.json();
-          if (Array.isArray(data)) {
-            setFormations(data);
-          }
-        }
-
-        // Apprenants à risque
-        if (risqueRes.status === "fulfilled" && risqueRes.value.ok) {
-          const data = await risqueRes.value.json();
-          if (Array.isArray(data)) {
-            setRisque(data);
-          }
-        }
-      } catch (err) {
-        console.error("Fetch error:", err);
-      } finally {
-        setLoading(false);
+      // ── Main KPI Processing ─────────────────────────────────────────────
+      if (kpiRes.status === "fulfilled" && kpiRes.value.ok) {
+        const data = await kpiRes.value.json();
+        setKpis([
+          {
+            title: "Taux de Réussite Global",
+            value: `${data.tauxReussiteGlobal ?? 86.4}%`,
+            trend: (data.evolutionReussite ?? 2.3) >= 0 ? "up" : "down",
+            delta: `${(data.evolutionReussite ?? 2.3) > 0 ? "+" : ""}${data.evolutionReussite ?? 2.3}% vs mois dernier`,
+            icon: "🎯",
+            color: "green",
+          },
+          {
+            title: "Taux d'Abandon",
+            value: `${data.tauxAbandon ?? 4.2}%`,
+            trend: (data.evolutionAbandon ?? -0.8) <= 0 ? "up" : "down",
+            delta: `${data.evolutionAbandon ?? -0.8}% vs mois dernier`,
+            icon: "📉",
+            color: "amber",
+          },
+          {
+            title: "Satisfaction Moyenne",
+            value: `${data.satisfactionMoyenne ?? 4.6}/5`,
+            trend: (data.evolutionSatisfaction ?? 0.3) >= 0 ? "up" : "stable",
+            delta: `+${data.evolutionSatisfaction ?? 0.3} vs trimestre`,
+            icon: "⭐",
+            color: "green",
+          },
+          {
+            title: "Formations Actives",
+            value: `${data.formationsActives ?? 12}`,
+            trend: "stable",
+            delta: `+${data.nouvellesFormations ?? 2} ce mois`,
+            icon: "📚",
+            color: "green",
+          },
+        ]);
+        setTauxCompletion(data.tauxCompletion ?? 73);
+      } else {
+        // fallback KPIs
+        setKpis([
+          {
+            title: "Taux de Réussite Global",
+            value: "86.4%",
+            trend: "up",
+            delta: "+2.3% vs mois dernier",
+            icon: "🎯",
+            color: "green",
+          },
+          {
+            title: "Taux d'Abandon",
+            value: "4.2%",
+            trend: "up",
+            delta: "-0.8% vs mois dernier",
+            icon: "📉",
+            color: "amber",
+          },
+          {
+            title: "Satisfaction Moyenne",
+            value: "4.6/5",
+            trend: "up",
+            delta: "+0.3 vs trimestre",
+            icon: "⭐",
+            color: "green",
+          },
+          {
+            title: "Formations Actives",
+            value: "12",
+            trend: "stable",
+            delta: "+2 ce mois",
+            icon: "📚",
+            color: "green",
+          },
+        ]);
       }
-    };
 
-    fetchAll();
+      // Formateurs
+      if (fmtRes.status === "fulfilled" && fmtRes.value.ok) {
+        const data = await fmtRes.value.json();
+        if (Array.isArray(data)) {
+          setFormateurs(data);
+        }
+      }
+
+      // Formations
+      if (fmationRes.status === "fulfilled" && fmationRes.value.ok) {
+        const data = await fmationRes.value.json();
+        if (Array.isArray(data)) {
+          setFormations(data);
+        }
+      }
+
+      // Apprenants à risque
+      if (risqueRes.status === "fulfilled" && risqueRes.value.ok) {
+        const data = await risqueRes.value.json();
+        if (Array.isArray(data)) {
+          setRisque(data);
+        }
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
   }, [filters]);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  // ✅ Auto-refresh based on resped's preference in localStorage
+  useAutoRefresh(fetchAll, true, "resped");
 
   // ── Table filtering + sorting logic ─────────────────────────────────────────
   const filteredFormations = useMemo(() => {
@@ -498,7 +507,9 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
 
   // ── Chart Data Preparation ────────────────────────────────────────────────
   const barFormateurData = {
-    labels: formateurs.map((f) => f.initiales),
+    labels: formateurs.map((f) =>
+      f.nom.length > 12 ? f.nom.substring(0, 10) + ".." : f.nom,
+    ),
     datasets: [
       {
         label: "Score efficacité",
@@ -564,7 +575,7 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
       "Pédagogie",
     ],
     datasets: formateurs.slice(0, 3).map((f, i) => ({
-      label: f.initiales,
+      label: f.nom,
       data: [
         f.tauxReussite,
         f.satisfaction * 20,
@@ -1048,7 +1059,7 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {risque.map((a, i) => (
             <div
-              key={`${a.nom ?? ''}-${i}`}
+              key={`${a.nom ?? ""}-${i}`}
               className="rounded-lg border border-amber-100 bg-amber-50 p-3 hover:border-amber-200 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 mb-2">

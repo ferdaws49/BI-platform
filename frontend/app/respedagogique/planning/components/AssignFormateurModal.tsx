@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Session, Formateur } from "../page";
+import { Session, Formateur } from "../constants";
 
 interface AssignFormateurModalProps {
   session: Session;

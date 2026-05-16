@@ -1,6 +1,6 @@
 "use client";
 
-import { Session, Apprenant } from "../page";
+import { Session, Apprenant } from "../constants";
 
 interface ParticipantsListModalProps {
   session: Session;

@@ -1,4 +1,3 @@
-// dashboard/services/directeur.reports.service.ts
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,6 +7,7 @@ import { Finance } from '../../finances/entities/finance.entity';
 import { Satisfaction } from '../../satisfaction/entities/satisfaction.entity';
 import { Session } from '../../sessions/entities/session.entity';
 import { ReportFiltersDto } from '../dto/report-filters.dto';
+import { computeAbandonRate } from '../../common/helpers/abandon.helper';
 
 export interface HistoryPoint {
   label: string;
@@ -40,6 +40,9 @@ export class DirecteurReportsService {
 
     @InjectRepository(Satisfaction)
     private satisfactionRepo: Repository<Satisfaction>,
+
+    @InjectRepository(Session)
+    private sessionRepo: Repository<Session>,
   ) {}
 
   async getReports(filters: ReportFiltersDto): Promise<TrainingReportRecord[]> {
@@ -47,7 +50,7 @@ export class DirecteurReportsService {
     const normalizedType = this.normalizeSessionType(filters.type);
 
     const formations = await this.formationRepo.find({
-      relations: ['sessions'],
+      relations: ['sessions', 'sessions.formateur', 'sessions.apprenants'],
     });
 
     const results: TrainingReportRecord[] = [];
@@ -59,7 +62,7 @@ export class DirecteurReportsService {
 
       if (normalizedType) {
         const hasMatchingSessionType =
-          formation.sessions?.some((session) => session.type === normalizedType) ?? false;
+          formation.sessions?.some((s) => s.type === normalizedType) ?? false;
         if (!hasMatchingSessionType) continue;
       }
 
@@ -73,11 +76,13 @@ export class DirecteurReportsService {
         if (formation.statut !== mapped) continue;
       }
 
-      const sessionIds = formation.sessions?.map((session) => session.id) ?? [];
+      const sessionIds = formation.sessions?.map((s) => s.id) ?? [];
 
       const performances = await this.performanceRepo
         .createQueryBuilder('p')
-        .where('p.formationId = :formationId', { formationId: formation.id })
+        .leftJoinAndSelect('p.apprenant', 'apprenant')
+        .leftJoin('p.formation', 'formation')
+        .where('formation.id = :formationId', { formationId: formation.id })
         .andWhere('p.date >= :startDate', { startDate })
         .getMany();
 
@@ -93,14 +98,15 @@ export class DirecteurReportsService {
 
       const satisfactions = await this.satisfactionRepo
         .createQueryBuilder('s')
-        .where('s.formationId = :formationId', { formationId: formation.id })
+        .leftJoin('s.formation', 'formation')
+        .where('formation.id = :formationId', { formationId: formation.id })
         .andWhere('s.createdAt >= :startDate', { startDate })
         .getMany();
 
       const formateurNom = this.getFormateurNom(formation.sessions ?? []);
 
       if (filters.formateur && filters.formateur !== 'Tous') {
-        if (formateurNom !== filters.formateur) continue;
+        if (formateurNom.toLowerCase().trim() !== filters.formateur.toLowerCase().trim()) continue;
       }
 
       const history: HistoryPoint[] = monthLabels.map((label, index) => {
@@ -109,36 +115,50 @@ export class DirecteurReportsService {
         const monthEnd = new Date(monthStart);
         monthEnd.setMonth(monthEnd.getMonth() + 1);
 
-        const monthPerfs = performances.filter((performance) => {
-          const date = new Date(performance.date);
+        const monthPerfs = performances.filter((p) => {
+          const date = new Date(p.date);
           return date >= monthStart && date < monthEnd;
         });
 
-        const enrollments = monthPerfs.length;
-
-        const monthFinances = finances.filter((finance) => {
-          const date = new Date(finance.date);
+        const monthFinances = finances.filter((f) => {
+          const date = new Date(f.date);
           return date >= monthStart && date < monthEnd;
         });
-        const revenue = monthFinances.reduce(
-          (sum, finance) => sum + Number(finance.montant),
-          0,
+        const revenue = monthFinances.reduce((sum, f) => sum + Number(f.montant), 0);
+
+        const total   = monthPerfs.length;
+        const reussis = monthPerfs.filter((p) => p.estReussi).length;
+        const successRate = total > 0 ? Math.round((reussis / total) * 100) : 0;
+
+        // ✅ abandon = inscrits ce mois sans performance
+        const monthSessionIds = (formation.sessions ?? [])
+          .filter((s) => {
+            const d = new Date(s.date);
+            return d >= monthStart && d < monthEnd;
+          })
+          .map((s) => s.id);
+
+        // apprenants uniques inscrits ce mois via sessions.apprenants (déjà chargés)
+        const inscritsThisMonth = new Set<number>();
+        for (const s of formation.sessions ?? []) {
+          if (!monthSessionIds.includes(s.id)) continue;
+          for (const a of s.apprenants ?? []) inscritsThisMonth.add(a.id);
+        }
+
+        const evaluesThisMonth = new Set(
+          monthPerfs.map((p) => p.apprenant?.id).filter((id): id is number => id != null),
         );
 
-        const total = monthPerfs.length;
-        const reussis = monthPerfs.filter((performance) => performance.estReussi).length;
-        const successRate = total > 0 ? Math.round((reussis / total) * 100) : 0;
-        const dropoutRate =
-          total > 0 ? Math.round(((total - reussis) / total) * 100) : 0;
+        const dropoutRate = computeAbandonRate(inscritsThisMonth.size, evaluesThisMonth.size);
 
-        const monthSats = satisfactions.filter((satisfaction) => {
-          const date = new Date(satisfaction.createdAt);
+        const monthSats = satisfactions.filter((s) => {
+          const date = new Date(s.createdAt);
           return date >= monthStart && date < monthEnd;
         });
         const satisfaction =
           monthSats.length > 0
             ? Math.round(
-                (monthSats.reduce((sum, item) => sum + Number(item.note), 0) /
+                (monthSats.reduce((sum, s) => sum + Number(s.note), 0) /
                   monthSats.length /
                   5) *
                   100,
@@ -147,7 +167,7 @@ export class DirecteurReportsService {
 
         return {
           label,
-          enrollments,
+          enrollments: inscritsThisMonth.size, // ✅ vrais inscrits, pas juste performances
           revenue,
           successRate,
           dropoutRate,
@@ -158,7 +178,7 @@ export class DirecteurReportsService {
       results.push({
         formation: formation.titre,
         formateur: formateurNom,
-        type: this.getFormationTypeLabel(formation.sessions ?? []),
+        type:   this.getFormationTypeLabel(formation.sessions ?? []),
         statut: this.getFormationStatusLabel(formation.statut),
         history,
       });
@@ -167,72 +187,50 @@ export class DirecteurReportsService {
     return results;
   }
 
-  private getPeriodConfig(periode?: string): {
-    monthLabels: string[];
-    startDate: Date;
-  } {
+  private getPeriodConfig(periode?: string): { monthLabels: string[]; startDate: Date } {
     const monthsByPeriod: Record<string, number> = {
-      Trimestre: 3,
-      Semestre: 6,
-      Année: 6,
-      Annee: 6,
+      Trimestre: 3, Semestre: 6, Année: 12, Annee: 12,
     };
-
-    const monthLabelsSource = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const now = new Date();
+    const monthLabelsSource = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
+    const now    = new Date();
     const months = monthsByPeriod[periode ?? 'Trimestre'] ?? 3;
-
     const startDate = new Date(now);
     startDate.setMonth(startDate.getMonth() - months + 1);
     startDate.setDate(1);
 
     const monthLabels: string[] = [];
-    for (let index = 0; index < months; index += 1) {
+    for (let i = 0; i < months; i++) {
       const date = new Date(startDate);
-      date.setMonth(date.getMonth() + index);
+      date.setMonth(date.getMonth() + i);
       monthLabels.push(monthLabelsSource[date.getMonth()]);
     }
-
     return { monthLabels, startDate };
   }
 
   private getFormateurNom(sessions: Session[]): string {
-    const mainFormateur = sessions.find((session) => session.formateur)?.formateur;
-    if (!mainFormateur) return 'Non assigné';
-    return `${mainFormateur.prenom} ${mainFormateur.nom}`;
+    const main = sessions.find((s) => s.formateur)?.formateur;
+    if (!main) return 'Non assigné';
+    return `${main.prenom} ${main.nom}`;
   }
 
   private normalizeSessionType(type?: string): string | null {
     if (!type || type === 'Tous') return null;
-
-    const normalizedType = type.toLowerCase().trim();
-
-    if (normalizedType === 'présentiel' || normalizedType === 'presentiel') {
-      return 'présentiel';
-    }
-
-    if (normalizedType === 'en ligne' || normalizedType === 'en_ligne') {
-      return 'en_ligne';
-    }
-
+    const t = type.toLowerCase().trim();
+    if (['présentiel', 'presentiel'].includes(t)) return 'présentiel';
+    if (['en ligne', 'en_ligne'].includes(t))      return 'en_ligne';
     return type;
   }
 
   private getFormationTypeLabel(sessions: Session[]): string {
-    const firstTypedSession = sessions.find((session) => !!session.type);
-    if (!firstTypedSession?.type) return 'N/A';
-    if (firstTypedSession.type === 'en_ligne') return 'En ligne';
-    if (firstTypedSession.type === 'présentiel') return 'Présentiel';
-    return firstTypedSession.type;
+    const first = sessions.find((s) => !!s.type);
+    if (!first?.type) return 'N/A';
+    if (first.type === 'en_ligne')   return 'En ligne';
+    if (first.type === 'présentiel') return 'Présentiel';
+    return first.type;
   }
 
   private getFormationStatusLabel(status?: string): string {
-    const statusMap: Record<string, string> = {
-      active: 'Actif',
-      completed: 'Terminé',
-      cancelled: 'Annulé',
-    };
-
-    return status ? (statusMap[status] ?? status) : 'N/A';
+    const map: Record<string, string> = { active: 'Actif', completed: 'Terminé', cancelled: 'Annulé' };
+    return status ? (map[status] ?? status) : 'N/A';
   }
 }

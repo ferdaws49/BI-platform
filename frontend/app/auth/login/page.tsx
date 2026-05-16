@@ -38,6 +38,7 @@ export default function LoginPage() {
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("role", data.user.role);
       localStorage.setItem("user", JSON.stringify(data.user));
+      window.dispatchEvent(new Event("auth-state-changed"));
 
       const role = data.user.role;
       if (role === "directeur") {

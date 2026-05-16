@@ -15,6 +15,8 @@ import type {
 import SummarySection from "./SummarySection";
 import InsightsSection from "./InsightsSection";
 import RecommendationsSection from "./RecommendationsSection";
+import ForecastSection from "./Forecastsection";
+
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -23,9 +25,10 @@ function getPeriodLength(period: string) {
     case "Trimestre":
       return 3;
     case "Semestre":
+      return 6;
     case "Année":
     case "Annee":
-      return 6;
+      return 12;
     default:
       return 3;
   }
@@ -611,6 +614,8 @@ export default function StrategicReportPage({
         trendCards={trendCards}
         keyMessages={keyMessages}
       />
+
+      <ForecastSection filters={filters} />
 
       <InsightsSection
         history={history}

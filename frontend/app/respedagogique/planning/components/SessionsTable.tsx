@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Session } from "../page";
+import { Session } from "../constants";
 
 type SortField = "date" | "heureDebut" | "formation" | "formateur" | "statut";
 
@@ -97,8 +97,8 @@ export default function SessionsTable({
 
   // ── Memory-based sorting ──────────────────────────────────────────────────
   const sortedSessions = [...sessions].sort((a, b) => {
-    let aVal = (a[sortBy as keyof Session] as string) ?? "";
-    let bVal = (b[sortBy as keyof Session] as string) ?? "";
+    const aVal = (a[sortBy as keyof Session] as string) ?? "";
+    const bVal = (b[sortBy as keyof Session] as string) ?? "";
     if (sortBy === "date") {
       return sortDir === "asc"
         ? new Date(aVal).getTime() - new Date(bVal).getTime()

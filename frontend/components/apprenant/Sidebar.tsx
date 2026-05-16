@@ -30,7 +30,10 @@ export default function Sidebar() {
   const handleLogout = () => {
     // 1. Supprimer le token et les infos utilisateur
     localStorage.removeItem('token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('role');
     localStorage.removeItem('user');
+    window.dispatchEvent(new Event("auth-state-changed"));
 
     // 2. Rediriger vers la page de connexion
     router.push('/auth/login');

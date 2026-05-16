@@ -6,8 +6,13 @@ import { useEffect, useRef } from "react";
  * Hook pour déclencher un rafraîchissement automatique des données
  * @param callback La fonction à appeler (ex: fetchUsers, fetchStats)
  * @param enabled Si le rafraîchissement est activé
+ * @param role Le rôle de l'utilisateur (admin, directeur, resped) pour lire la bonne préférence
  */
-export function useAutoRefresh(callback: () => void, enabled: boolean = true) {
+export function useAutoRefresh(
+  callback: () => void,
+  enabled: boolean = true,
+  role: "admin" | "directeur" | "resped" = "admin",
+) {
   const savedCallback = useRef(callback);
 
   useEffect(() => {
@@ -17,9 +22,9 @@ export function useAutoRefresh(callback: () => void, enabled: boolean = true) {
   useEffect(() => {
     if (!enabled) return;
 
-    // 1. Lire la préférence depuis localStorage
-    const refreshPref = localStorage.getItem("dataRefresh-admin") || "5min";
-    
+    // 1. Lire la préférence depuis localStorage selon le rôle
+    const refreshPref = localStorage.getItem(`dataRefresh-${role}`) || "5min";
+
     // 2. Convertir en millisecondes
     const intervalMap: Record<string, number> = {
       "1min": 60 * 1000,
@@ -38,5 +43,5 @@ export function useAutoRefresh(callback: () => void, enabled: boolean = true) {
     }, ms);
 
     return () => clearInterval(id);
-  }, [enabled]);
+  }, [enabled, role]);
 }

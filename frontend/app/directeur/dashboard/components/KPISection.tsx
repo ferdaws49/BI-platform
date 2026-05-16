@@ -2,6 +2,7 @@
 
 import type { FilterOptions } from "@/context/FilterContext";
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useAutoRefresh } from "@/hooks/useAutoRefresh";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -179,7 +180,7 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
   const buildParams = useCallback(
     (extra: Record<string, string> = {}) => {
       const params = new URLSearchParams();
-      if (filters.periode && filters.periode !== "Ce mois") {
+      if (filters.periode && filters.periode !== "Tous") {
         const mapped = periodeMap[filters.periode];
         if (mapped) params.append("periode", mapped);
       }
@@ -203,97 +204,99 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
   );
 
   // ── Fetch KPIs + Charts (quand les filtres changent) ──────────────────────
-  useEffect(() => {
-    const fetchKpisAndCharts = async () => {
-      setLoading(true);
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("access_token")
+  const fetchKpisAndCharts = useCallback(async () => {
+    setLoading(true);
+    const token =
+      typeof window !== "undefined"
+        ? localStorage.getItem("access_token")
+        : null;
+    const headers: HeadersInit = token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+    const base = "http://localhost:5000";
+    const q = buildParams();
+
+    try {
+      // ✅ Fetch parallel: overview + kpis + 3 charts
+      const [overviewRes, kpisRes, enrollRes, revRes, coursesRes] =
+        await Promise.allSettled([
+          fetch(`${base}/dashboard/overview${q}`, { headers }),
+          fetch(`${base}/dashboard/kpis${q}`, { headers }),
+          fetch(`${base}/dashboard/charts/enrollments${q}`, { headers }),
+          fetch(`${base}/dashboard/charts/revenue${q}`, { headers }),
+          fetch(`${base}/dashboard/charts/courses${q}`, { headers }),
+        ]);
+
+      // ── KPI cards ──────────────────────────────────────────────────────
+      const overview =
+        overviewRes.status === "fulfilled" && overviewRes.value.ok
+          ? await overviewRes.value.json()
           : null;
-      const headers: HeadersInit = token
-        ? { Authorization: `Bearer ${token}` }
-        : {};
-      const base = "http://localhost:5000";
-      const q = buildParams();
 
-      try {
-        // ✅ Fetch parallel: overview + kpis + 3 charts
-        const [overviewRes, kpisRes, enrollRes, revRes, coursesRes] =
-          await Promise.allSettled([
-            fetch(`${base}/dashboard/overview${q}`, { headers }),
-            fetch(`${base}/dashboard/kpis${q}`, { headers }),
-            fetch(`${base}/dashboard/charts/enrollments${q}`, { headers }),
-            fetch(`${base}/dashboard/charts/revenue${q}`, { headers }),
-            fetch(`${base}/dashboard/charts/courses${q}`, { headers }),
-          ]);
+      const kpiData =
+        kpisRes.status === "fulfilled" && kpisRes.value.ok
+          ? await kpisRes.value.json()
+          : null;
 
-        // ── KPI cards ──────────────────────────────────────────────────────
-        const overview =
-          overviewRes.status === "fulfilled" && overviewRes.value.ok
-            ? await overviewRes.value.json()
-            : null;
-
-        const kpiData =
-          kpisRes.status === "fulfilled" && kpisRes.value.ok
-            ? await kpisRes.value.json()
-            : null;
-
-        if (overview && kpiData) {
-          setKpis([
-            {
-              title: "Apprenants",
-              value: overview.totalApprenants?.toString() ?? "—",
-              trend:
-                (kpiData.tauxCroissanceApprenants ?? 0) >= 0 ? "up" : "down",
-              delta: `${(kpiData.tauxCroissanceApprenants ?? 0) > 0 ? "+" : ""}${kpiData.tauxCroissanceApprenants ?? 0}%`,
-              icon: "👤",
-            },
-            {
-              title: "Chiffre d'affaires",
-              value: `${(overview.revenuTotal ?? 0).toLocaleString()} DT`,
-              trend: "up",
-              delta: `${(kpiData.revenuMensuel ?? 0).toLocaleString()} DT ce mois`,
-              icon: "💶",
-            },
-            {
-              title: "Taux de réussite",
-              value: `${kpiData.tauxReussite ?? 0}%`,
-              trend: (kpiData.tauxReussite ?? 0) >= 50 ? "up" : "down",
-              delta: "",
-              icon: "✅",
-            },
-            {
-              // ✅ RÉVISÉ: formationsActives vient maintenant des sessions réelles
-              title: "Formations actives",
-              value: kpiData.formationsActives?.toString() ?? "—",
-              trend: "stable",
-              delta: `/ ${overview.totalFormations ?? 0} total · ${overview.sessionsActives ?? 0} sessions`,
-              icon: "📚",
-            },
-          ]);
-        } else {
-          setKpis(fallbackKpis);
-        }
-
-        // ── Charts ────────────────────────────────────────────────────────
-        if (enrollRes.status === "fulfilled" && enrollRes.value.ok) {
-          setEnrollmentsChart(await enrollRes.value.json());
-        }
-        if (revRes.status === "fulfilled" && revRes.value.ok) {
-          setRevenueChart(await revRes.value.json());
-        }
-        if (coursesRes.status === "fulfilled" && coursesRes.value.ok) {
-          setCoursesChart(await coursesRes.value.json());
-        }
-      } catch {
+      if (overview && kpiData) {
+        setKpis([
+          {
+            title: "Apprenants",
+            value: overview.totalApprenants?.toString() ?? "—",
+            trend: (kpiData.tauxCroissanceApprenants ?? 0) >= 0 ? "up" : "down",
+            delta: `${(kpiData.tauxCroissanceApprenants ?? 0) > 0 ? "+" : ""}${kpiData.tauxCroissanceApprenants ?? 0}%`,
+            icon: "👤",
+          },
+          {
+            title: "Chiffre d'affaires",
+            value: `${(overview.revenuTotal ?? 0).toLocaleString()} DT`,
+            trend: "up",
+            delta: `${(kpiData.revenuMensuel ?? 0).toLocaleString()} DT ce mois`,
+            icon: "💶",
+          },
+          {
+            title: "Taux de réussite",
+            value: `${kpiData.tauxReussite ?? 0}%`,
+            trend: (kpiData.tauxReussite ?? 0) >= 50 ? "up" : "down",
+            delta: "",
+            icon: "✅",
+          },
+          {
+            // ✅ RÉVISÉ: formationsActives vient maintenant des sessions réelles
+            title: "Formations actives",
+            value: kpiData.formationsActives?.toString() ?? "—",
+            trend: "stable",
+            delta: `/ ${overview.totalFormations ?? 0} total · ${overview.sessionsActives ?? 0} sessions`,
+            icon: "📚",
+          },
+        ]);
+      } else {
         setKpis(fallbackKpis);
-      } finally {
-        setLoading(false);
       }
-    };
 
+      // ── Charts ────────────────────────────────────────────────────────
+      if (enrollRes.status === "fulfilled" && enrollRes.value.ok) {
+        setEnrollmentsChart(await enrollRes.value.json());
+      }
+      if (revRes.status === "fulfilled" && revRes.value.ok) {
+        setRevenueChart(await revRes.value.json());
+      }
+      if (coursesRes.status === "fulfilled" && coursesRes.value.ok) {
+        setCoursesChart(await coursesRes.value.json());
+      }
+    } catch {
+      setKpis(fallbackKpis);
+    } finally {
+      setLoading(false);
+    }
+  }, [buildParams]);
+
+  useEffect(() => {
     fetchKpisAndCharts();
-  }, [filters, buildParams]);
+  }, [filters, fetchKpisAndCharts]);
+
+  // ✅ Auto-refresh based on directeur's preference in localStorage
+  useAutoRefresh(fetchKpisAndCharts, true, "directeur");
 
   // ── Fetch Table (quand filtres OU tri OU page changent) ───────────────────
   useEffect(() => {

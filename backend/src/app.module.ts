@@ -29,6 +29,8 @@ import { FinanceAlertModule } from './alerts/financier/finance-alert.module';
 import { FinancePredictModule } from './ai/financier/ai-prediction.module';
 import { DwModule } from './dw/dw.module';
 import { SatisfactionModule } from './satisfaction/satisfaction.module';
+import { AlertsModule } from './ai/alerts/alerts.module';
+import { ForecastModule } from './ai/forecast/forecast.module';
 
 
 
@@ -88,6 +90,8 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
     FinancePredictModule,
     DwModule,
     SatisfactionModule,
+    AlertsModule,
+    ForecastModule,
   ] /* providers: [
     /* 4. Activer cette partie pour protéger TOUTES tes routes par défaut.
        Il faudra utiliser le décorateur @Public() pour les routes comme 'Login' 

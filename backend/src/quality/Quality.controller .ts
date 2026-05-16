@@ -37,7 +37,7 @@ export class QualityController {
    * → Used by QualitySection "Performance des formateurs" chart
    */
   @Get('formateurs-performance')
-  getFormateursPerformance() {
-    return this.qualityService.getFormateursPerformance();
-  }
+getFormateursPerformance(@Query() filters: QualityFilterDto) {
+  return this.qualityService.getFormateursPerformance(filters);
+}
 }

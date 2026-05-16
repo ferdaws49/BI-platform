@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Session, Apprenant } from "../page";
+import { useNotifications } from "@/context/NotificationContext";
+import { toast } from "sonner";
+import { API_URL, Session, Apprenant } from "../constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,12 +44,11 @@ const AVATAR_COLORS = [
   "bg-orange-100 text-orange-800",
 ];
 
-const API_URL = "http://localhost:5000";
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function PresenceModal({ session, onClose }: PresenceModalProps) {
   const apprenants: Apprenant[] = session.apprenants ?? [];
+  const { addNotification } = useNotifications();
 
   // null = non marqué, true = présent, false = absent
   const [presences, setPresences] = useState<Record<number, boolean | null>>(
@@ -81,7 +82,7 @@ export default function PresenceModal({ session, onClose }: PresenceModalProps) 
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [session.id]);
+  }, [session.id, apprenants]);
 
   // ── Toggle présence ───────────────────────────────────────────────────────────
   const toggle = (apprenantId: number, value: boolean) => {
@@ -127,11 +128,22 @@ export default function PresenceModal({ session, onClose }: PresenceModalProps) 
 
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Erreur lors de l'enregistrement");
+        toast.error(error.message || "Erreur lors de l'enregistrement");
         return;
       }
+
+      // ✅ Notification
+      addNotification(
+        "Présences enregistrées",
+        `La feuille de présence pour la session du ${session.date} a été mise à jour.`,
+        "success",
+        "learnerRequests"
+      );
+
+      // ✅ Feedback immédiat
+      toast.success("Présences enregistrées avec succès !");
     } catch {
-      alert("Erreur réseau");
+      toast.error("Erreur réseau");
       return;
     } finally {
       setSaving(false);
