@@ -108,7 +108,7 @@ export default function UsersPage() {
   }, []);
 
   // ✅ Activer l'auto-refresh basé sur les préférences des paramètres
-  useAutoRefresh(fetchData);
+  useAutoRefresh(fetchData, true, "admin");
 
   // ── Search & Filter Logic ──────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -168,12 +168,12 @@ export default function UsersPage() {
       }
       const updated: User = await res.json();
       setUsers((prev) => prev.map((u) => (u.id === editUser.id ? updated : u)));
-      
+
       addNotification(
         "Utilisateur modifié",
         `${updated.prenom} ${updated.nom} a été mis à jour avec succès.`,
         "info",
-        "accountChanges"
+        "accountChanges",
       );
 
       showToast(
@@ -196,7 +196,7 @@ export default function UsersPage() {
         "Nouvel utilisateur",
         `${created.prenom} ${created.nom} a été créé (${created.role}).`,
         "success",
-        "accountChanges"
+        "accountChanges",
       );
 
       showToast(
@@ -241,12 +241,12 @@ export default function UsersPage() {
       if (res.ok) {
         const deletedName = `${deleteUser.prenom} ${deleteUser.nom}`;
         setUsers((prev) => prev.filter((u) => u.id !== deleteUser.id));
-        
+
         addNotification(
           "Utilisateur supprimé",
           `${deletedName} a été retiré de la plateforme.`,
           "warning",
-          "accountChanges"
+          "accountChanges",
         );
 
         showToast(

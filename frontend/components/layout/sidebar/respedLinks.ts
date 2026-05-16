@@ -7,6 +7,7 @@ import {
   Calendar,
   Settings,
   LogOut,
+  Bell,
 } from "lucide-react";
 
 const respedLinks = [
@@ -14,6 +15,11 @@ const respedLinks = [
     icon: LayoutDashboard,
     label: "Tableau de bord",
     href: "/respedagogique/dashboard",
+  },
+  {
+    icon: Bell,
+    label: "Alertes IA",
+    href: "/respedagogique/alerts",
   },
   {
     icon: GraduationCap,

@@ -8,33 +8,42 @@ export default function LogoutPage() {
 
   useEffect(() => {
     const handleLogout = async () => {
-      try {
-        // Remove access token from localStorage
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("user_data");
+      const token = localStorage.getItem("access_token");
 
+      try {
         // Optional: Call logout endpoint if your backend has one
         try {
           await fetch("http://localhost:5000/auth/logout", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("access_token")}`,
+              Authorization: token ? `Bearer ${token}` : "",
             },
           });
-        } catch (error) {
+        } catch {
           console.log("Backend logout skipped or failed");
         }
 
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("role");
+        localStorage.removeItem("user");
+        localStorage.removeItem("user_data");
+        window.dispatchEvent(new Event("auth-state-changed"));
+
         // Redirect to login page after 1 second
         setTimeout(() => {
-          router.push("/auth/login");
+          router.replace("/auth/login");
         }, 1000);
       } catch (error) {
         console.error("Logout error:", error);
         // Still redirect even if there's an error
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("role");
+        localStorage.removeItem("user");
+        localStorage.removeItem("user_data");
+        window.dispatchEvent(new Event("auth-state-changed"));
         setTimeout(() => {
-          router.push("/auth/login");
+          router.replace("/auth/login");
         }, 1000);
       }
     };

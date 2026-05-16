@@ -1,18 +1,8 @@
 "use client";
 
 import { useState } from "react";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type Formation = {
-  id: number;
-  titre: string;
-  description?: string | null;
-  categorie?: string | null;
-  dureeHeures?: number | null;
-  prix: number;
-  statut: "active" | "completed";
-};
+import { toast } from "sonner";
+import { API_URL, Formation } from "../constants";
 
 // Correspond exactement à CreateFormationDto du backend
 type FormationPayload = {
@@ -28,8 +18,6 @@ interface CreateFormationModalProps {
   onClose: () => void;
   onCreated: (formation: Formation) => void; // appelé avec la nouvelle formation
 }
-
-const API_URL = "http://localhost:5000";
 
 const CATEGORIES = [
   "Développement web",
@@ -104,7 +92,7 @@ export default function CreateFormationModal({
 
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Erreur lors de la création");
+        toast.error(error.message || "Erreur lors de la création");
         return;
       }
 
@@ -112,7 +100,7 @@ export default function CreateFormationModal({
       onCreated(created); // met à jour la liste dans le parent
       onClose();
     } catch {
-      alert("Erreur réseau");
+      toast.error("Erreur réseau");
     } finally {
       setSubmitting(false);
     }

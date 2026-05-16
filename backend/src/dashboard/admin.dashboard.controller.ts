@@ -20,8 +20,13 @@ export class AdminDashboardController {
     return this.adminDashboardService.getActivity();
   }
 
-  @Get('services')
-  getServices() {
-    return this.adminDashboardService.getServices();
+  @Get('alerts')
+  getAlerts() {
+    return this.adminDashboardService.getAlerts();
+  }
+
+  @Get('data-quality')
+  getDataQuality() {
+    return this.adminDashboardService.getDataQuality();
   }
 }

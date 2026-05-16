@@ -25,6 +25,8 @@ import { ProfileModule } from './profile/profile.module';
 import { RecommendationModule } from './ai/recommendations/recommendation.module';
 import { ImportModule } from './import/import.module';
 import { ResponsableApprenantsModule } from './apprenants/Responsable.apprenants.module';
+import { AlertsModule } from './ai/alerts/alerts.module';
+import { ForecastModule } from './ai/forecast/forecast.module';
 
 
 
@@ -81,6 +83,8 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
     ProfileModule,
     RecommendationModule,
     ResponsableApprenantsModule,
+    AlertsModule,
+    ForecastModule,
   ] /* providers: [
     /* 4. Activer cette partie pour protéger TOUTES tes routes par défaut.
        Il faudra utiliser le décorateur @Public() pour les routes comme 'Login' 

@@ -5,7 +5,7 @@ import { Roles } from '../auth/roles.decorator';
 import { FormationsService } from './formations.service';
 import { CreateFormationDto } from './dto/create-formation.dto';
 import { UpdateFormationDto } from './dto/update-formation.dto';
-@Controller('')
+@Controller('responsable/formations')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('resp_pedagogique', 'admin')
 export class FormationsController {

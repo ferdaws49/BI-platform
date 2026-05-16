@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useNotifications } from "@/context/NotificationContext";
+import { toast } from "sonner";
 import CalendarView from "./components/CalendarView";
 import SessionsTable from "./components/SessionsTable";
 import CreateSessionModal from "./components/CreateSessionModal";
@@ -9,59 +11,14 @@ import ParticipantsListModal from "./components/ParticipantsListModal";
 import PresenceModal from "./components/PresenceModal";
 import CreateFormationModal from "./components/CreateFormationModal";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type Session = {
-  id: string;
-  date: string;           // "YYYY-MM-DD"
-  heureDebut: string;     // "HH:mm"
-  heureFin: string;       // "HH:mm"
-  formation: string;      // titre
-  formationId: number;
-  formateur: string;      // "prenom nom" ou ""
-  formateurId: number | null;
-  statut: "Actif" | "Terminé" | "Annulé";
-  lieu: string | null;
-  type: "présentiel" | "en_ligne"; // ✅ Added
-  capacite: number | null;        // ✅ Added
-  // ── Prix ──────────────────────────────────────────────────────
-  prix: number | null;    // prix spécifique session (null = fallback formation)
-  prixEffectif: number;   // prix réellement appliqué (avec fallback)
-  revenue: number;        // prixEffectif × apprenants.length
-  // ─────────────────────────────────────────────────────────────
-  apprenants?: Apprenant[];
-};
-
-export type Apprenant = {
-  id: number;
-  nom: string;
-  prenom: string;
-  email?: string | null;
-};
-
-export type Formateur = {
-  id: number;
-  nom: string;
-  prenom: string;
-  specialite?: string | null;
-};
-
-export type Formation = {
-  id: number;
-  titre: string;
-  prix: number;           // prix de base (utilisé comme fallback dans sessions)
-  revenue?: number;       // revenue total calculé depuis les sessions
-  statut?: "active" | "completed";
-};
-
-type FilterOptions = {
-  periode: string;
-  formation: string;
-  formateur: string;
-  statut: string;
-};
-
-const API_URL = "http://localhost:5000";
+import { 
+  API_URL, 
+  normalizeSession,
+  Session, 
+  Formateur, 
+  Formation, 
+  FilterOptions 
+} from "./constants";
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -78,6 +35,7 @@ export default function PlanningPage() {
     statut: "",
   });
   const [activeFiltersCount, setActiveFiltersCount] = useState(0);
+  const { addNotification } = useNotifications();
 
   // Modals
   const [createModal, setCreateModal] = useState(false);
@@ -106,7 +64,13 @@ export default function PlanningPage() {
       .then(async ([sessRes, fmtRes, fRes]) => {
         if (sessRes.status === "fulfilled" && sessRes.value.ok) {
           const data = await sessRes.value.json();
-          setSessions(Array.isArray(data) ? data : []);
+          const rawS = Array.isArray(data) ? data : [];
+          console.log("RAW SESSIONS FROM BACKEND:", rawS);
+          // ✅ Traduction des statuts pour le Frontend
+          const mapped = rawS.map((s: Parameters<typeof normalizeSession>[0]) =>
+            normalizeSession(s),
+          );
+          setSessions(mapped);
         }
         if (fmtRes.status === "fulfilled" && fmtRes.value.ok) {
           const data = await fmtRes.value.json();
@@ -189,14 +153,25 @@ export default function PlanningPage() {
       });
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Erreur lors de la création");
+        toast.error(error.message || "Erreur lors de la création");
         return;
       }
-      const newSession: Session = await res.json();
+      const newSession: Session = normalizeSession(await res.json());
       setSessions((prev) => [newSession, ...prev]);
       setCreateModal(false);
+      
+      // ✅ Feedback immédiat
+      toast.success("Session créée avec succès !");
+      
+      // ✅ Notification persistante
+      addNotification(
+        "Session créée",
+        `La session du ${newSession.date} a été créée avec succès.`,
+        "success",
+        "accountChanges"
+      );
     } catch {
-      alert("Erreur réseau");
+      toast.error("Erreur réseau");
     }
   };
 
@@ -213,14 +188,25 @@ export default function PlanningPage() {
       });
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Erreur lors de la modification");
+        toast.error(error.message || "Erreur lors de la modification");
         return;
       }
-      const updated: Session = await res.json();
+      const updated: Session = normalizeSession(await res.json());
       setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
       setEditSession(null);
+
+      // ✅ Feedback immédiat
+      toast.success("Session mise à jour !");
+
+      // ✅ Notification persistante
+      addNotification(
+        "Session modifiée",
+        "La session a été mise à jour.",
+        "info",
+        "accountChanges"
+      );
     } catch {
-      alert("Erreur réseau");
+      toast.error("Erreur réseau");
     }
   };
 
@@ -235,7 +221,7 @@ export default function PlanningPage() {
       });
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Erreur lors de l'annulation");
+        toast.error(error.message || "Erreur lors de l'annulation");
         return;
       }
       setSessions((prev) =>
@@ -243,8 +229,19 @@ export default function PlanningPage() {
           s.id === id ? { ...s, statut: "Annulé" as const, revenue: 0 } : s,
         ),
       );
+
+      // ✅ Feedback immédiat
+      toast.error("Session annulée.");
+
+      // ✅ Notification persistante
+      addNotification(
+        "Session annulée",
+        "La session a été annulée avec succès.",
+        "warning",
+        "accountChanges"
+      );
     } catch {
-      alert("Erreur réseau");
+      toast.error("Erreur réseau");
     }
   };
 
@@ -264,21 +261,43 @@ export default function PlanningPage() {
       });
       if (!res.ok) {
         const error = await res.json();
-        alert(error.message || "Erreur lors de l'affectation");
+        toast.error(error.message || "Erreur lors de l'affectation");
         return;
       }
-      const updated: Session = await res.json();
+      const updated: Session = normalizeSession(await res.json());
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? updated : s)),
       );
       setAssignModal(null);
+
+      // ✅ Feedback immédiat
+      toast.success("Formateur affecté avec succès !");
+
+      // ✅ Notification persistante
+      addNotification(
+        "Formateur affecté",
+        `Le formateur a été affecté à la session du ${updated.date}.`,
+        "success",
+        "trainerUpdates"
+      );
     } catch {
-      alert("Erreur réseau");
+      toast.error("Erreur réseau");
     }
   };
 
   const handleFormationCreated = (newFormation: Formation) => {
     setFormations((prev) => [newFormation, ...prev]);
+
+    // ✅ Feedback immédiat
+    toast.success(`Formation "${newFormation.titre}" créée !`);
+
+    // ✅ Notification persistante
+    addNotification(
+      "Formation créée",
+      `La formation "${newFormation.titre}" a été ajoutée.`,
+      "success",
+      "accountChanges"
+    );
   };
 
   const resetFilters = () =>

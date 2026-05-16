@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   description: "Tableau de bord BI",
 };
 
+import { Toaster } from "sonner";
+
 export default function RootLayout({
   children,
 }: {
@@ -23,6 +25,7 @@ export default function RootLayout({
       <body>
         <NotificationProvider>
           {children}
+          <Toaster position="top-right" richColors closeButton />
         </NotificationProvider>
       </body>
     </html>

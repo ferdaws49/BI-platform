@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Session, Formateur, Formation } from "../page";
+import { API_URL, Session, Formateur, Formation } from "../constants";
 
 interface CreateSessionModalProps {
   session: Session | null;
@@ -15,8 +15,6 @@ type ConflictWarning = {
   type: "formateur" | "formation" | "apprenant";
   message: string;
 };
-
-const API_URL = "http://localhost:5000";
 
 // Normalise "HH:mm:ss" → "HH:mm"
 function toHHmm(t: string): string {
@@ -32,6 +30,17 @@ export default function CreateSessionModal({
 }: CreateSessionModalProps) {
   const isEdit = !!session;
 
+  // ── Mapping Inverse (Backend -> UI) ────────────────────────────────
+  const reverseStatusMap: Record<string, string> = {
+    "Active": "Actif",
+    "Completed": "Terminé",
+    "Cancelled": "Annulé"
+  };
+  const reverseTypeMap: Record<string, string> = {
+    "présentiel": "présentiel",
+    "en_ligne": "en_ligne"
+  };
+
   const [form, setForm] = useState({
     date: session?.date ?? "",
     heureDebut: toHHmm(session?.heureDebut ?? ""),
@@ -39,10 +48,9 @@ export default function CreateSessionModal({
     formationId: session?.formationId ? String(session.formationId) : "",
     formateurId: session?.formateurId ? String(session.formateurId) : "",
     lieu: session?.lieu ?? "",
-    statut: session?.statut ?? "Actif",
-    type: session?.type ?? "présentiel", // ✅ Added
-    capacite: session?.capacite != null ? String(session.capacite) : "", // ✅ Added
-    // Prix spécifique session (optionnel)
+    statut: session?.statut ? (reverseStatusMap[session.statut] || session.statut) : "Actif",
+    type: session?.type ? (reverseTypeMap[session.type] || session.type) : "présentiel",
+    capacite: session?.capacite != null ? String(session.capacite) : "",
     prix: session?.prix != null ? String(session.prix) : "",
   });
 
@@ -86,7 +94,14 @@ export default function CreateSessionModal({
       })
       .catch(() => setConflicts([]))
       .finally(() => setCheckingConflict(false));
-  }, [form.date, form.heureDebut, form.heureFin, form.formateurId, form.formationId]);
+  }, [
+    form.date,
+    form.heureDebut,
+    form.heureFin,
+    form.formateurId,
+    form.formationId,
+    session?.id,
+  ]);
 
   // ── Validation Logic ────────────────────────────────────────────────
   const validate = () => {
@@ -136,12 +151,26 @@ export default function CreateSessionModal({
         formationId: Number(form.formationId),
         formateurId: Number(form.formateurId),
       };
+      // ✅ Traduction pour le Backend
+      const statusMap: Record<string, string> = {
+        "Actif": "Active",
+        "Terminé": "Completed",
+        "Annulé": "Cancelled"
+      };
+      const typeMap: Record<string, string> = {
+        "présentiel": "présentiel",
+        "en_ligne": "en_ligne"
+      };
+
       if (form.lieu) payload.lieu = form.lieu;
-      if (isEdit) payload.statut = form.statut;
+      
+      // On applique la traduction si la valeur existe dans la map, sinon on garde la valeur brute
+      payload.statut = statusMap[form.statut] || form.statut;
+      payload.type = typeMap[form.type] || form.type;
+
       if (form.prix && !isNaN(Number(form.prix))) {
         payload.prix = Number(form.prix);
       }
-      payload.type = form.type;
       if (form.capacite && !isNaN(Number(form.capacite))) {
         payload.capacite = Number(form.capacite);
       }

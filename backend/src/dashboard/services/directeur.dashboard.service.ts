@@ -76,26 +76,27 @@ export class DirecteurDashboardService {
     let endDatePrev: Date;
 
     switch (periode) {
+      case 'Ce mois':
       case 'month':
         startDate     = new Date(y, m, 1);
         startDatePrev = new Date(y, m - 1, 1);
         endDatePrev   = new Date(y, m, 0);
         break;
-
+      case 'Trimestre':
       case 'quarter':
         const quarterStart = Math.floor(m / 3) * 3;
         startDate     = new Date(y, quarterStart, 1);
         startDatePrev = new Date(y, quarterStart - 3, 1);
         endDatePrev   = new Date(y, quarterStart, 0);
         break;
-
+      case 'Semestre':
       case 'semester':
         const semStart = m < 6 ? 0 : 6;
         startDate     = new Date(y, semStart, 1);
         startDatePrev = new Date(y, semStart - 6, 1);
         endDatePrev   = new Date(y, semStart, 0);
         break;
-
+      case 'Année':
       case 'year':
         startDate     = new Date(y, 0, 1);
         startDatePrev = new Date(y - 1, 0, 1);
@@ -114,7 +115,7 @@ export class DirecteurDashboardService {
   // ══════════════════════════════════════════════════════════════════════════
 
   async getOverview(filters: PaginationFilterDto = {}) {
-    const dates = this.getPeriodeDates(filters.periode);
+    const dates = this.getPeriodeDates(filters.periode) || this.getPeriodeDates('month');
 
     // ── Base session QueryBuilder ──────────────────────────────────────────
     const sessionQb = () => {
@@ -166,8 +167,8 @@ export class DirecteurDashboardService {
     const totalFormations = await this.formationRepo.count();
     const totalFormateurs = await this.formateurRepo.count();
     const totalSessions = await sessionQb().getCount();
-    const sessionsActives = await sessionQb()
-      .andWhere('session.statut = :statut', { statut: SessionStatut.ACTIF })
+    const sessionsRealisees = await sessionQb()
+      .andWhere('session.statut != :statut', { statut: SessionStatut.ANNULE })
       .getCount();
     const revenusResult = await revenusQb.getRawOne();
 
@@ -197,7 +198,7 @@ export class DirecteurDashboardService {
       totalFormations,
       totalFormateurs,
       totalSessions,
-      sessionsActives,
+      sessionsActives: sessionsRealisees,
       tauxRemplissageMoyen: parseFloat(
         parseFloat(remplissageResult?.avg ?? '0').toFixed(1),
       ),
@@ -229,11 +230,10 @@ export class DirecteurDashboardService {
     });
 
     // ── Formations actives dans la période ────────────────────────────────
-    // ✅ FIX: utilise SessionStatut.ACTIF au lieu de 'Actif'
     const formationsActivesQb = this.sessionRepo
       .createQueryBuilder('session')
       .select('COUNT(DISTINCT session.formationId)', 'count')
-      .where('session.statut = :statut', { statut: SessionStatut.ACTIF })
+      .where('session.statut != :cancelled', { cancelled: SessionStatut.ANNULE })
       .andWhere('session.date BETWEEN :start AND :end', {
         start: dates.startDate.toISOString().split('T')[0],
         end:   dates.endDate.toISOString().split('T')[0],
@@ -261,6 +261,12 @@ export class DirecteurDashboardService {
     // ── Performances filtrées ──────────────────────────────────────────────
     const perfQb = () => {
       const qb = this.performanceRepo.createQueryBuilder('perf');
+      // 📅 Appliquer le filtre de période aux performances
+      qb.andWhere('perf.date BETWEEN :start AND :end', { 
+        start: dates.startDate.toISOString().split('T')[0], 
+        end:   dates.endDate.toISOString().split('T')[0] 
+      });
+
       if (filters.formation && filters.formation !== 'Tous') {
         qb.innerJoin('perf.formation', 'formation').andWhere(
           'formation.titre = :titre',
@@ -303,6 +309,13 @@ export class DirecteurDashboardService {
       satQb
         .innerJoin('s.formation', 'formation')
         .andWhere('formation.titre = :titre', { titre: filters.formation });
+    }
+
+    if (dates) {
+      satQb.andWhere('s.createdAt BETWEEN :start AND :end', {
+        start: dates.startDate,
+        end:   dates.endDate,
+      });
     }
 
     const satisfactionResult = await satQb.getRawOne();
@@ -348,7 +361,15 @@ export class DirecteurDashboardService {
       .addSelect('EXTRACT(MONTH FROM session.date::date)', 'monthNum')
       .addSelect('COUNT(sa."apprenantId")', 'total')
       .innerJoin('sessions_apprenants', 'sa', 'sa."sessionId" = session.id')
-      .where("session.date::date >= NOW() - INTERVAL '6 months'");
+    const dates = this.getPeriodeDates(filters.periode);
+    if (dates) {
+      qb.andWhere('session.date BETWEEN :start AND :end', {
+        start: dates.startDate.toISOString().split('T')[0],
+        end:   dates.endDate.toISOString().split('T')[0],
+      });
+    } else {
+      qb.where("session.date::date >= NOW() - INTERVAL '6 months'");
+    }
 
     if (filters.formation && filters.formation !== 'Tous') {
       qb.innerJoin('formations', 'fo', 'fo.id = session."formationId"').andWhere(
@@ -396,8 +417,16 @@ export class DirecteurDashboardService {
       .select("TO_CHAR(finance.date, 'Mon')", 'month')
       .addSelect('EXTRACT(MONTH FROM finance.date)', 'monthNum')
       .addSelect('SUM(finance.montant)', 'total')
-      .where("finance.date >= NOW() - INTERVAL '6 months'")
-      .andWhere("finance.type = 'paiement'");
+    const dates = this.getPeriodeDates(filters.periode);
+    qb.andWhere("finance.type = 'paiement'");
+    if (dates) {
+      qb.andWhere('finance.date BETWEEN :start AND :end', {
+        start: dates.startDate,
+        end:   dates.endDate,
+      });
+    } else {
+      qb.andWhere("finance.date >= NOW() - INTERVAL '6 months'");
+    }
 
     if (
       (filters.formation && filters.formation !== 'Tous') ||
@@ -457,8 +486,16 @@ export class DirecteurDashboardService {
       .leftJoin('formation.sessions', 'session')
       .leftJoin('sessions_apprenants', 'sa', 'sa."sessionId" = session.id');
 
+    const dates = this.getPeriodeDates(filters.periode);
+    if (dates) {
+      qb.andWhere('session.date BETWEEN :start AND :end', {
+        start: dates.startDate.toISOString().split('T')[0],
+        end:   dates.endDate.toISOString().split('T')[0],
+      });
+    }
+
     if (filters.statut && filters.statut !== 'Tous') {
-      qb.where('formation.statut = :statut', { statut: filters.statut });
+      qb.andWhere('formation.statut = :statut', { statut: filters.statut });
     }
     if (filters.type && filters.type !== 'Tous') {
       const typeMap: Record<string, string> = {

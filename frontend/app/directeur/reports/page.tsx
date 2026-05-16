@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
 import StrategicReportPage from "@/app/directeur/reports/components/StrategicReportPage";
 
 const defaultFilters = {
@@ -17,6 +18,32 @@ const STATUTS = ["Tous", "Actif", "Terminé", "Annulé"];
 
 export default function DirecteurReportsPage() {
   const [filters, setFilters] = useState(defaultFilters);
+  const [options, setOptions] = useState<{ formations: string[]; formateurs: string[] }>({
+    formations: ["Tous"],
+    formateurs: ["Tous"],
+  });
+
+  useEffect(() => {
+    const fetchOptions = async () => {
+      try {
+        const token = localStorage.getItem("access_token");
+        const res = await fetch("http://localhost:5000/responsable/dashboard/filters/options", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setOptions({
+            formations: data.formations || ["Tous"],
+            formateurs: data.formateurs || ["Tous"],
+          });
+        }
+      } catch (err) {
+        console.error("Erreur fetch filter options:", err);
+      }
+    };
+    fetchOptions();
+  }, []);
+
 
   return (
     <div className="space-y-6">
@@ -42,6 +69,47 @@ export default function DirecteurReportsPage() {
               ))}
             </select>
           </div>
+
+          {/* Formation */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Formation
+            </label>
+            <select
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[200px]"
+              value={filters.formation}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, formation: e.target.value }))
+              }
+            >
+              {options.formations.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Formateur */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Formateur
+            </label>
+            <select
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[150px]"
+              value={filters.formateur}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, formateur: e.target.value }))
+              }
+            >
+              {options.formateurs.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </div>
+
 
           {/* Type */}
           <div className="flex flex-col gap-1">
