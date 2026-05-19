@@ -32,3 +32,15 @@ export const getFormationSchedules = async (formationId: string | number) => {
   if (!response.ok) throw new Error('Failed to fetch formation schedule');
   return response.json();
 };
+
+export const joinOnlineSession = async (sessionId: string) => {
+  // Utilise la même instance axios/fetch que getStudentSchedules
+  // Exemple avec fetch (adapte selon ton code existant) :
+  const res = await fetch(`${API_URL}/schedules/join/${sessionId}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+  
+  if (!res.ok) throw new Error('Accès refusé');
+  return res.json();
+};

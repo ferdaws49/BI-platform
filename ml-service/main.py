@@ -411,3 +411,29 @@ def forecast_inscriptions(req: ForecastRequest):
         model_used=model_used,
         insight=insight,
     )
+
+
+
+
+
+from fastapi import FastAPI
+from api.ca_routes import router as ca_router
+from api.deficit_routes import router as deficit_router
+
+app = FastAPI(title="ML Service — Centre de Formation")
+
+app.include_router(ca_router)
+app.include_router(deficit_router)
+
+#hedha yethat fi gitignore
+# Modèles ML générés automatiquement
+models/*.pkl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Data générée
+data/*.csv

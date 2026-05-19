@@ -10,7 +10,7 @@ import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, 
   eachDayOfInterval, isSameDay, parseISO, getDay
 } from 'date-fns'
-import { getStudentSchedules } from '@/lib/schedules.api'
+import { getStudentSchedules, joinOnlineSession } from '@/lib/schedules.api'
 import { useRouter } from 'next/navigation'
 
 interface Schedule {
@@ -142,10 +142,30 @@ export default function SchedulePage() {
 // --- SOUS-COMPOSANTS ---
 
 function SessionCard({ session }: { session: any}) {
-   const router = useRouter();
+  const router = useRouter();
+  const [joining, setJoining] = useState(false); // État de chargement du bouton
+
+
 
     const isOnline = session.type === 'en_ligne';
   const displayType = isOnline ? 'Online' : 'In-Person';
+
+  const handleJoin = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation(); // ⛔ Empêche la carte de naviguer vers le détail formation
+    
+    try {
+      setJoining(true);
+      const data = await joinOnlineSession(session.id);
+      if (data.joinUrl) {
+        window.open(data.joinUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) {
+      alert('Impossible de rejoindre : session non active, date incorrecte ou vous n\'êtes pas inscrit.');
+    } finally {
+      setJoining(false);
+    }
+
+  };
   return (
     <div onClick={() => router.push(`/apprenant/schedule/${session.formationId}`)}
      className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition-all group">
@@ -169,9 +189,14 @@ function SessionCard({ session }: { session: any}) {
       </div>
 
       <div className="flex items-center">
-        {session.type === 'Online' && (
-          <button className="w-full md:w-auto bg-[#2d4a3e] text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:scale-105 transition-transform">
-            <Video size={16} /> Rejoindre le cours
+        {isOnline && (
+          <button 
+            onClick={handleJoin}
+            disabled={joining}
+            className="w-full md:w-auto bg-[#2d4a3e] text-white px-6 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Video size={16} /> 
+            {joining ? 'Ouverture...' : 'Rejoindre le cours'}
           </button>
         )}
       </div>

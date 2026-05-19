@@ -49,7 +49,7 @@ export class ApprennatDashboardService {
   
   }));
     
-    const avg = results.length ? results.reduce((acc, r) => acc + (r.note) * 20, 0) / results.length : 0;
+    const avg = results.length ? results.reduce((acc, r) => acc + Number(r.note), 0) / results.length : 0;
 
     // 3. Prochaines sessions
     let upcomingSessions: any[] = [];

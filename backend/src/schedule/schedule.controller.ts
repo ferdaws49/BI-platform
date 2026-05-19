@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
 import { SchedulesService } from './schedule.service';
 import { CurrentUser } from 'src/users/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -16,6 +16,15 @@ export class SchedulesController {
      @Query() filterDto: FilterScheduleDto
   ) {
     return this.schedulesService.getStudentSchedule(user.userId, filterDto);
+  }
+
+   @Get('join/:sessionId')
+  async joinOnlineSession(
+    @Param('sessionId') sessionId: string,
+    @CurrentUser() user: any,// contient req.user avec l'id de l'utilisateur connecté
+  ) {
+    console.log('User from CurrentUser:', user)// Adaptez selon la structure de votre JWT
+    return this.schedulesService.getOnlineSessionLink(sessionId, user.userId);
   }
 
   // GET /schedules/formation/1

@@ -9,12 +9,15 @@ import { AiPredictionService } from './ai-prediction.service';
 import { AiPredictionController } from './ai-prediction.controller';
 import { FinancesModule } from 'src/finances/finances.module';
 import { DashboardModule } from 'src/dashboard/dashboard.module';
+import { MlService } from './ml.service';
+import { MlController } from './ml.controller';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Session, User, Formation, Apprenant, Finance]),
-   FinancesModule, DashboardModule],  
-  providers: [AiPredictionService],
-  controllers: [AiPredictionController],
+   FinancesModule, DashboardModule, HttpModule.register({ timeout: 10000 })],  
+  providers: [AiPredictionService, MlService],
+  controllers: [AiPredictionController, MlController],
   
 })
 export class FinancePredictModule {}
