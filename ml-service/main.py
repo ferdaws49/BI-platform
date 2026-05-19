@@ -425,15 +425,3 @@ app = FastAPI(title="ML Service — Centre de Formation")
 app.include_router(ca_router)
 app.include_router(deficit_router)
 
-#hedha yethat fi gitignore
-# Modèles ML générés automatiquement
-models/*.pkl
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.env
-
-# Data générée
-data/*.csv
