@@ -18,55 +18,6 @@ export class StudentFinanceService {
   ) {}
 
 
-  /**
- * Renvoie les formations et sessions uniques de l'étudiant
- * pour alimenter les menus déroulants des filtres.
- */
-async getFilterOptions(userId: number) {
-  const apprenantId = await this.resolveApprenantId(userId);
-
-  const rows = await this.sessionRepo
-    .createQueryBuilder('session')
-    .innerJoin(
-      'session.apprenants',
-      'apprenant',
-      'apprenant.id = :apprenantId',
-      { apprenantId },
-    )
-    .leftJoinAndSelect('session.formation', 'formation')
-    .select([
-      'session.id as sessionId',
-      'session.title as sessionTitle',
-      'formation.id as formationId',
-      'formation.titre as formationTitle',
-    ])
-    .orderBy('formation.titre', 'ASC')
-    .addOrderBy('session.date', 'DESC')
-    .getRawMany();
-
-  // Formations uniques
-  const formationsMap = new Map<number, { id: number; title: string }>();
-  const sessionsList: { id: string; title: string; formationId: number }[] = [];
-
-  rows.forEach((r) => {
-    if (!formationsMap.has(r.formationId)) {
-      formationsMap.set(r.formationId, {
-        id: r.formationId,
-        title: r.formationTitle,
-      });
-    }
-    sessionsList.push({
-      id: r.sessionId,
-      title: r.sessionTitle,
-      formationId: r.formationId,
-    });
-  });
-
-  return {
-    formations: Array.from(formationsMap.values()),
-    sessions: sessionsList,
-  };
-}
 
   /**
    * Récupère l'ID Apprenant lié au User connecté.
@@ -90,40 +41,15 @@ async getFilterOptions(userId: number) {
    */
   async getPayments(userId: number, dto: GetStudentPaymentsDto) {
     const apprenantId = await this.resolveApprenantId(userId);
-    const { sessionId, formationId, dateFrom, dateTo, page = 1, limit = 20, } = dto;
+    const { page = 1, limit = 20 } = dto;
     const skip = (page - 1) * limit;
-    console.log('userId:', userId);
-     console.log('apprenantId:', apprenantId);
-     console.log("USER FROM TOKEN =", userId);
 
-    const qb = this.financeRepo
+    const [entities, total] = await this.financeRepo
       .createQueryBuilder('finance')
       .leftJoinAndSelect('finance.session', 'session')
       .leftJoinAndSelect('session.formation', 'formation')
       .where('finance.apprenantId = :apprenantId', { apprenantId })
-      .andWhere('finance.type = :type', { type: FinanceType.PAIEMENT });
-
-    if (sessionId) {
-      qb.andWhere('finance.sessionId = :sessionId', { sessionId });
-    }
-
-    if (formationId) {
-      qb.andWhere('session.formationId = :formationId', { formationId });
-    }
-
-    if (dateFrom) {
-      qb.andWhere('finance.date >= :dateFrom', {
-        dateFrom: new Date(dateFrom),
-      });
-    }
-
-    if (dateTo) {
-      qb.andWhere('finance.date <= :dateTo', {
-        dateTo: new Date(dateTo),
-      });
-    }
-
-    const [entities, total] = await qb
+      .andWhere('finance.type = :type', { type: FinanceType.PAIEMENT })
       .orderBy('finance.date', 'DESC')
       .addOrderBy('finance.id', 'DESC')
       .skip(skip)
@@ -136,7 +62,6 @@ async getFilterOptions(userId: number) {
       date: f.date,
       sessionId: f.sessionId,
       sessionTitle: f.session?.title ?? null,
-      // ⚠️ ADAPTE selon ton entité Formation (title, name, intitule, etc.)
       formationTitle:
         (f.session?.formation as any)?.titre ??
         (f.session?.formation as any)?.name ??

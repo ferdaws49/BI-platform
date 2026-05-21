@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { MlService } from './ml.service';
+import { PredictCADto } from './dtos/predict-ca.dto';
 
 @Controller('ml')
 export class MlController {
@@ -10,10 +11,10 @@ export class MlController {
     return this.mlService.healthCheck();
   }
 
-  @Get('predict-ca')
-  predictCA() {
-    return this.mlService.predictCA();
-  }
+  @Post('predict-ca')
+predictCA(@Body() filters: PredictCADto) {
+  return this.mlService.predictCA(filters);
+}
 
   @Get('predict-ca/backtest')
   backtestCA() {

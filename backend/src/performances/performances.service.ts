@@ -52,7 +52,7 @@ export class PerformanceService {
     return {
        id: f.formationId,       // ✅ On ajoute 'id' pour correspondre au design front
       formationId: f.formationId, 
-      name: f.formationTitle,
+      name: f.name,
       count: f.notes.length,
       average: Number(avg.toFixed(2)),
       isPassed: avg >= 10,

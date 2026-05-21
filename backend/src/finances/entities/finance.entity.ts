@@ -12,6 +12,8 @@ import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
 export enum FinanceType {
   PAIEMENT = 'paiement',
   DEPENSE = 'depense',
+  DEPENSE_FORMATEUR = 'depense_formateur',
+  DEPENSE_LOGISTIQUE = 'depense_logistique',
   IMPAYE = 'impaye',
   REMBOURSEMENT = 'remboursement',
 }
