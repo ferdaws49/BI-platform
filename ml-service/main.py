@@ -2,6 +2,12 @@
 Plateforme BI — Centre de Formation Privé
 Risk Prediction Microservice — FastAPI + scikit-learn
 Port: 8000
+
+Architecture du fichier :
+  1. Schémas Pydantic  — contrat JSON entrée/sortie des API
+  2. ModelRegistry     — entraînement ML au démarrage + prédiction risque d'abandon
+  3. POST /predict     — score de risque par apprenant (0-100)
+  4. POST /forecast    — prévision d'inscriptions (Prophet ou régression linéaire)
 """
 
 from fastapi import FastAPI, HTTPException
@@ -16,8 +22,10 @@ from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings("ignore")
 
+# Instance FastAPI exposée à uvicorn (ex. : uvicorn main:app --reload --port 8000)
 app = FastAPI(title="BI Risk Prediction Service", version="1.0.0")
 
+# CORS : autorise le frontend (Nest/React) à appeler ce service depuis le navigateur
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5000", "http://localhost:3000"],
@@ -26,8 +34,10 @@ app.add_middleware(
 )
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
+# Modèles de validation : FastAPI vérifie automatiquement le corps des requêtes JSON.
 
 class ApprenantFeatures(BaseModel):
+    """Indicateurs agrégés d'un apprenant, calculés côté backend avant l'appel ML."""
     apprenant_id: int
     # Présence (weight 40%)
     taux_presence: float          # 0.0 → 1.0 (1 = toujours présent)
@@ -41,9 +51,11 @@ class ApprenantFeatures(BaseModel):
     jours_retard_paiement: int    # 0 = à jour
 
 class PredictRequest(BaseModel):
+    """Batch : plusieurs apprenants en une seule requête pour limiter les allers-retours HTTP."""
     apprenants: List[ApprenantFeatures]
 
 class RiskResult(BaseModel):
+    """Réponse par apprenant : score, niveau lisible, proba brute et facteurs explicatifs."""
     apprenant_id: int
     risk_score: int               # 0-100
     risk_level: str               # critique / eleve / modere / faible
@@ -58,13 +70,17 @@ class PredictResponse(BaseModel):
 # ─── Model Registry ───────────────────────────────────────────────────────────
 
 class ModelRegistry:
-    """Trains both models on synthetic data, picks the best by CV score."""
+    """
+    Charge et entraîne le modèle une seule fois au démarrage du serveur.
+    - StandardScaler : normalise les features (même échelle que à l'entraînement)
+    - Comparaison LogisticRegression vs RandomForest via validation croisée (AUC)
+    """
 
     def __init__(self):
         self.scaler = StandardScaler()
         self.model = None
         self.model_name = ""
-        self._train()
+        self._train()  # exécuté à l'import du module → coût au boot, pas à chaque /predict
 
     def _generate_synthetic_data(self):
         """
@@ -103,14 +119,16 @@ class ModelRegistry:
         X = np.vstack([X_risk, X_ok])
         y = np.array([1] * n_risk + [0] * n_ok)
 
-        # Shuffle
+        # Mélange aléatoire pour que la CV ne soit pas biaisée par l'ordre des classes
         idx = np.random.permutation(n)
         return X[idx], y[idx]
 
     def _train(self):
         X, y = self._generate_synthetic_data()
+        # fit_transform : calcule moyenne/écart-type sur X et applique la normalisation
         X_scaled = self.scaler.fit_transform(X)
 
+        # Deux classificateurs testés ; le meilleur AUC moyen (5 folds) est retenu
         candidates = {
             "LogisticRegression": LogisticRegression(
                 max_iter=1000, C=1.0, random_state=42
@@ -130,32 +148,37 @@ class ModelRegistry:
                 self.model = clf
                 self.model_name = name
 
-        # Final fit on all data
+        # Ré-entraînement sur tout le jeu : le modèle servi en prod utilise 100 % des données synthétiques
         self.model.fit(X_scaled, y)
         print(f"[ModelRegistry] ✅ Modèle sélectionné: {self.model_name} (AUC={best_score:.3f})")
 
     def predict(self, features: List[List[float]]) -> np.ndarray:
+        """Retourne P(abandon) pour chaque ligne — colonne 1 de predict_proba = classe « à risque »."""
         X = np.array(features)
+        # transform uniquement (pas fit) : réutilise les stats apprises à l'entraînement
         X_scaled = self.scaler.transform(X)
-        return self.model.predict_proba(X_scaled)[:, 1]  # probability of class 1 (risk)
+        return self.model.predict_proba(X_scaled)[:, 1]
 
-
-# Global model instance (loaded once at startup)
+# Singleton : un seul modèle en mémoire pour toute la durée de vie du processus
 registry = ModelRegistry()
 
 # ─── Risk Level Mapping ───────────────────────────────────────────────────────
 
 def score_to_level(score: int) -> str:
+    """Convertit le score 0-100 en libellé métier pour tableaux de bord et alertes."""
     if score >= 75: return "critique"
     if score >= 55: return "eleve"
     if score >= 35: return "modere"
     return "faible"
 
 def build_factors(f: ApprenantFeatures) -> dict:
-    """Construit les explications textuelles par facteur."""
+    """
+    Explications lisibles pour l'UI (indépendantes du modèle ML).
+    Règles métier par seuil — les poids 40/35/15/10 sont documentés dans model_info.
+    """
     factors = {}
 
-    # Présence
+    # Présence (priorité aux absences consécutives, signal fort d'abandon)
     presence_pct = round(f.taux_presence * 100)
     if f.absences_consecutives >= 3:
         factors["presence"] = f"{f.absences_consecutives} absences consécutives ({presence_pct}% de présence)"
@@ -194,15 +217,20 @@ def build_factors(f: ApprenantFeatures) -> dict:
 
 @app.get("/health")
 def health():
+    """Sonde pour orchestration / load balancer : vérifie que le service et le modèle sont chargés."""
     return {"status": "ok", "model": registry.model_name}
 
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
+    """
+    Pipeline risque d'abandon :
+      features JSON → matrice numpy → proba ML → score 0-100 → niveau + facteurs texte
+    """
     if not req.apprenants:
         raise HTTPException(status_code=400, detail="Liste d'apprenants vide")
 
-    # Build feature matrix — same order as training
+    # Ordre des colonnes DOIT correspondre à _generate_synthetic_data (sinon prédictions fausses)
     feature_matrix = []
     for f in req.apprenants:
         row = [
@@ -215,12 +243,13 @@ def predict(req: PredictRequest):
         ]
         feature_matrix.append(row)
 
+    # Inférence batch : une seule passe scaler + modèle pour tous les apprenants
     probabilities = registry.predict(feature_matrix)
 
     results = []
     for i, apprenant in enumerate(req.apprenants):
         prob = float(probabilities[i])
-        risk_score = min(100, int(round(prob * 100)))
+        risk_score = min(100, int(round(prob * 100)))  # proba → pourcentage entier plafonné à 100
         results.append(RiskResult(
             apprenant_id=apprenant.apprenant_id,
             risk_score=risk_score,
@@ -244,9 +273,13 @@ def predict(req: PredictRequest):
 # ─── Dev server ───────────────────────────────────────────────────────────────
 # uvicorn main:app --reload --port 8000
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MODULE PRÉVISION D'INSCRIPTIONS (séries temporelles mensuelles)
+# ═══════════════════════════════════════════════════════════════════════════════
+
 # ─── Forecast Schemas ─────────────────────────────────────────────────────────
 
-from pydantic import BaseModel as PydanticBase
+from pydantic import BaseModel as PydanticBase  # alias pour éviter conflit avec les schémas risque
 from typing import List as TypingList
 import pandas as pd
 from datetime import datetime, timedelta
@@ -274,6 +307,7 @@ class ForecastResponse(PydanticBase):
     insight: str                   # explication pour le directeur
 
 # ─── Static Fallback Data ─────────────────────────────────────────────────────
+# Jeu minimal si le client n'envoie pas assez d'historique (< 3 mois) — démo / dev uniquement
 
 STATIC_HISTORIQUE = [
     {"ds": "2024-10", "y": 8},
@@ -288,12 +322,15 @@ STATIC_HISTORIQUE = [
 # ─── Forecast Logic ───────────────────────────────────────────────────────────
 
 def linear_trend_forecast(df: pd.DataFrame, periodes: int):
-    """Fallback: régression linéaire simple sur le temps."""
+    """
+    Fallback si Prophet absent ou en erreur.
+    Index temporel t = 0, 1, 2… ; la pente estimée prolonge la série de periodes mois.
+    """
     from sklearn.linear_model import LinearRegression as LR
     import numpy as np
 
     df = df.copy()
-    df["t"] = range(len(df))
+    df["t"] = range(len(df))  # variable « temps » pour la régression
     X = df[["t"]].values
     y = df["y"].values
 
@@ -304,7 +341,7 @@ def linear_trend_forecast(df: pd.DataFrame, periodes: int):
     for i in range(1, periodes + 1):
         t_next = len(df) + i - 1
         val = max(0, int(round(model.predict([[t_next]])[0])))
-        std = max(1, int(np.std(y) * 0.5))
+        std = max(1, int(np.std(y) * 0.5))  # bande d'incertitude grossière autour de la prédiction
         next_month = last_date + pd.DateOffset(months=i)
         previsions.append(ForecastPoint(
             mois=next_month.strftime("%Y-%m"),
@@ -332,10 +369,10 @@ def prophet_forecast(df: pd.DataFrame, periodes: int):
         )
         m.fit(prophet_df)
 
-        future = m.make_future_dataframe(periods=periodes, freq="MS")
+        future = m.make_future_dataframe(periods=periodes, freq="MS")  # MS = début de mois
         forecast = m.predict(future)
 
-        # Prendre seulement les periodes futures
+        # tail(periodes) : ignore l'historique ajusté, ne garde que les mois à venir
         future_forecast = forecast.tail(periodes)
         previsions = []
         for _, row in future_forecast.iterrows():
@@ -361,8 +398,9 @@ def compute_tendance(historique_y: list, previsions: list) -> tuple:
     prochaine_valeur = previsions[0].valeur_prevue
 
     variation = prochaine_valeur - derniere_valeur
-    pct = round((variation / max(1, derniere_valeur)) * 100)
+    pct = round((variation / max(1, derniere_valeur)) * 100)  # max(1,…) évite division par zéro
 
+    # Seuils ±10 % : classification hausse / baisse / stable pour les graphiques BI
     if pct >= 10:
         tendance = "hausse"
         insight = f"📈 Hausse prévue de +{pct}% le mois prochain ({prochaine_valeur} inscriptions). Préparez les ressources."
@@ -385,7 +423,7 @@ def forecast_inscriptions(req: ForecastRequest):
     Utilise Prophet si disponible, sinon Linear Trend.
     Si historique vide → static fallback data.
     """
-    # Utiliser static data si historique vide ou trop court
+    # Prophet a besoin d'un minimum de points ; sinon données de démo intégrées
     if not req.historique or len(req.historique) < 3:
         print("[Forecast] Données insuffisantes → static fallback")
         data = STATIC_HISTORIQUE
@@ -395,13 +433,14 @@ def forecast_inscriptions(req: ForecastRequest):
     df = pd.DataFrame(data)
     df["y"] = df["y"].astype(float)
 
-    # Choisir le model
+    # Prophet si installé (requirements optionnel) ; sinon régression linéaire
     try:
         from prophet import Prophet
         previsions, model_used = prophet_forecast(df, req.periodes)
     except ImportError:
         previsions, model_used = linear_trend_forecast(df, req.periodes)
 
+    # Compare dernier mois réel vs 1er mois prévu pour tendance + message directeur
     tendance, insight = compute_tendance(df["y"].tolist(), previsions)
 
     return ForecastResponse(
