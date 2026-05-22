@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  UpdateDateColumn,
 } from 'typeorm';
 import { Session } from '../../sessions/entities/session.entity';
 import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
@@ -12,6 +13,8 @@ import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
 export enum FinanceType {
   PAIEMENT = 'paiement',
   DEPENSE = 'depense',
+  DEPENSE_FORMATEUR = 'depense_formateur',
+  DEPENSE_LOGISTIQUE = 'depense_logistique',
   IMPAYE = 'impaye',
   REMBOURSEMENT = 'remboursement',
 }
@@ -48,6 +51,8 @@ export class Finance {
   @CreateDateColumn()
   date: Date;
 
+  @UpdateDateColumn()
+  updatedAt: Date;
 
   // ... à l'intérieur de la classe Finance
   @ManyToOne(() => Apprenant, { nullable: true, onDelete: 'SET NULL' })

@@ -31,7 +31,7 @@ import { DwModule } from './dw/dw.module';
 import { SatisfactionModule } from './satisfaction/satisfaction.module';
 import { AlertsModule } from './ai/alerts/alerts.module';
 import { ForecastModule } from './ai/forecast/forecast.module';
-
+import { ScheduleModule } from '@nestjs/schedule';
 
 
 // Importe ton Guard de JWT (ajuste le chemin selon ton projet)
@@ -40,6 +40,7 @@ import { ForecastModule } from './ai/forecast/forecast.module';
 import { RolesGuard } from './auth/guards/roles.guard';*/
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     // 1. Configuration des variables d'environnement
     ConfigModule.forRoot({
       isGlobal: true,

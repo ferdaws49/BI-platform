@@ -7,10 +7,10 @@ export class DwController {
 
   @Post('refresh')
   async refreshDW() {
-    await this.etlService.runETL();
+    await this.etlService.runEtl();
 
     return {
       message: 'DW refreshed successfully',
     };
   }
-}
+} 

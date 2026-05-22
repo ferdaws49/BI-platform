@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, SelectQueryBuilder } from 'typeorm';
-import { Session } from 'src/sessions/entities/session.entity';
-import { Formation } from 'src/formations/entities/formation.entity';
-import { Finance, FinanceType } from 'src/finances/entities/finance.entity';
+import { DataSource} from 'typeorm';
 import { FinancierDashboardFilterDto, SortOrder } from 'src/dashboard/dto/financier-dashboard-filter.dto';
 import { PerformanceSortBy, PaiementStatus } from 'src/utils/enums';
 import { CategoryRevenueCostItemDto, DashboardKpisDto, FormationRevenueItemDto, MonthlyRevenueItemDto, SessionPerformanceRowDto, SessionsPerformanceResponseDto } from 'src/dashboard/dto/financier-dashboard-response.dto';
@@ -12,16 +8,16 @@ import { CategoryRevenueCostItemDto, DashboardKpisDto, FormationRevenueItemDto, 
 @Injectable()
 export class FinancierDashboardService {
   constructor(
-    @InjectRepository(Session) private sessionRepository: Repository<Session>,
-    @InjectRepository(Finance) private financeRepository: Repository<Finance>,
-    @InjectRepository(Formation) private formationRepository: Repository<Formation>,
     private readonly dataSource: DataSource,
   ) {}
 
   async getAllFormations() {
-  return this.formationRepository.find({
-    select: ['id', 'titre'],
-  });
+  return this.dataSource.query(`
+    SELECT formation_id as id, titre 
+    FROM dw.dim_formation 
+    WHERE formation_id != -1 
+    ORDER BY titre
+  `);
 }
   
   async getKpisGlobaux(filter: FinancierDashboardFilterDto): Promise<DashboardKpisDto> {
@@ -40,14 +36,14 @@ export class FinancierDashboardService {
   // 2. Exécution de la requête en SQL brut
   const rawResult = await this.dataSource.query(`
     SELECT 
-      SUM(CASE WHEN f.est_paiement THEN f.montant ELSE 0 END) AS "caRealise",
-      SUM(CASE WHEN f.est_depense THEN f.montant ELSE 0 END) AS "caFacture",
-      -- Somme des coûts uniques par session pour éviter les doublons si plusieurs paiements
-      SUM(CASE WHEN f.est_depense THEN (f.cout_formateur + f.cout_logistique) ELSE 0 END) AS "totalCouts"
+      SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) AS "caRealise",
+      SUM(CASE WHEN tf.type = 'impaye' THEN f.montant ELSE 0 END) AS "caFacture",
+      SUM(CASE WHEN tf.type IN ('depense_formateur', 'depense_logistique') THEN -f.montant ELSE 0 END) AS "totalCouts"
     FROM dw.fact_finance f
     INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    INNER JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
     LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
-    WHERE t.date_complete BETWEEN $1 AND $2
+    WHERE t.date_key BETWEEN $1 AND $2
     ${formationFilter}
   `, params);
 
@@ -84,21 +80,18 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
       SELECT SUM(f.montant) as total
       FROM dw.fact_finance f
       JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-      WHERE f.est_paiement = true 
-      AND t.date_complete BETWEEN $1 AND $2
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      WHERE tf.type = 'paiement' 
+      AND t.date_key BETWEEN $1 AND $2
     `, [start, end]);
     return parseFloat(res[0]?.total) || 0;
   };
 
-  const current = await getCa(
-    currentStart.toISOString().split('T')[0], 
-    currentEnd.toISOString().split('T')[0]
-  );
-  
-  const previous = await getCa(
-    previousStart.toISOString().split('T')[0], 
-    previousEnd.toISOString().split('T')[0]
-  );
+    const fmt = (d: Date) => 
+    `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+  const current = await getCa(fmt(currentStart), fmt(currentEnd));
+  const previous = await getCa(fmt(previousStart), fmt(previousEnd));
 
   return previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
 }
@@ -136,9 +129,10 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
             SUM(f.montant) as "caRealise"
         FROM dw.fact_finance f
         INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+        INNER JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
         LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
-        WHERE f.est_paiement = true
-          AND t.date_complete BETWEEN $1 AND $2
+        WHERE tf.type = 'paiement'
+          AND t.date_key BETWEEN $1 AND $2
           ${formationFilter}
         GROUP BY t.annee, t.mois
         ORDER BY t.annee ASC, t.mois ASC
@@ -162,13 +156,14 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
         SELECT 
             COALESCE(fo.categorie, 'Non classée') as "categorie",
             -- Somme des revenus (lignes de paiements)
-            SUM(CASE WHEN f.est_paiement THEN f.montant ELSE 0 END) as "revenue",
+            SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as "revenue",
             -- Somme des coûts (lignes d'initialisation de session)
-            SUM(CASE WHEN f.est_depense THEN (f.cout_formateur + f.cout_logistique) ELSE 0 END) as "cout"
+            SUM(CASE WHEN tf.type IN ('depense_formateur', 'depense_logistique') THEN -f.montant ELSE 0 END) as "cout"
         FROM dw.fact_finance f
         INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-        INNER JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
-        WHERE t.date_complete BETWEEN $1 AND $2
+        INNER JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+        LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+        WHERE t.date_key BETWEEN $1 AND $2
         GROUP BY fo.categorie
         ORDER BY "revenue" DESC
     `, [startDate, endDate]);
@@ -203,8 +198,9 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
         FROM dw.fact_finance f
         INNER JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
         INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-        WHERE f.est_paiement = true
-          AND t.date_complete BETWEEN $1 AND $2
+        INNER JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+        WHERE tf.type = 'paiement'
+          AND t.date_key BETWEEN $1 AND $2
           ${formationFilter}
         GROUP BY fo.formation_id, fo.titre
         ORDER BY "caRealise" DESC
@@ -228,35 +224,35 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
       SELECT DISTINCT f_filter.sk_session
       FROM dw.fact_finance f_filter
       JOIN dw.dim_temps dt_filter ON f_filter.sk_temps = dt_filter.sk_temps
-      WHERE f_filter.est_depense = true 
-        AND dt_filter.date_complete BETWEEN $1 AND $2
+      JOIN dw.dim_type_finance tf_filter ON f_filter.sk_type_finance = tf_filter.sk_type_finance
+      WHERE tf_filter.type IN ('depense_formateur', 'depense_logistique')
+        AND dt_filter.date_key BETWEEN $1 AND $2
     )
     SELECT 
       ds.session_id as "sessionid",
       COALESCE(df.titre, 'Formation non liée') as "formationtitle",
       COALESCE(ds.type_session, '') || ' - ' || COALESCE(df.titre, 'Inconnue') as "sessiontitle",
       -- Date de la session
-      (SELECT dt2.date_complete FROM dw.dim_temps dt2 
+      (SELECT dt2.date_key FROM dw.dim_temps dt2 
        JOIN dw.fact_finance ff2 ON ff2.sk_temps = dt2.sk_temps 
-       WHERE ff2.sk_session = ds.sk_session AND ff2.est_depense = true LIMIT 1) as "date",
+       JOIN dw.dim_type_finance tf2 ON ff2.sk_type_finance = tf2.sk_type_finance
+       WHERE ff2.sk_session = ds.sk_session AND tf2.type IN ('depense_formateur', 'depense_logistique') LIMIT 1) as "date",
       ds.capacite as "capacite",
       -- SOMMES
-      MAX(f.nb_inscrits) as "inscrits",
-      SUM(CASE WHEN f.est_paiement = true THEN f.montant ELSE 0 END) as "ca_encaisse",
-      SUM(CASE WHEN f.est_depense = true THEN f.montant ELSE 0 END) as "ca_facture",
-      SUM(CASE WHEN f.est_depense = true THEN (f.cout_formateur + f.cout_logistique) ELSE 0 END) as "cout_total"
+      COUNT(DISTINCT CASE WHEN f.sk_apprenant <> -1 THEN f.sk_apprenant END) as "inscrits",
+      SUM(CASE WHEN tf.type = 'paiement' AND dt_f.date_key IS NOT NULL THEN f.montant ELSE 0 END) as "ca_encaisse",
+      SUM(CASE WHEN tf.type = 'impaye' AND dt_f.date_key IS NOT NULL THEN f.montant ELSE 0 END) as "ca_facture",
+      SUM(CASE WHEN tf.type IN ('depense_formateur', 'depense_logistique') AND dt_f.date_key IS NOT NULL THEN -f.montant ELSE 0 END) as "cout_total"
     FROM dw.dim_session ds
     INNER JOIN target_sessions ts ON ds.sk_session = ts.sk_session
     LEFT JOIN dw.fact_finance f ON ds.sk_session = f.sk_session
+    LEFT JOIN dw.dim_temps dt_f ON f.sk_temps = dt_f.sk_temps AND dt_f.date_key BETWEEN $1 AND $2
+    LEFT JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
     LEFT JOIN dw.dim_formation df ON f.sk_formation = df.sk_formation
     GROUP BY ds.session_id, ds.type_session, df.titre, ds.capacite, ds.sk_session
   `, [startDate, endDate]);
 
-  // DEBUG POUR VOIR LES VALEURS BRUTES DANS LA CONSOLE VS CODE
-  if (raws.length > 0) {
-     const testRow = raws.find(r => r.sessionid === '229a5030-87d4-411c-aba4-248efd62559a');
-     console.log('--- TEST SESSION 229a50 ---', testRow);
-  }
+
 
   let rows: SessionPerformanceRowDto[] = raws.map((row) => {
     // ⚠️ On utilise bien les noms en minuscules définis dans le AS de la requête
@@ -300,35 +296,7 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
     totalPages: Math.ceil(total / limit) || 1,
   };
 }
-    //partie des filtres
-  private applyFinanceFilters(qb: SelectQueryBuilder<Finance>,//hedha yekhdem ala el finance
-    filter: FinancierDashboardFilterDto,) {
-        if (filter.startDate) {//yekhdem ala date de paiement
-            qb.andWhere('CAST(f.date AS DATE) >= :start', { start: filter.startDate });//tjib donné mn date mou3ayna
-        }
-        if (filter.endDate) {
-            qb.andWhere('CAST(f.date AS DATE) <= :end', { end: filter.endDate });//tjib donnés hatta l data mou3ayna
-        }
-        if (filter.formationId) {
-            qb.innerJoin('f.session', 'fs').andWhere('fs.formationId = :fid', { fid: filter.formationId });
-        }
-  }
-  private async computeCroissance(filter: FinancierDashboardFilterDto): Promise<number> {
-    const { currentStart, currentEnd, previousStart, previousEnd } = this.resolvePeriods(filter);
-
-    const getCa = async (start: Date, end: Date) => {
-      const res = await this.financeRepository.createQueryBuilder('f')
-        .select('SUM(f.montant)', 'total')
-        .where('f.type = :type AND f.date BETWEEN :s AND :e', { type: FinanceType.PAIEMENT, s: start, e: end })
-        .getRawOne();
-      return parseFloat(res?.total) || 0;
-    };
-
-    const current = await getCa(currentStart, currentEnd);
-    const previous = await getCa(previousStart, previousEnd);
-
-    return previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100;
-  }
+  
 
   private resolvePeriods(filter: FinancierDashboardFilterDto) {
     const currentEnd = filter.endDate ? new Date(filter.endDate) : new Date();
@@ -380,3 +348,4 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
     });
   }
 }
+

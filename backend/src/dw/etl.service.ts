@@ -1,243 +1,590 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryRunner, MoreThan } from 'typeorm';
 
-import { Finance } from '../finances/entities/finance.entity';
-import { Session } from '../sessions/entities/session.entity';
-import { Formation } from '../formations/entities/formation.entity';
-import { Formateur } from '../formateurs/entities/formateur.entity';
+/* ---------- Entités SOURCE ---------- */
+import { Finance, FinanceType } from 'src/finances/entities/finance.entity';
+import { Session } from 'src/sessions/entities/session.entity';
+import { Formation } from 'src/formations/entities/formation.entity';
+import { Formateur } from 'src/formateurs/entities/formateur.entity';
 import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
+import { Cron, CronExpression } from '@nestjs/schedule'; // ← Ajoute
 
 @Injectable()
 export class EtlService {
-  constructor(
-    @InjectRepository(Finance)
-    private financeRepo: Repository<Finance>,
+  private readonly logger = new Logger(EtlService.name);
+  private readonly UNKNOWN_SESSION_UUID =
+    '00000000-0000-0000-0000-000000000000';
 
-    @InjectRepository(Session)
-    private sessionRepo: Repository<Session>,
-
-    @InjectRepository(Formation)
-    private formationRepo: Repository<Formation>,
-
-    @InjectRepository(Formateur)
-    private formateurRepo: Repository<Formateur>,
-
-    @InjectRepository(Apprenant)
-    private apprenantRepo: Repository<Apprenant>,
-
-    private dataSource: DataSource,
-  ) {}
-
-  // =====================================================
-  // 🚀 MAIN PIPELINE
-  // =====================================================
-  async runETL() {
-    await this.loadDimensions();
-    await this.loadFactFinance();
-
-    return { message: 'ETL terminé' };
-  }
-
-  // =====================================================
-  // 🟦 DIMENSIONS (LOAD ONLY)
-  // =====================================================
-  async loadDimensions() {
-    await this.loadDimFormation();
-    await this.loadDimSession();
-    await this.loadDimFormateur();
-    await this.loadDimApprenant();
-    await this.loadDimTypeFinance();
-  }
-
-  async loadDimFormation() {
-    const formations = await this.formationRepo.find();
-
-    for (const f of formations) {
-      await this.dataSource.query(`
-        INSERT INTO dw.dim_formation
-        (formation_id, titre, categorie, statut)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT DO NOTHING
-      `, [f.id, f.titre, f.categorie, f.statut]);
-    }
-  }
-
-  async loadDimSession() {
-    const sessions = await this.sessionRepo.find();
-
-    for (const s of sessions) {
-      await this.dataSource.query(`
-        INSERT INTO dw.dim_session
-        (session_id, type_session, capacite)
-        VALUES ($1, $2, $3)
-        ON CONFLICT DO NOTHING
-      `, [s.id, s.type, s.capacite]);
-    }
-  }
-
-  async loadDimFormateur() {
-    const formateurs = await this.formateurRepo.find();
-
-    for (const f of formateurs) {
-      await this.dataSource.query(`
-        INSERT INTO dw.dim_formateur
-        (formateur_id, nom)
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING
-      `, [f.id, f.nom]);
-    }
-  }
-
-  async loadDimApprenant() {
-    const apprenants = await this.apprenantRepo.find({
-      relations: ['user'],
-    });
-
-    for (const a of apprenants) {
-      await this.dataSource.query(`
-        INSERT INTO dw.dim_apprenant
-        (apprenant_id, nom)
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING
-      `, [
-        a.id,
-        `${a.user?.prenom ?? ''} ${a.user?.nom ?? ''}`,
-      ]);
-    }
-  }
-
-  async loadDimTypeFinance() {
-    const types = ['paiement', 'depense', 'impaye', 'remboursement'];
-
-    for (const type of types) {
-      await this.dataSource.query(`
-        INSERT INTO dw.dim_type_finance (type)
-        VALUES ($1)
-        ON CONFLICT DO NOTHING
-      `, [type]);
-    }
-  }
-
-
-  // =====================================================
-  // 🟨 FACT TABLE
-  // =====================================================
-  async loadFactFinance() {
-  // 1. DÉCLARER LA FONCTION DE FORMATAGE EN PREMIER
-  const toDateString = (date: any) => {
-    if (!date) return null;
-    const d = new Date(date);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+  private skCache = {
+    temps: new Map<string, number>(),
+    typeFinance: new Map<string, number>(),
+    session: new Map<string, number>(), // string car Finance.sessionId est string
+    formation: new Map<number, number>(),
+    formateur: new Map<number, number>(),
+    apprenant: new Map<number, number>(),
   };
 
-  // 2. Chargement des données sources
-  const finances = await this.financeRepo.find({
-    relations: ['session', 'session.formation', 'session.formateur', 'session.apprenants', 'apprenant'],
-  });
-  const allSessions = await this.sessionRepo.find({
-    relations: ['formation', 'formateur', 'apprenants']
-  });
+  constructor(
+    private readonly dataSource: DataSource,
+    @InjectRepository(Finance) private financeRepo: Repository<Finance>,
+    @InjectRepository(Session) private sessionRepo: Repository<Session>,
+    @InjectRepository(Formation) private formationRepo: Repository<Formation>,
+    @InjectRepository(Formateur) private formateurRepo: Repository<Formateur>,
+    @InjectRepository(Apprenant) private apprenantRepo: Repository<Apprenant>,
+  ) {}
 
-  // 3. Chargement des Maps (Lookup)
-  const [tempsRows, sessionRows, formationRows, formateurRows, apprenantRows, typeRows] = await Promise.all([
-    this.dataSource.query(`SELECT sk_temps, date_complete FROM dw.dim_temps`),
-    this.dataSource.query(`SELECT sk_session, session_id FROM dw.dim_session`),
-    this.dataSource.query(`SELECT sk_formation, formation_id FROM dw.dim_formation`),
-    this.dataSource.query(`SELECT sk_formateur, formateur_id FROM dw.dim_formateur`),
-    this.dataSource.query(`SELECT sk_apprenant, apprenant_id FROM dw.dim_apprenant`),
-    this.dataSource.query(`SELECT sk_type_finance, type FROM dw.dim_type_finance`),
-  ]);
-
-  const tempsMap = new Map(tempsRows.map(r => [toDateString(r.date_complete), r.sk_temps]));
-  const sessionMap = new Map(sessionRows.map(r => [r.session_id, r.sk_session]));
-  const formationMap = new Map(formationRows.map(r => [r.formation_id, r.sk_formation]));
-  const formateurMap = new Map(formateurRows.map(r => [r.formateur_id, r.sk_formateur]));
-  const apprenantMap = new Map(apprenantRows.map(r => [r.apprenant_id, r.sk_apprenant]));
-  const typeMap = new Map(typeRows.map(r => [r.type, r.sk_type_finance]));
-
-  // -----------------------------------------------------------
-  // ÉTAPE 1 : LES TRANSACTIONS (Paiements, Impayés, etc.)
-  // -----------------------------------------------------------
-  for (const f of finances) {
-    const dateStr = toDateString(f.date);
-    const skTemps = tempsMap.get(dateStr);
-
-    await this.dataSource.query(`
-      INSERT INTO dw.fact_finance (
-        sk_temps, sk_session, sk_formation, sk_formateur, sk_apprenant, sk_type_finance,
-        finance_id_source, montant, cout_formateur, cout_logistique, nb_inscrits,
-        est_paiement, est_depense, est_impaye, est_remboursement
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-      ON CONFLICT (finance_id_source) DO UPDATE SET 
-        sk_temps = EXCLUDED.sk_temps,
-        montant = EXCLUDED.montant,
-        est_paiement = EXCLUDED.est_paiement,
-        est_impaye = EXCLUDED.est_impaye
-    `, [
-      skTemps ?? null,
-      sessionMap.get(f.session?.id) ?? null,
-      formationMap.get(f.session?.formation?.id) ?? null,
-      formateurMap.get(f.session?.formateur?.id) ?? null,
-      apprenantMap.get(f.apprenant?.id) ?? null,
-      typeMap.get(f.type) ?? null,
-      String(f.id),
-      f.montant,
-      0, 0, 0,
-      f.type === 'paiement',
-      f.type === 'depense',
-      f.type === 'impaye',
-      f.type === 'remboursement'
-    ]);
+  //CronExpression.EVERY_10_MINUTES
+  //CronExpression.EVERY_HOUR
+  //CronExpression.EVERY_WEEK
+  // Exécute tous les jours à 2h du matin
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async runEtlScheduled(): Promise<void> {
+    this.logger.log('⏰ ETL automatique démarré');
+    await this.runEtl();
   }
 
-  // -----------------------------------------------------------
-  // ÉTAPE 2 : INITIALISATION DES COUTS (14 COLONNES - PAS D'APPRENANT)
-  // -----------------------------------------------------------
-  for (const s of allSessions) {
-    const skSession = sessionMap.get(s.id);
-    const dateStr = toDateString(s.date);
-    const skTemps = tempsMap.get(dateStr);
-    // CALCUL DU CA ATTENDU
-  const pSession = s.prix ? Number(s.prix) : 0;
-const pFormation = s.formation?.prix ? Number(s.formation.prix) : 0;
+  /* ================================================================
+     ORCHESTRATION
+     ================================================================ */
+  async runEtl(): Promise<void> {
+    this.logger.log('🚀 Démarrage ETL Star Schema (transaction globale)');
 
-// Logique COALESCE : si prix session existe et > 0, on le prend, sinon on prend formation
-const prixUnitaire = pSession > 0 ? pSession : pFormation;
+    // ✅ Reset cache
+    this.skCache = {
+      temps: new Map(),
+      typeFinance: new Map(),
+      session: new Map(),
+      formation: new Map(),
+      formateur: new Map(),
+      apprenant: new Map(),
+    };
 
-const caTheorique = (s.apprenants?.length ?? 0) * prixUnitaire;
+    // ✅ Audit START
+    const [runRow] = await this.dataSource.query(
+      `INSERT INTO dw.etl_runs (started_at, status)
+     VALUES (NOW(), 'running') RETURNING id`,
+    );
+    const runId: number = runRow.id;
 
-    await this.dataSource.query(`
-      INSERT INTO dw.fact_finance (
-        sk_temps, sk_session, sk_formation, sk_formateur, sk_type_finance,
-        finance_id_source, montant, cout_formateur, cout_logistique, nb_inscrits,
-        est_paiement, est_depense, est_impaye, est_remboursement
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      ON CONFLICT (finance_id_source) DO UPDATE SET
-      montant = EXCLUDED.montant,
-        cout_formateur = EXCLUDED.cout_formateur,
-        cout_logistique = EXCLUDED.cout_logistique,
-        nb_inscrits = EXCLUDED.nb_inscrits,
-        sk_temps = EXCLUDED.sk_temps
-    `, [
-      skTemps ?? null,
-      skSession,
-      formationMap.get(s.formation?.id) ?? null,
-      formateurMap.get(s.formateur?.id) ?? null,
-      typeMap.get('depense') ?? null,
-      `SESSION_INIT_${s.id}`,
-      caTheorique, 
-      Number(s.cout_formateur ?? 0),
-      Number(s.cout_logistique ?? 0),
-      s.apprenants?.length ?? 0,
-      false, true, false, false
-    ]);
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await this.loadDimTypeFinance(queryRunner);
+      await this.seedUnknownMembers(queryRunner);
+      await this.loadDimTempsRange(queryRunner);
+      await this.loadDimFormations(queryRunner);
+      await this.loadDimFormateurs(queryRunner);
+      await this.loadDimApprenants(queryRunner);
+      await this.loadDimSessions(queryRunner);
+
+      const rowsInserted = await this.loadFactFinance(queryRunner, runId);
+
+      await queryRunner.commitTransaction();
+
+      // ✅ Audit SUCCESS
+      await this.dataSource.query(
+        `UPDATE dw.etl_runs
+       SET status='success', completed_at=NOW(), rows_inserted=$1
+       WHERE id=$2`,
+        [rowsInserted, runId],
+      );
+
+      this.logger.log(`✅ ETL terminé — ${rowsInserted} lignes.`);
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+
+      // ❌ Audit FAILED
+      await this.dataSource.query(
+        `UPDATE dw.etl_runs
+       SET status='failed', completed_at=NOW(), error_message=$1
+       WHERE id=$2`,
+        [String(err), runId],
+      );
+
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+  //GETLast TIMe
+  private async getLastEtlTimestamp(qr: QueryRunner): Promise<Date | null> {
+    const rows = await this.query(
+      `SELECT completed_at FROM dw.etl_runs
+     WHERE status='success'
+     ORDER BY completed_at DESC LIMIT 1`,
+      [],
+      qr,
+    );
+    return rows[0]?.completed_at ?? null;
   }
 
-}
+  /* ================================================================
+     HELPERS
+     ================================================================ */
+  private getSk<T>(cache: Map<T, number>, key: T, context: string): number {
+    const sk = cache.get(key);
+    if (sk === undefined) {
+      throw new Error(
+        `SK manquant pour ${context} (clé=${key}). Dimension non chargée ?`,
+      );
+    }
+    return sk;
+  }
+
+  private async query(
+    sql: string,
+    params?: any[],
+    queryRunner?: QueryRunner,
+  ): Promise<any> {
+    if (queryRunner) {
+      return queryRunner.query(sql, params);
+    }
+    return this.dataSource.query(sql, params);
+  }
+
+  private mapFinanceType(type: FinanceType): string | null {
+    switch (type) {
+      case FinanceType.PAIEMENT:
+        return 'paiement';
+      case FinanceType.IMPAYE:
+        return 'impaye';
+      case FinanceType.REMBOURSEMENT:
+        return 'remboursement';
+      case FinanceType.DEPENSE_FORMATEUR:
+        return 'depense_formateur';
+      case FinanceType.DEPENSE_LOGISTIQUE:
+        return 'depense_logistique';
+      default:
+        return null;
+    }
+  }
+
+  /* ================================================================
+     DIMENSIONS
+     ================================================================ */
+  private async loadDimTypeFinance(qr?: QueryRunner): Promise<void> {
+    const types = [
+      'paiement',
+      'impaye',
+      'remboursement',
+      'depense_formateur',
+      'depense_logistique',
+    ];
+
+    const placeholders = types.map((_, i) => `($${i + 1})`).join(',');
+    await this.query(
+      `INSERT INTO dw.dim_type_finance (type) VALUES ${placeholders}
+       ON CONFLICT (type) DO NOTHING`,
+      types,
+      qr,
+    );
+
+    const rows = await this.query(
+      `SELECT sk_type_finance, type FROM dw.dim_type_finance WHERE type = ANY($1)`,
+      [types],
+      qr,
+    );
+    for (const r of rows) {
+      this.skCache.typeFinance.set(r.type, r.sk_type_finance);
+    }
+  }
+
+  private async seedUnknownMembers(qr?: QueryRunner): Promise<void> {
+    // 1. Apprenant Inconnu (-1)
+    let r = await this.query(
+      `INSERT INTO dw.dim_apprenant (apprenant_id, nom) VALUES (-1, 'Inconnu')
+       ON CONFLICT (apprenant_id) DO NOTHING RETURNING sk_apprenant`,
+      [],
+      qr,
+    );
+    if (!r.length) {
+      r = await this.query(
+        `SELECT sk_apprenant FROM dw.dim_apprenant WHERE apprenant_id = -1`,
+        [],
+        qr,
+      );
+    }
+    this.skCache.apprenant.set(-1, r[0].sk_apprenant);
+
+    // 2. Formateur Inconnu (-1)
+    r = await this.query(
+      `INSERT INTO dw.dim_formateur (formateur_id, nom) VALUES (-1, 'Inconnu')
+       ON CONFLICT (formateur_id) DO NOTHING RETURNING sk_formateur`,
+      [],
+      qr,
+    );
+    if (!r.length) {
+      r = await this.query(
+        `SELECT sk_formateur FROM dw.dim_formateur WHERE formateur_id = -1`,
+        [],
+        qr,
+      );
+    }
+    this.skCache.formateur.set(-1, r[0].sk_formateur);
+
+    // 3. Formation Inconnue (-1)
+    r = await this.query(
+      `INSERT INTO dw.dim_formation (formation_id, titre, categorie, statut) VALUES (-1, 'Non applicable', 'Inconnu', 'Inactif')
+       ON CONFLICT (formation_id) DO NOTHING RETURNING sk_formation`,
+      [],
+      qr,
+    );
+    if (!r.length) {
+      r = await this.query(
+        `SELECT sk_formation FROM dw.dim_formation WHERE formation_id = -1`,
+        [],
+        qr,
+      );
+    }
+    this.skCache.formation.set(-1, r[0].sk_formation);
+
+    // 4. Session Inconnue ('-1')
+    r = await this.query(
+      `INSERT INTO dw.dim_session (session_id, type_session, capacite, prix_session) VALUES ($1, 'Non applicable', 0, 0)
+       ON CONFLICT (session_id) DO NOTHING RETURNING sk_session`,
+      [this.UNKNOWN_SESSION_UUID],
+      qr,
+    );
+    if (!r.length) {
+      r = await this.query(
+        `SELECT sk_session FROM dw.dim_session WHERE session_id = $1`,
+        [this.UNKNOWN_SESSION_UUID],
+        qr,
+      );
+    }
+    this.skCache.session.set(this.UNKNOWN_SESSION_UUID, r[0].sk_session);
+  }
+
+  private async loadDimTempsRange(qr?: QueryRunner): Promise<void> {
+    const start = new Date('2023-01-01');
+    const end = new Date('2025-12-31');
+
+    const rows: any[] = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const date = new Date(d);
+      date.setHours(0, 0, 0, 0);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const jour = date.getDate();
+      const mois = date.getMonth() + 1;
+      const annee = date.getFullYear();
+      const trimestre = Math.floor(date.getMonth() / 3) + 1; // ← CORRECTION : 1→4
+      const nomMois = date.toLocaleString('fr-FR', { month: 'long' });
+
+      rows.push([key, jour, mois, annee, trimestre, nomMois]);
+    }
+
+    if (rows.length === 0) return;
+
+    const placeholders = rows
+      .map(
+        (_, i) =>
+          `($${i * 6 + 1},$${i * 6 + 2},$${i * 6 + 3},$${i * 6 + 4},$${i * 6 + 5},$${i * 6 + 6})`,
+      )
+      .join(',');
+
+    await this.query(
+      `INSERT INTO dw.dim_temps (date_key, jour, mois, annee, trimestre, nom_mois)
+       VALUES ${placeholders} ON CONFLICT (date_key) DO NOTHING`,
+      rows.flat(),
+      qr,
+    );
+
+    const keys = rows.map((r) => r[0]);
+    const skRows = await this.query(
+      `SELECT sk_temps, date_key FROM dw.dim_temps WHERE date_key = ANY($1)`,
+      [keys],
+      qr,
+    );
+    for (const r of skRows) {
+      this.skCache.temps.set(r.date_key, r.sk_temps);
+    }
+  }
+
+  private async getOrCreateSkTemps(
+    dateInput: Date | string,
+    qr?: QueryRunner,
+  ): Promise<number> {
+    const d =
+      typeof dateInput === 'string' ? new Date(dateInput) : new Date(dateInput);
+    d.setHours(0, 0, 0, 0);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    if (this.skCache.temps.has(key)) return this.skCache.temps.get(key)!;
+
+    const jour = d.getDate();
+    const mois = d.getMonth() + 1;
+    const annee = d.getFullYear();
+    const trimestre = Math.floor(d.getMonth() / 3) + 1; // ← CORRECTION : 1→4
+    const nomMois = d.toLocaleString('fr-FR', { month: 'long' });
+
+    let res = await this.query(
+      `INSERT INTO dw.dim_temps (date_key, jour, mois, annee, trimestre, nom_mois)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (date_key) DO NOTHING RETURNING sk_temps`,
+      [key, jour, mois, annee, trimestre, nomMois],
+      qr,
+    );
+
+    if (!res.length) {
+      res = await this.query(
+        `SELECT sk_temps FROM dw.dim_temps WHERE date_key = $1`,
+        [key],
+        qr,
+      );
+    }
+
+    const sk = res[0].sk_temps;
+    this.skCache.temps.set(key, sk);
+    return sk;
+  }
+
+  private async loadDimFormations(qr?: QueryRunner): Promise<void> {
+    const rows = await this.formationRepo.find();
+    if (rows.length === 0) return;
+
+    const placeholders = rows
+      .map(
+        (_, i) => `($${i * 4 + 1},$${i * 4 + 2},$${i * 4 + 3},$${i * 4 + 4})`,
+      )
+      .join(',');
+    await this.query(
+      `INSERT INTO dw.dim_formation (formation_id, titre, categorie, statut)
+       VALUES ${placeholders} ON CONFLICT (formation_id) DO NOTHING`,
+      rows.flatMap((f) => [f.id, f.titre, f.categorie, f.statut]),
+      qr,
+    );
+
+    const ids = rows.map((f) => f.id);
+    const skRows = await this.query(
+      `SELECT sk_formation, formation_id FROM dw.dim_formation WHERE formation_id = ANY($1)`,
+      [ids],
+      qr,
+    );
+    for (const r of skRows) {
+      this.skCache.formation.set(r.formation_id, r.sk_formation);
+    }
+  }
+
+  private async loadDimFormateurs(qr?: QueryRunner): Promise<void> {
+    const rows = await this.formateurRepo.find();
+    if (rows.length === 0) return;
+
+    const placeholders = rows
+      .map((_, i) => `($${i * 2 + 1},$${i * 2 + 2})`)
+      .join(',');
+    const params = rows.flatMap((f) => [f.id, `${f.nom} ${f.prenom}`.trim()]);
+
+    await this.query(
+      `INSERT INTO dw.dim_formateur (formateur_id, nom) VALUES ${placeholders}
+       ON CONFLICT (formateur_id) DO NOTHING`,
+      params,
+      qr,
+    );
+
+    const ids = rows.map((f) => f.id);
+    const skRows = await this.query(
+      `SELECT sk_formateur, formateur_id FROM dw.dim_formateur WHERE formateur_id = ANY($1)`,
+      [ids],
+      qr,
+    );
+    for (const r of skRows) {
+      this.skCache.formateur.set(r.formateur_id, r.sk_formateur);
+    }
+  }
+
+  private async loadDimApprenants(qr?: QueryRunner): Promise<void> {
+    const rows = await this.apprenantRepo.find({ relations: ['user'] });
+    if (rows.length === 0) return;
+
+    const placeholders = rows
+      .map((_, i) => `($${i * 2 + 1},$${i * 2 + 2})`)
+      .join(',');
+    const params = rows.flatMap((a) => [
+      a.id,
+      a.user ? `${a.user.nom} ${a.user.prenom}`.trim() : `Apprenant #${a.id}`,
+    ]);
+
+    await this.query(
+      `INSERT INTO dw.dim_apprenant (apprenant_id, nom) VALUES ${placeholders}
+       ON CONFLICT (apprenant_id) DO NOTHING`,
+      params,
+      qr,
+    );
+
+    const ids = rows.map((a) => a.id);
+    const skRows = await this.query(
+      `SELECT sk_apprenant, apprenant_id FROM dw.dim_apprenant WHERE apprenant_id = ANY($1)`,
+      [ids],
+      qr,
+    );
+    for (const r of skRows) {
+      this.skCache.apprenant.set(r.apprenant_id, r.sk_apprenant);
+    }
+  }
+
+  private async loadDimSessions(qr?: QueryRunner): Promise<void> {
+    const rows = await this.sessionRepo.find({ relations: ['formation'] });
+    if (rows.length === 0) return;
+
+    const placeholders = rows
+      .map(
+        (_, i) => `($${i * 4 + 1},$${i * 4 + 2},$${i * 4 + 3},$${i * 4 + 4})`,
+      )
+      .join(',');
+    const params = rows.flatMap((s) => [
+      s.id,
+      s.type,
+      s.capacite,
+      s.prix ?? s.formation?.prix ?? 0,
+    ]);
+
+    await this.query(
+      `INSERT INTO dw.dim_session (session_id, type_session, capacite, prix_session)
+       VALUES ${placeholders} ON CONFLICT (session_id) DO NOTHING`,
+      params,
+      qr,
+    );
+
+    const ids = rows.map((s) => s.id);
+    const skRows = await this.query(
+      `SELECT sk_session, session_id FROM dw.dim_session WHERE session_id = ANY($1)`,
+      [ids],
+      qr,
+    );
+    for (const r of skRows) {
+      // ← CORRECTION : clé string pour cohérence avec Finance.sessionId
+      this.skCache.session.set(String(r.session_id), r.sk_session);
+    }
+  }
+
+  /* ================================================================
+     FAITS
+     ================================================================ */
+  private async loadFactFinance(
+    qr: QueryRunner,
+    runId: number,
+  ): Promise<number> {
+    // ❌ حذف TRUNCATE
+    // ✅ Incremental
+    const lastRun = await this.getLastEtlTimestamp(qr);
+
+    const finances = lastRun
+      ? await this.financeRepo.find({
+          where: { updatedAt: MoreThan(lastRun) },
+          relations: [
+            'session',
+            'session.formation',
+            'session.formateur',
+            'apprenant',
+          ],
+        })
+      : await this.financeRepo.find({
+          relations: [
+            'session',
+            'session.formation',
+            'session.formateur',
+            'apprenant',
+          ],
+        });
+
+    this.logger.log(`  • Incremental: ${finances.length} finance(s)`);
+
+    let inserted = 0;
+
+    for (const fin of finances) {
+      try {
+        const typeLabel = this.mapFinanceType(fin.type);
+        if (!typeLabel) {
+          await this.logEtlError(
+            runId,
+            'Finance',
+            String(fin.id),
+            'Type non mappé',
+          );
+          continue;
+        }
+
+        const skType = this.getSk(this.skCache.typeFinance, typeLabel, 'type');
+        const skTemps = await this.getOrCreateSkTemps(fin.date, qr);
+
+        const skSession = fin.sessionId
+          ? this.getSk(this.skCache.session, fin.sessionId, 'session')
+          : this.getSk(
+              this.skCache.session,
+              this.UNKNOWN_SESSION_UUID,
+              'unknown',
+            );
+
+        const skFormation = fin.session?.formationId
+          ? this.getSk(
+              this.skCache.formation,
+              fin.session.formationId,
+              'formation',
+            )
+          : this.getSk(this.skCache.formation, -1, 'unknown');
+
+        const skFormateur = fin.session?.formateurId
+          ? this.getSk(
+              this.skCache.formateur,
+              fin.session.formateurId,
+              'formateur',
+            )
+          : this.getSk(this.skCache.formateur, -1, 'unknown');
+
+        const skApprenant = fin.apprenantId
+          ? this.getSk(this.skCache.apprenant, fin.apprenantId, 'apprenant')
+          : this.getSk(this.skCache.apprenant, -1, 'unknown');
+
+        let montant = Number(fin.montant);
+        montant =
+          fin.type === FinanceType.PAIEMENT
+            ? Math.abs(montant)
+            : -Math.abs(montant);
+
+        await this.query(
+          `INSERT INTO dw.fact_finance
+         (sk_temps, sk_session, sk_formation, sk_formateur, sk_apprenant, sk_type_finance, montant, finance_id_source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (finance_id_source)
+         DO UPDATE SET
+           montant = EXCLUDED.montant,
+           sk_temps = EXCLUDED.sk_temps,
+           sk_type_finance = EXCLUDED.sk_type_finance`,
+          [
+            skTemps,
+            skSession,
+            skFormation,
+            skFormateur,
+            skApprenant,
+            skType,
+            montant,
+            `FINANCE-${fin.id}`,
+          ],
+          qr,
+        );
+
+        inserted++;
+      } catch (err) {
+        await this.logEtlError(runId, 'Finance', String(fin.id), String(err));
+      }
+    }
+
+    return inserted;
+  }
+
+  // ETLError
+  private async logEtlError(
+    runId: number,
+    entityType: string,
+    entityId: string,
+    message: string,
+  ): Promise<void> {
+    await this.dataSource.query(
+      `INSERT INTO dw.etl_errors (run_id, entity_type, entity_id, error_message)
+     VALUES ($1,$2,$3,$4)`,
+      [runId, entityType, entityId, message],
+    );
+  }
 }

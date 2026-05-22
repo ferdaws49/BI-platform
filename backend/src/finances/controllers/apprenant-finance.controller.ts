@@ -16,19 +16,6 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 export class StudentFinanceController {
   constructor(private readonly service: StudentFinanceService) {}
 
-  @Get('filters')
-  
-@ApiOperation({
-  summary: 'Formations et sessions disponibles pour les filtres',
-  description: 'Liste des formations et sessions où l\'étudiant est inscrit',
-})
-async getFilterOptions(@Req() req: any) {
-    
-    console.log("REQ USER:", req.user);
-    console.log("FILTER ENDPOINT HIT");
-  const userId = req.user?.userId;
-  return this.service.getFilterOptions(userId);
-}
 
   @Get('payments')
   @ApiOperation({

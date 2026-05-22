@@ -31,7 +31,39 @@ export class AuthService {
 
   async login(email: string, password: string) {
     const normalizedEmail = (email ?? '').trim();
+
+     // ─── 1. Vérification préalable pour les apprenants ───
+  const inscription = await this.inscriptionsRepository.findOne({
+    where: { email: normalizedEmail },
+  });
+
+  if (inscription) {
+    // L'utilisateur existe dans la table inscriptions = c'est un apprenant
+    if (inscription.statut === InscriptionStatut.NOT_VERIFIED) {
+      throw new UnauthorizedException(
+        'Veuillez vérifier votre compte. Un email de vérification vous a été envoyé.'
+      );
+    }
+
+    if (inscription.statut === InscriptionStatut.PENDING) {
+      throw new UnauthorizedException(
+        'Votre inscription est en attente de validation par l\'administration.'
+      );
+    }
+
+    if (inscription.statut === InscriptionStatut.REJECTED) {
+      throw new UnauthorizedException(
+        'Votre inscription a été refusée. Veuillez contacter l\'administration.'
+      );
+    }
+
+    // Si ACCEPTED → on continue vers la table users pour le login normal
+    // (suppose qu'une inscription acceptée a un compte utilisateur créé)
+  }
+    
     const users = await this.usersService.findByEmail(normalizedEmail);
+
+  
 
     if (!users) {
       throw new UnauthorizedException('User not found or wrong email');

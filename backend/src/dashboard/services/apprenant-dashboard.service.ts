@@ -49,7 +49,11 @@ export class ApprennatDashboardService {
   
   }));
     
-    const avg = results.length ? results.reduce((acc, r) => acc + (r.note) * 20, 0) / results.length : 0;
+    const avg = results.length ? results.reduce((acc, r) => acc + Number(r.note), 0) / results.length : 0;
+
+    const successRate = results.length 
+      ? Math.round((results.filter(r => Number(r.note) >= 10).length / results.length) * 100) 
+      : 0;
 
     // 3. Prochaines sessions
     let upcomingSessions: any[] = [];
@@ -71,7 +75,7 @@ export class ApprennatDashboardService {
 
     // 4. Retour formaté
     return {
-      stats: { totalEnrolled, upcomingSessions,completedCourses, average: avg.toFixed(2), upcomingCount: upcomingSessions.length  },
+      stats: { totalEnrolled, upcomingSessions, successRate, average: avg.toFixed(2), upcomingCount: upcomingSessions.length  },
       upcomingSessions,
       recentGrades: formattedRecentGrades,
       
@@ -79,12 +83,11 @@ export class ApprennatDashboardService {
         title: s.formation?.titre,
         teacher: s.formateur ? `${s.formateur.nom} ${s.formateur.prenom}`: 'Non assigné',
         status: s.statut,
-        progress: s.statut === SessionStatut.TERMINE ? 100 : 25 // Simulé
       })),
       myRegistrations: sessionApprenant.slice(0, 3).map(s => ({ // Ajouté
         title: s.formation?.titre,
         date: s.createdAt,
-        status: 'validated'
+        status: s.statut
         
       })),
 

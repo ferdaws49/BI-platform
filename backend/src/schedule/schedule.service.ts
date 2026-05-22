@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In } from 'typeorm';
-import { Session, SessionType } from 'src/sessions/entities/session.entity';
+import { Session, SessionStatut, SessionType } from 'src/sessions/entities/session.entity';
 import { FilterPeriod, FilterScheduleDto } from './dtos/schedule-filter.dto';
 @Injectable()
 export class SchedulesService {
@@ -119,4 +119,47 @@ export class SchedulesService {
 
     
   }
+
+
+  /**
+ * Récupère le lien de connexion d'une session en ligne
+ * après validation des droits et de la date.
+ */
+async getOnlineSessionLink(sessionId: string, userId: number) {
+  const session = await this.sessionsRepo.createQueryBuilder('session')
+    .innerJoinAndSelect('session.formation', 'formation')
+    .innerJoin('session.apprenants', 'apprenant')
+    .where('session.id = :sessionId', { sessionId })
+    .andWhere('apprenant.userId = :userId', { userId })
+    .getOne();
+      console.log('DEBUG - session found:', session); // ← AJOUTE CECI
+
+
+  if (!session) {
+    throw new BadRequestException('Session introuvable ou vous n\'êtes pas inscrit.');
+  }
+
+  if (session.type !== SessionType.EN_LIGNE) {
+    throw new BadRequestException('Cette session n\'est pas en ligne.');
+  }
+
+  if (session.statut !== SessionStatut.ACTIF) {
+    throw new BadRequestException('Cette session n\'est pas active.');
+  }
+
+  // Vérification optionnelle : la session a-t-elle lieu aujourd'hui ?
+  const today = new Date().toISOString().split('T')[0];
+  if (session.date !== today) {
+    throw new BadRequestException('Vous ne pouvez rejoindre cette session que le jour J.');
+  }
+
+  return {
+    sessionId: session.id,
+    title: session.title || session.formation?.titre,
+    joinUrl: session.lieu,        // Le lien visio stocké dans "lieu"
+    date: session.date,
+    startTime: session.heureDebut,
+    endTime: session.heureFin,
+  };
+}
 }

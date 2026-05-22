@@ -35,31 +35,23 @@ export class ProfileService {
 
     //set profile image
     public async setProfileImage(userId: number, newProfileImage: string){
-        const user = await this.usersService.getCurrentUser(userId);
+    const user = await this.usersService.getCurrentUser(userId);
 
-        //ken maandouch profile image khallih yhott
-        if(user.profileImage === null){
-             user.profileImage= newProfileImage;
-
-        }
-        //ken howa c'est deja andou taswira w yheb ybadalha:
-        else{
-            // bech yayet lel fonction bech tfassakh 
-            await  this.removeProfileImage(userId);
-            // w lenna hat taswira jdida
-            user.profileImage = newProfileImage;
-
-        }
-
-        //kent fl asel return this.usersRepository.save(user)
-        return this.usersService.updateUser(user);
+    // Si déjà une image : supprimer l'ancienne du disque ET de la DB
+    if(user.profileImage){
+        await this.removeProfileImage(userId);
     }
+    
+    // Mettre la nouvelle (première fois ou remplacement)
+    user.profileImage = newProfileImage;
+    return this.usersService.updateUser(user);
+}
 
     //delete profile image
     public async removeProfileImage(userId: number){
         const user = await this.usersService.getCurrentUser(userId);
         // lenna 9otlou ken fl assel maandouch profile image 9ollou enti tfassakh fi haja deja mch mawjouda 
-        if(!user.profileImage === null)
+        if(!user.profileImage)
             throw new BadRequestException ("there is no profile image");
         //tawa ken andou taswira w howa yheb yfassakha donc ena lezemn nfassakha mn dossier images w mn DB
 

@@ -1,12 +1,11 @@
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
-import type { Response } from 'express';
-import { AuthGuard } from 'src/auth/guards/auth.guard';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+
 import { FinancierDashboardService } from './services/financier.dashboard.service';
+
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
-  ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
 import { FinancierDashboardFilterDto } from './dto/financier-dashboard-filter.dto';

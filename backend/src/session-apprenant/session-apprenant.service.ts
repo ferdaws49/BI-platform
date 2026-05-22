@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ParticipateSessionDto } from "./dtos/participate-session.dto";
-import { Session } from "src/sessions/entities/session.entity";
+import { Session, SessionStatut } from "src/sessions/entities/session.entity";
 import { Apprenant } from "src/apprenants/entities/apprenant.entity";
 
 
@@ -117,11 +117,11 @@ export class SessionApprenantService{
     sessionTitle: session.title ||'session sans titre',
     //date: session.date,
     status: session.statut.toLowerCase(),
-     registrationDate: session.createdAt,
     price: session.prix || session.formation?.prix,
     formation: {
       title: session.formation?.titre || 'Formation sans titre'
     },
+    sessionDate: session.date,
   }));
   }
 
@@ -147,11 +147,45 @@ export class SessionApprenantService{
   if (!session) {
     throw new NotFoundException("Session introuvable.");
   }
+
+  if (session.statut?.toLowerCase() === SessionStatut.ANNULE) {
+    throw new BadRequestException("Impossible d'annuler : cette session a été annulée par l'organisateur.");
+  }
   // --- LOGS DE DEBUGGING ---
   console.log("ID Apprenant recherché (depuis le profil):", apprenant.id);
   console.log("Nombre d'apprenants inscrits trouvés dans cette session:", session.apprenants.length);
   console.log("IDs des apprenants actuellement inscrits:", session.apprenants.map(a => a.id));
   // -------------------------
+
+  
+  console.log('--- DEBUG CANCEL ---');
+  console.log('Session.date brute :', session.date);
+  console.log('Type :', typeof session.date);
+  console.log('Date session (ISO) :', session.date ? new 
+    Date(session.date).toISOString() : 'NULL');
+  console.log('Date maintenant (ISO) :', new Date().toISOString());
+  console.log('Comparaison :', new Date(session.date) < new Date());
+  console.log('--------------------');
+
+
+  // ✅ RÈGLE MÉTIER : annulation possible jusqu'à 24h avant la session
+if (session.date) {
+  const sessionDate = new Date(session.date);
+  const now = new Date();
+  const deadline = new Date(sessionDate.getTime() - 24 * 60 * 60 * 1000); // 24h avant
+
+  if (isNaN(sessionDate.getTime())) {
+    throw new BadRequestException("Date de session invalide.");
+  }
+
+  if (now >= sessionDate) {
+    throw new BadRequestException("Impossible d'annuler : la session a déjà commencé.");
+  }
+
+  if (now >= deadline) {
+    throw new BadRequestException("Impossible d'annuler : moins de 24h avant le début de la session.");
+  }
+}
 
 
   // 3. On vérifie si l'ID de notre apprenant est présent dans la liste

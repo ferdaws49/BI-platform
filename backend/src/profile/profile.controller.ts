@@ -22,6 +22,7 @@ import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
 import { RolesGuard } from "src/auth/guards/roles.guard";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.APPRENANT)
 @Controller("profile")
 export class ProfileController{
     constructor(
@@ -83,7 +84,7 @@ public async getFullProfile(@CurrentUser() payload: any) {
 
         //DELETE: /profile/:id
         @Delete(":id")
-        //@Roles(UserRole.APPRENANT, UserRole.ADMIN)
+        
         public deleteProfile(@Param("id", ParseIntPipe) id: number, @CurrentUser() payload:any) {
             return this.profileService.delete(id, payload);
 
