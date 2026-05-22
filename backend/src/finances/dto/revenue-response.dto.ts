@@ -237,4 +237,21 @@ export class PaymentManagementTableResponseDto {
   totalPages: number;
 }
 
-// revenue-response.dto.ts — ajoute ces classes
+export enum BubbleMetric {
+  MARGIN = 'margin',
+  PRICE = 'price',
+}
+
+
+export class FormationRevenueItemDto {
+  @ApiProperty()
+  formationId: number;
+
+  @ApiProperty()
+  formationTitle: string;
+
+  @ApiProperty()
+  caRealise: number;
+}
+
+

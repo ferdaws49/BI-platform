@@ -1,30 +1,38 @@
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter
-from schemas.ca_schema import CAForecastResponse, CAMoisPrevu
+from schemas.ca_schema import CAForecastResponse, CAMoisPrevu, PredictInput, HistoriqueItem
 from services.ca_service import ca_registry
 
 router = APIRouter(tags=["CA Forecast"])
 
 
-@router.get("/predict-ca", response_model=CAForecastResponse)
-def predict_ca():
-    previsions = ca_registry.predict_next_months(nb_mois=3)
-    ca_values  = [p["ca_predit"] for p in previsions]
+@router.post("/predict-ca", response_model=CAForecastResponse)
+def predict_ca(data: PredictInput):
+    df = pd.DataFrame([item.dict() for item in data.historique])
+    nb_mois = data.periode if data.periode in [3, 6, 12] else 6
 
-    if ca_values[-1] > ca_values[0] * 1.05:   tendance = "hausse"
-    elif ca_values[-1] < ca_values[0] * 0.95: tendance = "baisse"
-    else:                                      tendance = "stable"
+    previsions = ca_registry.predict_next_months(df, nb_mois=nb_mois)
+    ca_values = [p["ca_predit"] for p in previsions]
+
+    if ca_values[-1] > ca_values[0] * 1.05:
+        tendance = "hausse"
+    elif ca_values[-1] < ca_values[0] * 0.95:
+        tendance = "baisse"
+    else:
+        tendance = "stable"
 
     return CAForecastResponse(
-        previsions = [CAMoisPrevu(**p) for p in previsions],
-        model_used = "GradientBoosting",
-        tendance   = tendance,
+        previsions=[CAMoisPrevu(**p) for p in previsions],
+        unite="DT",
+        model_used="LinearRegression",
+        tendance=tendance,
     )
-
 
 @router.get("/predict-ca/backtest")
 def backtest_ca():
+    if ca_registry.last_data is None:
+        return {"error": "Données d'entraînement indisponibles. Réentraînez le modèle."}
     df       = ca_registry.last_data.copy()
     df_train = df.iloc[:-3].copy()
     df_test  = df.iloc[-3:].copy()

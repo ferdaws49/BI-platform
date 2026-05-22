@@ -1,163 +1,58 @@
-
 'use client'
-import React, { useMemo, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStudentFinance } from './hooks/useStudentFinance';
 
-export default function StudentPaymentsPage () {
+const ITEMS_PER_PAGE = 10; // ← Nombre de lignes par page
+
+export default function StudentPaymentsPage() {
   const {
     payments,
     summary,
-    filterOptions,
     loading,
     error,
-    filters,
     refresh,
-    goToPage,
-    applyFilters,
-    resetFilters,
   } = useStudentFinance();
 
-  const [selectedFormationId, setSelectedFormationId] = useState<string>('');
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Quand on change de formation, on reset la session si elle n'appartient pas à cette formation
-  const availableSessions = useMemo(() => {
-    if (!filterOptions) return [];
-    if (!selectedFormationId) return filterOptions.sessions;
-    return filterOptions.sessions.filter(
-      (s) => s.formationId === Number(selectedFormationId),
-    );
-  }, [filterOptions, selectedFormationId]);
+  // Calcul de la pagination côté client
+  const allPayments = payments?.data || [];
+  const totalItems = allPayments.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
 
-  const [localFilters, setLocalFilters] = useState({
-    sessionId: '',
-    formationId: '',
-    dateFrom: '',
-    dateTo: '',
-  });
+  const paginatedPayments = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return allPayments.slice(start, start + ITEMS_PER_PAGE);
+  }, [allPayments, currentPage]);
 
-  const handleApplyFilters = (e: React.FormEvent) => {
-    e.preventDefault();
-    applyFilters({
-      formationId: selectedFormationId ? Number(selectedFormationId) : undefined,
-      sessionId: selectedSessionId || undefined,
-    });
-  };
+  // Reset à la page 1 si les données changent
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [payments]);
 
-
-
-  const handleReset = () => {
-    setSelectedFormationId('');
-    setSelectedSessionId('');
-    resetFilters();
-  };
-
-  const handleFormationChange = (value: string) => {
-    setSelectedFormationId(value);
-    setSelectedSessionId('');
-  };
+  if (loading) return (
+    <div className="container mx-auto p-6 max-w-6xl">
+      <div className="flex justify-center p-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Mes Paiements</h1>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-        >
-          {loading ? 'Chargement...' : '🔄 Rafraîchir'}
-        </button>
+        
       </div>
 
-      {/* Filtres — AU-DESSUS des KPIs */}
-      <form
-        onSubmit={handleApplyFilters}
-        className="bg-gray-50 p-4 rounded-lg mb-6"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-          {/* Formation */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Formation
-            </label>
-            <select
-              value={selectedFormationId}
-              onChange={(e) => handleFormationChange(e.target.value)}
-              className="w-full border p-2 rounded bg-white"
-            >
-              <option value="">Toutes les formations</option>
-              {filterOptions?.formations.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Session */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Session
-            </label>
-            <select
-              value={selectedSessionId}
-              onChange={(e) => setSelectedSessionId(e.target.value)}
-              disabled={!selectedFormationId && availableSessions.length === 0}
-              className="w-full border p-2 rounded bg-white disabled:bg-gray-100"
-            >
-              <option value="">Toutes les sessions</option>
-              {availableSessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Boutons */}
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="flex-1 bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900"
-            >
-              Filtrer
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="px-4 py-2 border rounded hover:bg-gray-100"
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-      </form>
-
-      {/* KPIs / Résumé */}
+      {/* KPIs */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <SummaryCard
-            title="Total Payé"
-            value={`${summary.totalPaid.toFixed(2)} DT`}
-            color="green"
-          />
-          <SummaryCard
-            title="Reste à Payer"
-            value={`${summary.resteAPayer.toFixed(2)} DT`}
-            color={summary.resteAPayer > 0 ? 'red' : 'gray'}
-          />
-          <SummaryCard
-            title="Sessions"
-            value={String(summary.sessionsCount)}
-            color="blue"
-          />
-          <SummaryCard
-            title="Paiements"
-            value={String(summary.paymentsCount)}
-            color="purple"
-          />
+          <SummaryCard title="Total Payé" value={`${summary.totalPaid.toFixed(2)} DT`} color="green" />
+          <SummaryCard title="Reste à Payer" value={`${summary.resteAPayer.toFixed(2)} DT`} color={summary.resteAPayer > 0 ? 'red' : 'gray'} />
+          <SummaryCard title="Sessions" value={String(summary.sessionsCount)} color="blue" />
+          <SummaryCard title="Paiements" value={String(summary.paymentsCount)} color="purple" />
         </div>
       )}
 
@@ -173,22 +68,14 @@ export default function StudentPaymentsPage () {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Date
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Formation
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                Session
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                Montant
-              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Formation</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Session</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {payments?.data.map((payment) => (
+            {paginatedPayments.map((payment) => (
               <tr key={payment.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {new Date(payment.date).toLocaleDateString('fr-FR')}
@@ -204,7 +91,7 @@ export default function StudentPaymentsPage () {
                 </td>
               </tr>
             ))}
-            {payments?.data.length === 0 && (
+            {paginatedPayments.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-6 py-8 text-center text-gray-500">
                   Aucun paiement trouvé
@@ -215,23 +102,22 @@ export default function StudentPaymentsPage () {
         </table>
       </div>
 
-      {/* Pagination */}
-      {payments && payments.meta.totalPages > 1 && (
+      {/* Pagination côté client */}
+      {totalPages > 1 && (
         <div className="flex justify-center items-center gap-2 mt-6">
           <button
-            onClick={() => goToPage(filters.page - 1)}
-            disabled={filters.page === 1}
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
             className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-100"
           >
             Précédent
           </button>
           <span className="text-sm text-gray-600">
-            Page {filters.page} / {payments.meta.totalPages} (
-            {payments.meta.total} résultats)
+            Page {currentPage} / {totalPages} ({totalItems} résultats)
           </span>
           <button
-            onClick={() => goToPage(filters.page + 1)}
-            disabled={filters.page === payments.meta.totalPages}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
             className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-100"
           >
             Suivant
@@ -240,7 +126,7 @@ export default function StudentPaymentsPage () {
       )}
     </div>
   );
-};
+}
 
 const SummaryCard: React.FC<{
   title: string;

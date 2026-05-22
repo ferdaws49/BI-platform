@@ -1,144 +1,77 @@
-#import os
-#import pandas as pd
-#from sqlalchemy import create_engine
-#from dotenv import load_dotenv
+import os
+import psycopg2
+import pandas as pd
+from dotenv import load_dotenv
+from pathlib import Path
 
-#thotthou fi .env
-#DATABASE_URL=postgresql://user:password@localhost:5432/nom_datawarehouse
-#load_dotenv()
-#DATABASE_URL = os.getenv("DATABASE_URL")
+# Cherche le .env à la racine du projet (parent de ml-service)
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=str(env_path))
+    print(f"[postgres_loader] ✅ .env chargé: {env_path}")
+else:
+    # Fallback: dossier courant
+    load_dotenv()
+    print("[postgres_loader] ⚠️ .env non trouvé à la racine, tentative locale")
 
+def load_ca_data():
+    # ── PRIORITÉ 1: Utiliser DATABASE_URL (Supabase) ──
+    database_url = os.getenv("DATABASE_URL") or os.getenv("DIRECT_URL")
+    
+    if database_url:
+        # Supabase donne parfois une URL avec ?pgbouncer=true, on la nettoie
+        clean_url = database_url.replace("?pgbouncer=true", "").replace("&pgbouncer=true", "")
+        conn = psycopg2.connect(clean_url)
+        print("[DB] ✅ Connexion via DATABASE_URL (Supabase)")
+    else:
+        # ── PRIORITÉ 2: Variables séparées ──
+        host = os.getenv("DW_HOST", "localhost")
+        database = os.getenv("DW_DB") or os.getenv("DW_NAME", "postgres")
+        user = os.getenv("DW_USER") or os.getenv("DW_USERNAME", "postgres")
+        password = os.getenv("DW_PASSWORD")
+        port = os.getenv("DW_PORT", "5432")
 
-#def get_engine():
-    #return create_engine(DATABASE_URL)
+        print(f"[DB] Host={host}, DB={database}, User={user}, Port={port}")
+        print(f"[DB] Password={'TROUVE' if password else 'MANQUANT'}")
 
+        if not password:
+            raise ValueError(
+                "❌ DW_PASSWORD vide.\n"
+                "Vérifie que ton .env contient bien DW_PASSWORD=xxx\n"
+                "Et qu'il est à la racine du projet BI-platform/"
+            )
 
-# ─── CA Mensuel ───────────────────────────────────────────────────────────────
+        conn = psycopg2.connect(
+            host=host, database=database, user=user,
+            password=password, port=port
+        )
 
-#def load_ca_data() -> pd.DataFrame:
-    #"""
-    #Charge le CA mensuel réel depuis le datawarehouse.
-    #Utilisé par training/train_ca.py
-    #"""
-    #engine = get_engine()
+    query = """
+    SELECT
+      t.annee,
+      t.mois,
+      t.trimestre,
+      SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) AS ca_mensuel,
+      SUM(CASE WHEN tf.type = 'depense_formateur'  THEN f.montant ELSE 0 END) AS total_cout_formateur,
+      SUM(CASE WHEN tf.type = 'depense_logistique' THEN f.montant ELSE 0 END) AS total_cout_logistique,
+      COUNT(DISTINCT CASE WHEN tf.type = 'paiement' THEN f.sk_session END)   AS nb_sessions,
+      COUNT(DISTINCT CASE WHEN tf.type = 'paiement' THEN f.sk_apprenant END) AS total_inscrits,
+      SUM(CASE WHEN tf.type = 'impaye' THEN f.montant ELSE 0 END) AS total_impaye
+    FROM dw.fact_finance f
+    JOIN dw.dim_temps t ON t.sk_temps = f.sk_temps
+    JOIN dw.dim_type_finance tf ON tf.sk_type_finance = f.sk_type_finance
+    GROUP BY t.annee, t.mois, t.trimestre
+    ORDER BY t.annee, t.mois
+    """
 
-    #query = """
-    #    SELECT
-    #        dt.annee,
-    #        dt.mois,
-    #        dt.trimestre,
+    df = pd.read_sql(query, conn)
+    conn.close()
 
-    #        -- CA = somme des paiements reçus
-    #        SUM(CASE WHEN ff.est_paiement = TRUE
-    #                 THEN ff.montant ELSE 0 END)          AS ca_mensuel,
+    for col in ["ca_mensuel", "total_cout_formateur", "total_cout_logistique", "total_impaye"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    #       -- Coûts
-    #        SUM(ff.cout_formateur)                         AS total_cout_formateur,
-    #        SUM(ff.cout_logistique)                        AS total_cout_logistique,
+    for col in ["nb_sessions", "total_inscrits", "trimestre"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
-    #        -- Inscrits
-    #        SUM(ff.nb_inscrits)                            AS total_inscrits,
-
-    #        -- Nombre de sessions distinctes
-    #        COUNT(DISTINCT ff.sk_session)                  AS nb_sessions,
-
-    #        -- Impayés
-    #        SUM(CASE WHEN ff.est_impaye = TRUE
-    #                 THEN ff.montant ELSE 0 END)           AS total_impaye
-
-    #    FROM fact_finance ff
-    #    JOIN dim_temps    dt  ON ff.sk_temps    = dt.sk_temps
-
-    #    GROUP BY dt.annee, dt.mois, dt.trimestre
-    #    ORDER BY dt.annee, dt.mois
-    #"""
-
-    #df = pd.read_sql(query, engine)
-    #engine.dispose()
-
-    #print(f"[load_ca_data] 📦 {len(df)} mois chargés depuis le datawarehouse")
-    #return df
-
-
-# ─── Sessions Déficitaires ────────────────────────────────────────────────────
-
-#def load_sessions_data() -> pd.DataFrame:
-    #"""
-    #Charge les sessions historiques pour entraîner le modèle déficit.
-    #Utilisé par training/train_deficit.py
-    #"""
-    #engine = get_engine()
-
-    #query = """
-    #    SELECT
-    #        ff.sk_session,
-    #        dt.mois,
-    #        ds.capacite,
-    #        ds.type_session,
-
-    #        -- Features financières
-    #        SUM(ff.nb_inscrits)                             AS nb_inscrits,
-    #        SUM(ff.cout_formateur)                          AS cout_formateur,
-    #        SUM(ff.cout_logistique)                         AS cout_logistique,
-
-    #        -- Revenus = paiements reçus
-    #        SUM(CASE WHEN ff.est_paiement = TRUE
-    #                 THEN ff.montant ELSE 0 END)            AS montant_inscriptions,
-
-    #       -- Label : 1 = déficitaire (coûts > revenus)
-    #        CASE WHEN SUM(ff.cout_formateur + ff.cout_logistique)
-    #                    > SUM(CASE WHEN ff.est_paiement = TRUE
-    #                               THEN ff.montant ELSE 0 END)
-    #             THEN 1 ELSE 0 END                          AS est_deficitaire
-
-    #    FROM fact_finance ff
-    #    JOIN dim_temps   dt  ON ff.sk_temps   = dt.sk_temps
-    #    JOIN dim_session ds  ON ff.sk_session = ds.sk_session
-
-    #    GROUP BY ff.sk_session, dt.mois, ds.capacite, ds.type_session
-    #    HAVING SUM(ff.nb_inscrits) > 0
-    #    ORDER BY ff.sk_session
-    #"""
-
-    #df = pd.read_sql(query, engine)
-    #engine.dispose()
-
-    #print(f"[load_sessions_data] 📦 {len(df)} sessions chargées depuis le datawarehouse")
-    #return df
-
-
-# ─── Prévision en temps réel (optionnel) ─────────────────────────────────────
-
-#def load_last_months(n: int = 12) -> pd.DataFrame:
-    #"""
-    #Charge les N derniers mois pour alimenter predict_next_months()
-    #depuis les vraies données au lieu du last_data du .pkl
-    #"""
-    #engine = get_engine()
-
-    #query = f"""
-    #    SELECT
-    #        dt.annee,
-    #        dt.mois,
-    #        dt.trimestre,
-    #        SUM(CASE WHEN ff.est_paiement = TRUE
-    #                 THEN ff.montant ELSE 0 END)   AS ca_mensuel,
-    #        SUM(ff.cout_formateur)                  AS total_cout_formateur,
-    #        SUM(ff.cout_logistique)                 AS total_cout_logistique,
-    #        SUM(ff.nb_inscrits)                     AS total_inscrits,
-    #        COUNT(DISTINCT ff.sk_session)           AS nb_sessions,
-    #        SUM(CASE WHEN ff.est_impaye = TRUE
-    #                 THEN ff.montant ELSE 0 END)    AS total_impaye
-    #    FROM fact_finance ff
-    #    JOIN dim_temps dt ON ff.sk_temps = dt.sk_temps
-    #    GROUP BY dt.annee, dt.mois, dt.trimestre
-    #    ORDER BY dt.annee DESC, dt.mois DESC
-    #    LIMIT {n}
-    #"""
-
-    #df = pd.read_sql(query, engine)
-    #engine.dispose()
-
-    # Remettre dans l'ordre chronologique
-    #df = df.sort_values(["annee", "mois"]).reset_index(drop=True)
-    #return df
+    print(f"[postgres_loader] 📦 {len(df)} mois chargés")
+    return df

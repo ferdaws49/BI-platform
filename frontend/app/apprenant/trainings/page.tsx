@@ -147,15 +147,6 @@ export default function TrainingsPage() {
               </div>
         
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase">
-                      <span>Progress</span>
-                      <span>{training.progress}%</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-[#1b5333] transition-all duration-500" style={{ width: `${training.progress}%` }} />
-                    </div>
-                  </div>
                 </div>
                 <button 
                   onClick={() => router.push(`/apprenant/trainings/${training.id}`)}

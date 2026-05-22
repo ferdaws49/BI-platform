@@ -47,6 +47,11 @@ export default function RegistrationsPage() {
     rejected: registrations.filter(r => r.status === 'annulé').length,
   };
 
+  const isSessionUpcoming = (sessionDate: string | Date | null) => {
+    if (!sessionDate) return true; // Si pas de date, on autorise par défaut
+    return new Date(sessionDate) > new Date();
+  };
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto p-6">
       <div className="flex justify-between items-end">
@@ -75,7 +80,6 @@ export default function RegistrationsPage() {
                 <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-50 bg-gray-50/50">
                   <th className="px-6 py-4">Training</th>
                   <th className="px-6 py-4">Session</th>
-                  <th className="px-6 py-4">Registration Date</th>
                   <th className="px-6 py-4">Price</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Actions</th>
@@ -84,13 +88,13 @@ export default function RegistrationsPage() {
               <tbody className="divide-y divide-gray-50">
                 {registrations.map((reg) => {
                   const currentStatus = reg.status?.toLowerCase();
+                  const canCancel = 
+                    (currentStatus === 'actif' || currentStatus === 'active') && 
+                    isSessionUpcoming(reg.sessionDate);
                   return (
                     <tr key={reg.id} className="text-sm hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-4 font-bold text-gray-700">{reg.formation?.title}</td>
                       <td className="px-6 py-4 text-gray-500">{reg.sessionTitle}</td>
-                      <td className="px-6 py-4 text-gray-500">
-                        {reg.registrationDate ? new Date(reg.registrationDate).toLocaleDateString() : '-'}
-                      </td>
                       <td className="px-6 py-4 font-medium text-brand-dark">
                         {reg.price != null ? `${reg.price} DT` : '-'}
                       </td>
@@ -106,28 +110,34 @@ export default function RegistrationsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {(currentStatus === 'actif' || currentStatus === 'active') ? (
-                          <button 
+                        {reg.status?.toLowerCase() === 'cancelled' ? (
+                          <span className="text-[10px] font-bold text-red-400 uppercase block text-right">
+                            Session cancelled
+                            </span>
+                            ) : (reg.status?.toLowerCase() === 'actif' || reg.status?.toLowerCase() === 'active') && isSessionUpcoming(reg.sessionDate) ? (
+                            <button 
                             onClick={() => handleCancel(String(reg.id))}
                             className="text-red-400 hover:text-red-600 flex items-center gap-1 ml-auto text-[10px] font-bold"
-                          >
-                            <X size={14} /> CANCEL
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-gray-300 italic text-right block">No actions</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {registrations.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400 text-sm">
-                      No registrations found. Click "New Registration" to get started.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
+                            >
+                              <X size={14} /> CANCEL
+                              </button>
+                              ) : (
+                              <span className="text-[10px] text-gray-300 italic text-right block">
+                                No actions
+                                </span>
+                              )}
+                              </td>
+                              </tr>
+                              );
+                              })}
+                              {registrations.length === 0 && (
+                                <tr>
+                                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400 text-sm">
+                                    No registrations found. Click "New Registration" to get started.
+                                    </td>
+                                    </tr>
+                                  )}
+                                  </tbody>
             </table>
           </div>
         )}

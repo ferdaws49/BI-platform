@@ -46,7 +46,7 @@ export default function Dashboard() {
   // Mapping des stats du backend vers votre design
   const stats = [
     { label: 'Trainings Enrolled', value: data.stats.totalEnrolled, subtext: 'Active trainings', icon: BookOpen, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Completed Trainings', value: data.stats.completedCourses, subtext: 'Successfully finished', icon: CheckCircle, color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'successRate', value: `${data.stats.successRate ?? 0}%`, subtext: ' de réussite', icon: CheckCircle, color: 'bg-emerald-50 text-emerald-600' },
     { label: 'Average Score', value: data.stats.average, subtext: 'Global performance', icon: Trophy, color: 'bg-emerald-50 text-emerald-600' },
     { label: 'Upcoming Sessions', value: data.stats.upcomingCount, subtext: 'Total scheduled', icon: Calendar, color: 'bg-emerald-50 text-emerald-600' },
   ];
@@ -98,12 +98,7 @@ export default function Dashboard() {
             {t.status}
           </span>
         </div>
-        <div className="flex justify-between text-[10px] text-gray-400 font-bold uppercase">
-          <span>{t.progress}%</span>
-        </div>
-        <div className="h-1.5 w-full bg-brand-input rounded-full overflow-hidden">
-          <div className="h-full bg-brand-dark" style={{ width: `${t.progress}%` }} />
-        </div>
+        
       </div>
     ))}
   </div>
@@ -147,8 +142,9 @@ export default function Dashboard() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-brand-dark">{r.score}/{r.max}</span>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${r.status === 'Passed' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                    {r.status}
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded  ${r.status === 'Passed' ? 'bg-green-100 text-green-700' 
+              : 'bg-red-100 text-red-700'}`}>
+                    {r.status ? 'Réussi' : 'Non réussi'}
                   </span>
                 </div>
               </div>
@@ -172,8 +168,8 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase 
-                ${reg.status === 'validated' ? 'bg-emerald-50 text-emerald-600' : 
-                  reg.status === 'pending' ? 'bg-amber-50 text-amber-600' : 
+                ${reg.status === 'Active' ? 'bg-emerald-50 text-emerald-600' : 
+                  reg.status === 'Completed' ? 'bg-amber-50 text-amber-600' : 
                   'bg-rose-50 text-rose-600'}`}>
                     {reg.status}
                     </span>

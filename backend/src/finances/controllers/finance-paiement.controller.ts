@@ -74,7 +74,7 @@ export class PaymentsController {
 @ApiOperation({ summary: 'Formations avec au moins une session/paiement dans la période' })
 @ApiOkResponse({ type: [Formation] })
 getFormationsForPayments(@Query() filter: RevenueFilterDto) {
-  return this.dashboard.getFormationsForPayments(filter);
+  return this.dashboard.getFormationsForPayments();
 }
 
 

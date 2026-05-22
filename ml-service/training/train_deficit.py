@@ -2,8 +2,9 @@ import numpy as np
 import joblib
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
-from sklearn.model_selection import cross_val_score
+from sklearn.linear_model import LogisticRegression # On utilise la Régression Logistique
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, roc_auc_score
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 MODELS_DIR.mkdir(exist_ok=True)
@@ -51,30 +52,34 @@ def generate_data():
 def train():
     X, y     = generate_data()
     scaler   = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    
+    # --- 1. DIVISION 80/20 ---
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    candidates = {
-        "GradientBoosting": GradientBoostingClassifier(
-            n_estimators=150, max_depth=4, learning_rate=0.05, random_state=42
-        ),
-        "RandomForest": RandomForestClassifier(
-            n_estimators=100, max_depth=5, random_state=42
-        ),
-    }
+    # --- 2. NORMALISATION ---
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled  = scaler.transform(X_test)
 
-    best_score, best_name, best_model = -1, "", None
-    for name, clf in candidates.items():
-        score = cross_val_score(clf, X_scaled, y, cv=5, scoring="roc_auc").mean()
-        print(f"[train_deficit] {name}: AUC = {score:.3f}")
-        if score > best_score:
-            best_score, best_name, best_model = score, name, clf
+    # --- 3. ENTRAÎNEMENT ---
+    model = LogisticRegression()
+    model.fit(X_train_scaled, y_train)
 
-    best_model.fit(X_scaled, y)
+    # --- 4. CALCUL DES SCORES ---
+    y_pred = model.predict(X_test_scaled)
+    y_prob = model.predict_proba(X_test_scaled)[:, 1] # Pour le score AUC
+    
+    acc = accuracy_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_prob)
 
-    joblib.dump({"model": best_model, "scaler": scaler, "model_name": best_name},
+    print("-" * 30)
+    print(f"📊 PERFORMANCE MODÈLE DÉFICIT")
+    print(f"Précision Globale (Accuracy) : {acc*100:.1f} %")
+    print(f"Score AUC : {auc:.2f}")
+    print("-" * 30)
+
+    # --- 5. SAUVEGARDE ---
+    joblib.dump({"model": model, "scaler": scaler, "model_name": "LogisticRegression"},
                 MODELS_DIR / "deficit_model.pkl")
-    print(f"[train_deficit] ✅ {best_name} sauvegardé dans models/deficit_model.pkl (AUC={best_score:.3f})")
-
 
 if __name__ == "__main__":
     train()

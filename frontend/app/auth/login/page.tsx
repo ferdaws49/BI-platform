@@ -175,7 +175,7 @@ export default function LoginPage() {
 
             {/* Forgot password */}
             <Link
-              href="/auth/forgot-pass"
+              href="/auth/forgot-password"
               className="text-primary hover:text-accent transition-colors block"
             >
               Mot de passe oublié ?

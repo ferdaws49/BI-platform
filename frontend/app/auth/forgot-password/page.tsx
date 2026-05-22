@@ -75,7 +75,7 @@ export default function ForgotPasswordPage() {
               </ul>
 
               <Link
-                href="/login"
+                href="/auth/login"
                 className="w-full flex justify-center py-3 btn-primary font-medium"
               >
                 Retour à la connexion
@@ -144,7 +144,7 @@ export default function ForgotPasswordPage() {
               <div className="text-center text-sm space-y-2 pt-2">
 
                 <Link
-                  href="/login"
+                  href="/auth/login"
                   className="text-primary hover:text-accent block"
                 >
                   ← Retour à la connexion

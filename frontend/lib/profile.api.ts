@@ -11,27 +11,38 @@ export async function getProfile() {
 
 export async function updateProfile(data: { username?: string; phone?: string; password?: string }) {
   const res = await fetch(`${API_URL}`, {
-    method: 'PATCH',
+    method: 'PUT',
     headers: { ...getHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || 'Erreur mise à jour');
+  }
   return res.json();
 }
 
 export async function uploadProfileImage(file: File) {
   const formData = new FormData();
-  formData.append('user-image', file); // 'user-image' doit correspondre au FileInterceptor du back
+  formData.append('user-image', file);
 
   const res = await fetch(`${API_URL}/upload-image`, {
     method: 'POST',
-    headers: getHeaders(), // Ne pas mettre Content-Type ici, le navigateur le fera avec le boundary
+    headers: getHeaders(),
     body: formData,
   });
+
+  // ← AJOUTÉ : sinon vous ne voyez jamais l'erreur
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || 'Erreur upload image');
+  }
+
   return res.json();
 }
 
 export const deleteProfileImage = async () => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('access_token');
   const res = await fetch(`${API_URL}/images/remove-profile-image`, { // <-- Vérifie l'URL de ton controller
     method: 'DELETE',
     headers: { 

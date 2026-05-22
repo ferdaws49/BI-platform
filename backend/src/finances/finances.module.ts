@@ -20,9 +20,11 @@ import { FinanceReportingController } from './controllers/finance-reporting.cont
 import { FinanceReportingService } from './services/finance-reporting.service';
 import { StudentFinanceService } from './services/apprenant-finance.service';
 import { StudentFinanceController } from './controllers/apprenant-finance.controller';
+import { Formateur } from 'src/formateurs/entities/formateur.entity';
+import { DwModule } from 'src/dw/dw.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Finance, Formation, Session, User, Apprenant ])],
+  imports: [DwModule,TypeOrmModule.forFeature([Finance, Formation, Session, User, Apprenant, Formateur ])],
   controllers: [
     // ... tes controllers existants +
     FinanceDirecteurController,
@@ -40,7 +42,8 @@ import { StudentFinanceController } from './controllers/apprenant-finance.contro
     FinanceRevenueService,
     FinanceCostService,
     FinanceReportingService,
-    StudentFinanceService
+    StudentFinanceService,
+   
   ],
   exports: [FinanceDirecteurService, FinanceCostService, FinanceRevenueService], // pour AlertsModule plus tard
   

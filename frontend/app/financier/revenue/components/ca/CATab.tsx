@@ -90,7 +90,7 @@ function RevenueLineChart({ data }: { data: RevEvolution }) {
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all"
             style={{ background: isVisible ? `${color}18` : "#efefea", color: isVisible ? color : "rgba(45,74,62,0.4)", border: `1px solid ${isVisible ? color + "40" : "#e5eadd"}`, fontFamily: "'DM Sans'" }}>
             <span className="w-2 h-2 rounded-full" style={{ background: color, opacity: isVisible ? 1 : 0.3 }} />
-            {s.formationTitle.split(" ")[0]}
+            {s.formationTitle.split(" ")[0]?? "—"}
           </button>
           );
         })}
@@ -110,7 +110,7 @@ function RevenueBarChart({ data }: { data: TopForm[] }) {
     chartRef.current = new Chart(ref.current, {
       type: "bar",
       data: {
-        labels: data.map(d => d.formationTitle.split(" ")[0]),
+        labels: data.map(d => d.formationTitle.split(" ")[0]?? d.formationTitle ?? "—"),
         datasets: [{
           label: "CA",
           data: data.map(d => d.caRealise),
@@ -233,29 +233,59 @@ function BubbleChart({ data }: { data: BubblePt[] }) {
 // ── Sessions Table ────────────────────────────────────────
 function SessionsTable({ data }: { data: TableResp | null }) {
   const [search, setSearch] = useState("");
-  const [sortCol, setSortCol] = useState<"ca" | "inscrits" | null>(null);
+  const [sortCol, setSortCol] = useState<"ca" | "inscrits" | "montant" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
-  const PER = 5;
+  const PER = 5; 
 
   const rows = data?.items ?? [];
+
+  
 
   const filtered = useMemo(() => {
     if (!search) return rows;
     const q = search.toLowerCase();
     return rows.filter(r => r.session.toLowerCase().includes(q) || r.formation.toLowerCase().includes(q));
   }, [rows, search]);
+
+  const sorted = useMemo(() => {
+    if (!sortCol) return filtered;
+    
+    return [...filtered].sort((a, b) => {
+      let valA: number, valB: number;
+      
+      switch (sortCol) {
+        case 'ca':
+          valA = a.caEncaisse ?? 0;
+          valB = b.caEncaisse ?? 0;
+          break;  
+        case 'inscrits':
+          valA = a.inscrits ?? 0;
+          valB = b.inscrits ?? 0;
+          break;
+        case 'montant':
+          valA = a.prix ?? 0;
+          valB = b.prix ?? 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      return sortDir === 'asc' ? valA - valB : valB - valA;
+    });
+  }, [filtered, sortCol, sortDir]);
     
 
-  const paged = filtered.slice((page - 1) * PER, page * PER);
+  const paged = sorted.slice((page - 1) * PER, page * PER);
   const pages = Math.ceil(filtered.length / PER);
 
-  function toggleSort(col: "ca" | "inscrits") {
+  function toggleSort(col: "ca" | "inscrits" | "montant") {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("desc"); }
+    setPage(1);
   }
 
-  const SortIcon = ({ col }: { col: "ca" | "inscrits" }) => (
+  const SortIcon = ({ col }: { col: "ca" | "inscrits" | "montant" }) => (
     <span className="ml-1 opacity-40 text-xs">{sortCol === col ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
   );
 
@@ -281,11 +311,12 @@ function SessionsTable({ data }: { data: TableResp | null }) {
           </colgroup>
           <thead>
             <tr style={{ background: "rgba(229,234,221,0.35)" }}>
-              {["Session", "Formation", "Date", "Inscrits ↕", "Montant", "CA ↕", "vs Préc."].map((h, i) => (
+              {["Session", "Formation", "Date", "Inscrits ↕", "Montant ↕", "CA ↕", "vs Préc."].map((h, i) => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                  style={{ color: "#2d4a3e", opacity: 0.5, cursor: i === 3 || i === 5 ? "pointer" : "default" }}
-                  onClick={() => { if (i === 3) toggleSort("inscrits"); if (i === 5) toggleSort("ca"); }}>
+                  style={{ color: "#2d4a3e", opacity: 0.5, cursor: i === 3 || i === 5 || i === 4 ? "pointer" : "default" }}
+                  onClick={() => { if (i === 3) toggleSort("inscrits"); if (i === 4) toggleSort("montant"); if (i === 5) toggleSort("ca"); }}>
                   {h === "Inscrits ↕" ? <span>Inscrits<SortIcon col="inscrits" /></span> :
+                    h === "Montant ↕" ? <span>Montant<SortIcon col="montant" /></span> :
                     h === "CA ↕" ? <span>CA<SortIcon col="ca" /></span> : h}
                 </th>
               ))}
@@ -295,14 +326,14 @@ function SessionsTable({ data }: { data: TableResp | null }) {
             {paged.map(row => (
               <tr key={row.sessionId} className="hover:bg-white/50 transition-colors border-t" style={{ borderColor: "#e5eadd" }}>
                 <td className="px-4 py-3">
-                  <p className="font-semibold text-xs truncate" style={{ color: "#2d4a3e" }}>{row.session}</p>
+                  <p className="font-semibold text-xs truncate" style={{ color: "#2d4a3e" }}>{row.session ?? "—"}</p>
                 </td>
                 <td className="px-4 py-3">
                   <span className="text-xs px-2 py-0.5 rounded-lg" style={{ background: "rgba(26,113,73,0.08)", color: "#1a7149" }}>
-                    {row.formation.split(" ")[0]}
+                    {row.formation ?? "—"}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-xs" style={{ color: "#2d4a3e", opacity: 0.5 }}>{new Date(row.date).toLocaleDateString('fr-FR')}</td>
+                <td className="px-4 py-3 text-xs" style={{ color: "#2d4a3e", opacity: 0.5 }}>{row.date ? new Date(row.date).toLocaleDateString('fr-FR') : "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col gap-1">
                     <span className="text-xs font-semibold" style={{ color: "#2d4a3e" }}>{row.inscrits}{row.capacite ? `/${row.capacite}` : ''}</span>
@@ -315,7 +346,7 @@ function SessionsTable({ data }: { data: TableResp | null }) {
                 </td>
                 <td className="px-4 py-3 text-xs" style={{ color: "#2d4a3e", opacity: 0.6 }}>{fmtCurrency(row.prix)}</td>
                 <td className="px-4 py-3 text-xs font-bold" style={{ color: "#2d4a3e" }}>{fmtCurrency(row.caEncaisse)}</td>
-                <td className="px-4 py-3"><GrowthBadge value={row.variation.variationPercent} /></td>
+                <td className="px-4 py-3"><GrowthBadge value={row.variation?.variationPercent} /></td>
               </tr>
             ))}
           </tbody>
@@ -412,9 +443,17 @@ export default function CATab({ filters }: { filters: Record<string, any> }) {
         <KPICard label="Taux de Recouvrement" value={`${recovery.toFixed(1)}%`}  accentColor="#3b82f6"
           sub="Total encaissé / Total facturé × 100" />
 
-        <KPICard label="Top Formation" value={topForm && topForm !== 'N/A' ? topForm : "—"}  accentColor="#2d4a3e"
-          badge={topForm ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(26,113,73,0.12)", color: "#1a7149" }}>{fmtCurrency(topForm.revenue)}</span>: undefined}
-          sub={topForm ? `Formation #${topForm.formationId}` : "Aucune donnée"} />
+<KPICard 
+  label="Top Formation" 
+  value={topForm && topForm !== 'N/A' ? topForm.title : "—"} 
+  accentColor="#2d4a3e"
+  badge={topForm ? (
+    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(26,113,73,0.12)", color: "#1a7149" }}>
+      {fmtCurrency(topForm.revenue)}
+    </span>
+  ) : undefined}
+  sub={topForm ? `Formation #${topForm.formationId}` : "Aucune donnée"} 
+/>
 
         <KPICard label="Panier Moyen" value={fmtCurrency(avgBasket)}
           badge={<span className="text-xs px-2 py-0.5 rounded-full" style={{ background: avgBasketGrowth >= 0 ? "rgba(26,113,73,0.12)" : "rgba(217,119,6,0.12)", color: avgBasketGrowth >= 0 ? "#1a7149" : "#D97706" }}>{avgBasketGrowth >= 0 ? "▲" : "▼"} {Math.abs(avgBasketGrowth).toFixed(1)}%</span>}

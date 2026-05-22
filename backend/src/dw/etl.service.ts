@@ -332,17 +332,25 @@ export class EtlService {
     const rows = await this.sessionRepo.find({ relations: ['formation'] });
     if (rows.length === 0) return;
 
-    const placeholders = rows.map((_, i) => `($${i * 4 + 1},$${i * 4 + 2},$${i * 4 + 3},$${i * 4 + 4})`).join(',');
+    const placeholders = rows.map((_, i) => `($${i * 6 + 1},$${i * 6 + 2},$${i * 6 + 3},$${i * 6 + 4},$${i * 6 + 5},$${i * 6 + 6})`).join(',');
     const params = rows.flatMap(s => [
       s.id,
       s.type,
       s.capacite,
       s.prix ?? s.formation?.prix ?? 0,
+      s.title,
+      s.date ? new Date(s.date).toISOString().split('T')[0] : null,  // ← AJOUTER
     ]);
 
     await this.query(
-      `INSERT INTO dw.dim_session (session_id, type_session, capacite, prix_session)
-       VALUES ${placeholders} ON CONFLICT (session_id) DO NOTHING`,
+      `INSERT INTO dw.dim_session (session_id, type_session, capacite, prix_session, titre, date)
+       VALUES ${placeholders} ON CONFLICT (session_id) 
+     DO UPDATE SET 
+       type_session = EXCLUDED.type_session,
+       capacite     = EXCLUDED.capacite,
+       prix_session = EXCLUDED.prix_session,
+       titre        = EXCLUDED.titre,
+       date         = EXCLUDED.date`,
       params,
       qr,
     );

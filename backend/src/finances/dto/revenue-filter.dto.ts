@@ -6,6 +6,7 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  IsString,
   Max,
   Min,
 } from 'class-validator';
@@ -107,13 +108,11 @@ export class RevenueFilterDto {
       limit?: number = 10;
 
 
-  @ApiPropertyOptional({ enum: SortOrder, example: SortOrder.DESC })
-  @IsOptional()
-  @IsEnum(SortOrder)//pour le tri
-  sortOrder?: SortOrder = SortOrder.DESC;
+   @IsOptional()
+  @IsString()
+  sortBy?: 'date' | 'session' | 'formation' | 'inscrits' | 'prix' | 'ca';
 
-   @ApiPropertyOptional({ enum: PerformanceSortBy, example: PerformanceSortBy.DATE })
-        @IsOptional()
-        @IsEnum(PerformanceSortBy)
-        sortBy?: PerformanceSortBy = PerformanceSortBy.DATE;
+  @IsOptional()
+  @IsEnum(SortOrder)
+  sortOrder?: SortOrder;
 }

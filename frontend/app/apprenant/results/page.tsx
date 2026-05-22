@@ -1,6 +1,6 @@
 'use client'
 import React, { useEffect, useState } from 'react';
-import { Trophy, ChevronRight, Loader2 } from 'lucide-react';
+import { Trophy, ChevronRight, Loader2, ClipboardList } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function ResultsPage() {
@@ -11,7 +11,6 @@ export default function ResultsPage() {
   useEffect(() => {
     const fetchSummary = async () => {
       try {
-        // ✅ Correction : vérifie si tu utilises 'token' ou 'access_token'
         const token = localStorage.getItem('token') || localStorage.getItem('access_token');
         
         const res = await fetch('http://localhost:5000/results/summary', {
@@ -20,12 +19,9 @@ export default function ResultsPage() {
         
         const data = await res.json();
 
-        // ✅ LIAISON : Le backend renvoie { overallAverage: ..., results: [...] }
-        // On doit donc prendre 'data.results'
         if (data && data.results) {
           setFormationsSummary(data.results);
         } else if (Array.isArray(data)) {
-          // Au cas où ton backend renvoie directement le tableau
           setFormationsSummary(data);
         }
       } catch (err) {
@@ -37,44 +33,71 @@ export default function ResultsPage() {
     fetchSummary();
   }, []);
 
-  if (loading) return (<div className="flex justify-center p-20"><Loader2 className="animate-spin text-emerald-500" size={40} /></div>);
+  if (loading) return (
+    <div className="flex justify-center p-20">
+      <Loader2 className="animate-spin text-emerald-500" size={40} />
+    </div>
+  );
 
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold">My Results</h1>
+      
       <div className="space-y-4 w-full">
-  {formationsSummary.map((f) => (
-    <div 
-      key={f.id  || f.formationId } 
-      onClick={() => router.push(`/apprenant/results/${f.id || f.formationId}`)}
-      // w-full : occupe toute la largeur
-      // flex justify-between : pousse les éléments aux extrémités
-      className="w-full bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm flex justify-between items-center cursor-pointer hover:shadow-md transition-all group"
-    >
-      {/* BLOC GAUCHE */}
-      <div className="flex items-center gap-4">
-        <div className="p-5 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:bg-[#1b5333] group-hover:text-white transition-colors">
-          <Trophy size={24} />
-        </div>
-        <div>
-          <h3 className="font-bold text-gray-800 text-lg">{f.name  || f.formationTitle}</h3>
-          <p className="text-xs text-gray-400">{f.count} evaluations completed</p>
-        </div>
+        {formationsSummary.length === 0 ? (
+          /* ← BLOC "AUCUN RÉSULTAT" */
+          <div className="w-full bg-white p-12 rounded-[32px] border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center">
+            <div className="p-6 bg-gray-50 rounded-full mb-4">
+              <ClipboardList size={40} className="text-gray-300" />
+            </div>
+            <h3 className="text-gray-900 font-bold italic">
+              Aucun résultat pour le moment
+            </h3>
+            <p className="text-sm text-gray-400 max-w-md">
+              Vous n'avez pas encore de formations évaluées. Revenez plus tard pour consulter vos performances.
+            </p>
+          </div>
+        ) : (
+          /* ← LISTE DES RÉSULTATS (votre code existant) */
+          formationsSummary.map((f) => (
+            <div 
+              key={f.id || f.formationId} 
+              onClick={() => router.push(`/apprenant/results/${f.id || f.formationId}`)}
+              className="w-full bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm flex justify-between items-center cursor-pointer hover:shadow-md transition-all group"
+            >
+              <div className="flex items-center gap-4">
+      <div className="p-5 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:bg-[#1b5333] group-hover:text-white transition-colors">
+        <Trophy size={24} />
       </div>
-
-      {/* BLOC DROITE */}
-      <div className="flex items-center gap-8">
-        <div className="text-right">
-          <p className="text-3xl font-black text-gray-900 leading-none">
-            {f.average}<span className="text-sm text-gray-400 ml-1">/20</span>
-          </p>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Average</p>
+      <div>
+        <h3 className="font-bold text-gray-800 text-lg">{f.name}</h3>
+        
+        {/* STATUT AJOUTÉ */}
+        <div className="flex items-center gap-2 mt-1">
+          <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+            f.isPassed 
+              ? 'bg-green-100 text-green-700' 
+              : 'bg-red-100 text-red-700'
+          }`}>
+            {f.isPassed ? 'Réussi' : 'Non réussi'}
+          </span>
+          
         </div>
-        <ChevronRight className="text-gray-300 group-hover:text-[#1b5333] transition-colors" />
       </div>
     </div>
-  ))}
-</div>
+              <div className="flex items-center gap-8">
+                <div className="text-right">
+                  <p className="text-3xl font-black text-gray-900 leading-none">
+                    {f.average}<span className="text-sm text-gray-400 ml-1">/20</span>
+                  </p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Average</p>
+                </div>
+                <ChevronRight className="text-gray-300 group-hover:text-[#1b5333] transition-colors" />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

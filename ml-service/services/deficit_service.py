@@ -39,10 +39,12 @@ class SessionDeficitRegistry:
         probabilities = self.model.predict_proba(
             self.scaler.transform(feature_matrix)
         )[:, 1]
+        predictions = self.model.predict(self.scaler.transform(feature_matrix))
 
         results = []
         for i, s in enumerate(sessions):
             prob        = float(probabilities[i])
+            predicted   = bool(predictions[i])
             score       = min(100, int(round(prob * 100)))
             cout_total  = s.cout_formateur + s.cout_logistique
             marge_brute = s.montant_inscriptions - cout_total
@@ -67,7 +69,7 @@ class SessionDeficitRegistry:
                 recommandation = "Session rentable, aucune action requise"
 
             results.append(SessionDeficitResult(
-                session_id=s.session_id, est_deficitaire=marge_brute < 0,
+                session_id=s.session_id, est_deficitaire=predicted,
                 probabilite=round(prob, 4), score_risque=score,
                 niveau_risque=niveau, deficit_estime=deficit_estime,
                 raison=raison, recommandation=recommandation,

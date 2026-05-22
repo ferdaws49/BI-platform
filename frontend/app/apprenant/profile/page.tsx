@@ -12,7 +12,7 @@ export default function ProfilePage() {
   const [imageVersion, setImageVersion] = useState(Date.now());
   
   // États du formulaire
-  const [formData, setFormData] = useState({ username: '', phone: '', password: '' });
+  const [formData, setFormData] = useState({ nom: '', prenom: '', phone: '', password: '' });
   const [deleting, setDeleting] = useState(false);
 
 
@@ -24,7 +24,8 @@ export default function ProfilePage() {
     const data = await getProfile();
       console.log("Données du profil :", data); // <--- AJOUTEZ CECI
     setUser(data);
-    setFormData({ username: data.username || '', phone: data.phone || '', password: '' });
+    setFormData({ nom: data.nom || '', 
+    prenom: data.prenom || '', phone: data.phone || '', password: '' });
     setLoading(false);
   };
 
@@ -32,8 +33,8 @@ export default function ProfilePage() {
   setSaving(true);
 
   try {
-    const { password, username, phone } = formData;
-    const payload: any = { username, phone };
+    const { password, nom, prenom, phone } = formData;
+    const payload: any = { nom, prenom, phone };
     if (password) payload.password = password;
 
     await updateProfile(payload);
@@ -43,7 +44,8 @@ export default function ProfilePage() {
     setUser(updatedData);
     // On vide le champ password après succès
     setFormData({ 
-      username: updatedData.username, 
+      nom: updatedData.nom || '', 
+      prenom: updatedData.prenom || '',
       phone: updatedData.phone, 
       password: '' 
     });
@@ -62,9 +64,12 @@ export default function ProfilePage() {
     setLoading(true); // Optionnel : affiche un spinner
     try {
       await uploadProfileImage(e.target.files[0]);
-      await loadProfile();
-
+      
       setImageVersion(Date.now());
+      await loadProfile();
+     
+
+     
 
     } catch (err) {
       alert("Erreur lors de l'envoi");
@@ -106,13 +111,13 @@ export default function ProfilePage() {
         <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm p-8 flex flex-col items-center text-center">
           <div className="relative group mb-6">
             {user.profileImage ? (
-              <img 
-                src={`http://localhost:5000/profile/images/${user.profileImage}?t=${user.lastUpdate}`} 
+              <img  key={`${user.profileImage}-${imageVersion}`} 
+                src={`http://localhost:5000/profile/images/${user.profileImage}?t=${imageVersion}`} 
                 className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-xl"
               />
             ) : (
               <div className="w-32 h-32 bg-brand-dark text-white rounded-full flex items-center justify-center text-4xl font-bold border-4 border-white shadow-xl">
-                {user.username?.substring(0, 2).toUpperCase()}
+                {(user.nom?.[0] || '') + (user.prenom?.[0] || '')}
               </div>
             )}
             <label className="absolute bottom-0 right-0 p-2 bg-white border border-gray-100 rounded-full shadow-lg cursor-pointer hover:bg-gray-50">
@@ -129,7 +134,7 @@ export default function ProfilePage() {
                 </button>
             )}
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">{user.username}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{user.nom} {user.prenom}</h2>
           <p className="text-sm text-gray-500 mb-8">{user?.email}</p>
 
           {user?.createdAt && (
@@ -153,11 +158,20 @@ export default function ProfilePage() {
               <label className="text-xs font-bold text-gray-500 uppercase">Username</label>
               <input 
                 type="text" 
-                value={formData.username || ''} 
-                onChange={(e) => setFormData({...formData, username: e.target.value})}
+                value={formData.nom || ''} 
+                onChange={(e) => setFormData({...formData, nom: e.target.value})}
                 className="w-full px-5 py-3 rounded-xl bg-gray-50 border-2 border-transparent focus:bg-white focus:border-brand-dark outline-none text-sm" 
               />
             </div>
+            <div className="space-y-2">
+  <label className="text-xs font-bold text-gray-500 uppercase">Prénom</label>
+  <input 
+    type="text" 
+    value={formData.prenom || ''} 
+    onChange={(e) => setFormData({...formData, prenom: e.target.value})}
+    className="w-full px-5 py-3 rounded-xl bg-gray-50 border-2 border-transparent focus:bg-white focus:border-brand-dark outline-none text-sm" 
+  />
+</div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-500 uppercase">Phone Number</label>
               <input 
@@ -181,7 +195,7 @@ export default function ProfilePage() {
               <button 
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-brand-dark text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                className="bg-[#1b5333] text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-[#154128] transition-all shadow-lg"
               >
                 {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                 Save Changes

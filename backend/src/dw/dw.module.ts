@@ -22,5 +22,6 @@ import { EtlService } from './etl.service';
   ],
   controllers: [DwController],
   providers: [EtlService],
+  exports: [EtlService],
 })
 export class DwModule {}
