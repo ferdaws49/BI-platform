@@ -275,6 +275,23 @@ if (dto.apprenantIds?.length) {
     return { success: true };
   }
 
+  async remove(id: string): Promise<{ success: boolean }> {
+    const session = await this.sessionRepo.findOne({ where: { id } });
+    if (!session) throw new NotFoundException('Session introuvable.');
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (session.date < todayStr || session.statut === SessionStatut.TERMINE) {
+      throw new BadRequestException(
+        'Impossible de supprimer définitivement une session passée ou terminée.',
+      );
+    }
+
+    await this.sessionRepo.remove(session);
+    await this.updateFormationStatus(session.formationId);
+
+    return { success: true };
+  }
+
   async getPresences(
     sessionId: string,
   ): Promise<{ apprenantId: number; estPresent: boolean }[]> {

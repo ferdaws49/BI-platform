@@ -56,9 +56,15 @@ export class SessionsController {
     return this.sessionsService.update(id, dto);
   }
 
-  // Annulation logique : on garde l'historique en base.
+  // Annulation logique ou suppression physique selon le paramètre `hard`
   @Delete(':id')
-  cancel(@Param('id', ParseUUIDPipe) id: string) {
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('hard') hard?: string,
+  ) {
+    if (hard === 'true') {
+      return this.sessionsService.remove(id);
+    }
     return this.sessionsService.cancel(id);
   }
 

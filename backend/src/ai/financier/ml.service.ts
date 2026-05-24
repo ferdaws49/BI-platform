@@ -4,6 +4,38 @@ import { firstValueFrom } from 'rxjs';
 import { CAForecastResponseDto } from './dtos/ca-forecast.dto';
 import { PredictCADto } from './dtos/predict-ca.dto';
 import { DataSource } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { PredictFilterDto } from './dtos/predict-filter.dto';
+import { PredictResponseDto, SessionRiskDto } from './dtos/predict-response.dto';
+import { buildSessionDataQuery } from './query/session-data.query';
+
+
+/** Raw row returned from the DW query */
+interface RawSessionRow {
+  session_id: string;
+  formation_id: number;
+  formateur_id: number;
+  type_session: string;
+  capacite: number;
+  session_date: Date;
+  nb_inscrits: string; // pg returns bigint as string
+  revenu: string;
+  cout_formateur: string;
+  cout_logistique: string;
+  impayes: string;
+}
+
+/** Cleaned payload sent to ML service */
+interface SessionPayload {
+  session_id: string;
+  nb_inscrits: number;
+  capacite: number;
+  revenu: number;
+  cout_formateur: number;
+  cout_logistique: number;
+  impayes: number;
+  date: string; // ISO date string
+}
 
 @Injectable()
 export class MlService {
@@ -12,6 +44,7 @@ export class MlService {
 
   constructor(private readonly httpService: HttpService,
     private readonly dataSource: DataSource,
+    private readonly configService: ConfigService,
   ) {}
 
   // ── CA Forecast ───────────────────────────────────────────
@@ -77,23 +110,6 @@ export class MlService {
     );
     return data;
   }
-
-  async predictSessionsDeficit(sessions: any[]) {
-    try {
-      const { data } = await firstValueFrom(
-        this.httpService.post(`${this.ML_URL}/predict-sessions-deficit`, {
-          sessions,
-        })
-      );
-      return data;
-    } catch (error: any) {
-      this.logger.error('sessions deficit error', error?.message);
-      throw new HttpException('Service ML indisponible', HttpStatus.SERVICE_UNAVAILABLE);
-    }
-  }
-
-
-
   private async getFilteredHistory(filters: PredictCADto) {
     const params: any[] = [];
     let idx = 1;
@@ -151,6 +167,140 @@ export class MlService {
       total_inscrits: Number(r.total_inscrits) || 0,
       total_impaye: Number(r.total_impaye) || 0,
     }));
+  }
+
+
+   
+
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PUBLIC: PREDICT
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async predict(filters: PredictFilterDto): Promise<PredictResponseDto> {
+    const sessions = await this.extractAndCleanSessions(filters);
+
+    if (sessions.length === 0) {
+      return { sessionRisk: [], insights: ['No sessions found for the given filters.'], recommendations: [] };
+    }
+
+    const mlResult = await this.callMlService<{ predictions: SessionRiskDto[] }>('/deficit/predict', { sessions });
+
+    return this.buildFinalResponse(mlResult);
+  }
+
+
+ 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STEP 1 — EXTRACT FROM DW
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  private async extractAndCleanSessions(filters: PredictFilterDto): Promise<SessionPayload[]> {
+    this.logger.log(`Extracting sessions with filters: ${JSON.stringify(filters)}`);
+
+    const { query, params } = buildSessionDataQuery(filters);
+
+    let rows: RawSessionRow[];
+    try {
+      rows = await this.dataSource.query(query, params);
+    } catch (err) {
+      this.logger.error('DW query failed', err);
+      throw new HttpException('Data warehouse query failed', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    this.logger.log(`Extracted ${rows.length} raw session rows from DW`);
+
+    // ── STEP 2: Minimal cleaning (NestJS responsibility only) ──────────────────
+    return rows
+      .filter(row => this.isValidRow(row))
+      .map(row => this.toPayload(row));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STEP 2 — BASIC VALIDATION (no feature engineering)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  private isValidRow(row: RawSessionRow): boolean {
+    if (!row.session_id) return false;
+    if (!row.session_date) return false;
+    const capacite = Number(row.capacite);
+    if (!capacite || capacite <= 0) return false;
+    return true;
+  }
+//Nettoyage minimal côté NestJS
+//NestJS ne fait que de la conversion de format. Aucun calcul métier.
+// Parce que PostgreSQL retourne parfois des bigint comme string et des Date comme objet. NestJS "normalise" pour que FastAPI reçoive des nombres et des strings propres.
+  private toPayload(row: RawSessionRow): SessionPayload {
+    return {
+      session_id:     row.session_id,
+      nb_inscrits:    Math.max(0, Number(row.nb_inscrits)    || 0),
+      capacite:       Number(row.capacite)                   || 0,
+      revenu:         Math.max(0, Number(row.revenu)         || 0),
+      cout_formateur: Math.max(0, Number(row.cout_formateur) || 0),
+      cout_logistique:Math.max(0, Number(row.cout_logistique)|| 0),
+      impayes:        Math.max(0, Number(row.impayes)        || 0),
+      date:           row.session_date instanceof Date
+        ? row.session_date.toISOString().split('T')[0]
+        : String(row.session_date),
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STEP 3 — CALL ML SERVICE
+  // ─────────────────────────────────────────────────────────────────────────────
+//bech yab3eth lel ml-service, nestjs y3ayet l function callMlService w y3tiha endpoint w body.
+  private async callMlService<T>(endpoint: string, body: unknown): Promise<T> {
+    const url = `${this.ML_URL}${endpoint}`;
+    this.logger.log(`Calling ML service: POST ${url}`);
+    this.logger.log(`Payload: ${JSON.stringify(body)}`); 
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(url, body, {
+          timeout: 60_000,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+      return response.data;
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // ← AJOUTEZ CE BLOC pour voir le vrai message d'erreur de FastAPI
+    if (err.response?.data) {
+      this.logger.error(`ML service validation error: ${JSON.stringify(err.response.data)}`);
+    }
+      this.logger.error(`ML service call failed: ${msg}`);
+      throw new HttpException(
+        `ML service unavailable: ${msg}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // STEP 4 — BUILD FINAL RESPONSE
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  private buildFinalResponse(mlResult: unknown): PredictResponseDto {
+    const result = mlResult as { predictions: SessionRiskDto[] };
+    const predictions: SessionRiskDto[] = result?.predictions ?? [];
+
+    const highRisk   = predictions.filter(p => p.risk_level === 'high');
+    const mediumRisk = predictions.filter(p => p.risk_level === 'medium');
+    const totalLoss  = predictions.reduce((acc, p) => acc + (p.estimated_loss ?? 0), 0);
+
+    const insights: string[] = [
+      `${predictions.length} sessions analyzed.`,
+      `${highRisk.length} session(s) at HIGH deficit risk.`,
+      `${mediumRisk.length} session(s) at MEDIUM risk.`,
+      ...(totalLoss < 0 ? [`Total estimated loss: ${Math.abs(totalLoss).toFixed(2)} TND`] : []),
+    ];
+
+    const recommendations: string[] = [
+      ...highRisk.map(p => `Session ${p.session_id}: ${p.recommendation}`),
+      ...mediumRisk.map(p => `Session ${p.session_id}: ${p.recommendation}`),
+    ];
+
+    return { sessionRisk: predictions, insights, recommendations };
   }
 }
   

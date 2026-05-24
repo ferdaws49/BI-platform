@@ -1,6 +1,5 @@
 import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
-import { AuthGuard } from '@nestjs/passport';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { FinanceReportingService } from '../services/finance-reporting.service';
 import { FinanceReportFilterDto } from '../dto/finance-report-filter.dto';
@@ -8,11 +7,14 @@ import { FinanceReportResponseDto } from '../dto/finance-report-response.dto';
 import { FinanceReportExportQueryDto } from '../dto/finance-report-export.dto';
 import { FinanceExportFormat } from 'src/utils/enums';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/roles.decorator';
 
 @ApiTags('Finance Reporting')
 @ApiBearerAuth()
 @Controller('finance/reports')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('resp_financier')
 export class FinanceReportingController {
   constructor(private readonly financeReportingService: FinanceReportingService) {}
 

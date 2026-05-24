@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, QueryRunner } from 'typeorm';
+import { Repository, DataSource, QueryRunner, MoreThan } from 'typeorm';
 
 /* ---------- Entités SOURCE ---------- */
 import { Finance, FinanceType } from 'src/finances/entities/finance.entity';
@@ -13,13 +13,13 @@ import { Cron, CronExpression } from '@nestjs/schedule'; // ← Ajoute
 @Injectable()
 export class EtlService {
   private readonly logger = new Logger(EtlService.name);
-  private readonly UNKNOWN_SESSION_UUID = '00000000-0000-0000-0000-000000000000';
-
+  private readonly UNKNOWN_SESSION_UUID =
+    '00000000-0000-0000-0000-000000000000';
 
   private skCache = {
     temps: new Map<string, number>(),
     typeFinance: new Map<string, number>(),
-    session: new Map<string, number>(),   // string car Finance.sessionId est string
+    session: new Map<string, number>(), // string car Finance.sessionId est string
     formation: new Map<number, number>(),
     formateur: new Map<number, number>(),
     apprenant: new Map<number, number>(),
@@ -50,6 +50,23 @@ export class EtlService {
   async runEtl(): Promise<void> {
     this.logger.log('🚀 Démarrage ETL Star Schema (transaction globale)');
 
+    // ✅ Reset cache
+    this.skCache = {
+      temps: new Map(),
+      typeFinance: new Map(),
+      session: new Map(),
+      formation: new Map(),
+      formateur: new Map(),
+      apprenant: new Map(),
+    };
+
+    // ✅ Audit START
+    const [runRow] = await this.dataSource.query(
+      `INSERT INTO dw.etl_runs (started_at, status)
+     VALUES (NOW(), 'running') RETURNING id`,
+    );
+    const runId: number = runRow.id;
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -63,19 +80,45 @@ export class EtlService {
       await this.loadDimApprenants(queryRunner);
       await this.loadDimSessions(queryRunner);
 
-      await this.loadFactFinance(queryRunner);
+      const rowsInserted = await this.loadFactFinance(queryRunner, runId);
 
       await queryRunner.commitTransaction();
-      this.logger.log('✅ ETL terminé et commité.');
+
+      // ✅ Audit SUCCESS
+      await this.dataSource.query(
+        `UPDATE dw.etl_runs
+       SET status='success', completed_at=NOW(), rows_inserted=$1
+       WHERE id=$2`,
+        [rowsInserted, runId],
+      );
+
+      this.logger.log(`✅ ETL terminé — ${rowsInserted} lignes.`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const stack = err instanceof Error ? err.stack : undefined;
-      this.logger.error(`❌ ETL échoué — rollback. ${msg}`, stack);
       await queryRunner.rollbackTransaction();
+
+      // ❌ Audit FAILED
+      await this.dataSource.query(
+        `UPDATE dw.etl_runs
+       SET status='failed', completed_at=NOW(), error_message=$1
+       WHERE id=$2`,
+        [String(err), runId],
+      );
+
       throw err;
     } finally {
       await queryRunner.release();
     }
+  }
+  //GETLast TIMe
+  private async getLastEtlTimestamp(qr: QueryRunner): Promise<Date | null> {
+    const rows = await this.query(
+      `SELECT completed_at FROM dw.etl_runs
+     WHERE status='success'
+     ORDER BY completed_at DESC LIMIT 1`,
+      [],
+      qr,
+    );
+    return rows[0]?.completed_at ?? null;
   }
 
   /* ================================================================
@@ -84,12 +127,18 @@ export class EtlService {
   private getSk<T>(cache: Map<T, number>, key: T, context: string): number {
     const sk = cache.get(key);
     if (sk === undefined) {
-      throw new Error(`SK manquant pour ${context} (clé=${key}). Dimension non chargée ?`);
+      throw new Error(
+        `SK manquant pour ${context} (clé=${key}). Dimension non chargée ?`,
+      );
     }
     return sk;
   }
 
-  private async query(sql: string, params?: any[], queryRunner?: QueryRunner): Promise<any> {
+  private async query(
+    sql: string,
+    params?: any[],
+    queryRunner?: QueryRunner,
+  ): Promise<any> {
     if (queryRunner) {
       return queryRunner.query(sql, params);
     }
@@ -98,12 +147,16 @@ export class EtlService {
 
   private mapFinanceType(type: FinanceType): string | null {
     switch (type) {
-      case FinanceType.PAIEMENT: return 'paiement';
-      case FinanceType.IMPAYE: return 'impaye';
-      case FinanceType.REMBOURSEMENT: return 'remboursement';
-      case FinanceType.DEPENSE_FORMATEUR: return 'depense_formateur';
-      case FinanceType.DEPENSE_LOGISTIQUE: return 'depense_logistique';
-      default: return null;
+      case FinanceType.PAIEMENT:
+        return 'paiement';
+      case FinanceType.IMPAYE:
+        return 'impaye';
+      case FinanceType.DEPENSE_FORMATEUR:
+        return 'depense_formateur';
+      case FinanceType.DEPENSE_LOGISTIQUE:
+        return 'depense_logistique';
+      default:
+        return null;
     }
   }
 
@@ -111,8 +164,14 @@ export class EtlService {
      DIMENSIONS
      ================================================================ */
   private async loadDimTypeFinance(qr?: QueryRunner): Promise<void> {
-    const types = ['paiement', 'impaye', 'remboursement', 'depense_formateur', 'depense_logistique'];
-    
+    const types = [
+      'paiement',
+      'impaye',
+      'remboursement',
+      'depense_formateur',
+      'depense_logistique',
+    ];
+
     const placeholders = types.map((_, i) => `($${i + 1})`).join(',');
     await this.query(
       `INSERT INTO dw.dim_type_finance (type) VALUES ${placeholders}
@@ -140,7 +199,11 @@ export class EtlService {
       qr,
     );
     if (!r.length) {
-      r = await this.query(`SELECT sk_apprenant FROM dw.dim_apprenant WHERE apprenant_id = -1`, [], qr);
+      r = await this.query(
+        `SELECT sk_apprenant FROM dw.dim_apprenant WHERE apprenant_id = -1`,
+        [],
+        qr,
+      );
     }
     this.skCache.apprenant.set(-1, r[0].sk_apprenant);
 
@@ -152,7 +215,11 @@ export class EtlService {
       qr,
     );
     if (!r.length) {
-      r = await this.query(`SELECT sk_formateur FROM dw.dim_formateur WHERE formateur_id = -1`, [], qr);
+      r = await this.query(
+        `SELECT sk_formateur FROM dw.dim_formateur WHERE formateur_id = -1`,
+        [],
+        qr,
+      );
     }
     this.skCache.formateur.set(-1, r[0].sk_formateur);
 
@@ -164,7 +231,11 @@ export class EtlService {
       qr,
     );
     if (!r.length) {
-      r = await this.query(`SELECT sk_formation FROM dw.dim_formation WHERE formation_id = -1`, [], qr);
+      r = await this.query(
+        `SELECT sk_formation FROM dw.dim_formation WHERE formation_id = -1`,
+        [],
+        qr,
+      );
     }
     this.skCache.formation.set(-1, r[0].sk_formation);
 
@@ -176,7 +247,11 @@ export class EtlService {
       qr,
     );
     if (!r.length) {
-      r = await this.query(`SELECT sk_session FROM dw.dim_session WHERE session_id = $1`, [this.UNKNOWN_SESSION_UUID], qr);
+      r = await this.query(
+        `SELECT sk_session FROM dw.dim_session WHERE session_id = $1`,
+        [this.UNKNOWN_SESSION_UUID],
+        qr,
+      );
     }
     this.skCache.session.set(this.UNKNOWN_SESSION_UUID, r[0].sk_session);
   }
@@ -184,12 +259,12 @@ export class EtlService {
   private async loadDimTempsRange(qr?: QueryRunner): Promise<void> {
     const start = new Date('2023-01-01');
     const end = new Date('2025-12-31');
-    
+
     const rows: any[] = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const date = new Date(d);
       date.setHours(0, 0, 0, 0);
-      const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       const jour = date.getDate();
       const mois = date.getMonth() + 1;
       const annee = date.getFullYear();
@@ -201,9 +276,12 @@ export class EtlService {
 
     if (rows.length === 0) return;
 
-    const placeholders = rows.map(
-      (_, i) => `($${i * 6 + 1},$${i * 6 + 2},$${i * 6 + 3},$${i * 6 + 4},$${i * 6 + 5},$${i * 6 + 6})`
-    ).join(',');
+    const placeholders = rows
+      .map(
+        (_, i) =>
+          `($${i * 6 + 1},$${i * 6 + 2},$${i * 6 + 3},$${i * 6 + 4},$${i * 6 + 5},$${i * 6 + 6})`,
+      )
+      .join(',');
 
     await this.query(
       `INSERT INTO dw.dim_temps (date_key, jour, mois, annee, trimestre, nom_mois)
@@ -212,7 +290,7 @@ export class EtlService {
       qr,
     );
 
-    const keys = rows.map(r => r[0]);
+    const keys = rows.map((r) => r[0]);
     const skRows = await this.query(
       `SELECT sk_temps, date_key FROM dw.dim_temps WHERE date_key = ANY($1)`,
       [keys],
@@ -223,10 +301,14 @@ export class EtlService {
     }
   }
 
-  private async getOrCreateSkTemps(dateInput: Date | string, qr?: QueryRunner): Promise<number> {
-    const d = typeof dateInput === 'string' ? new Date(dateInput) : new Date(dateInput);
+  private async getOrCreateSkTemps(
+    dateInput: Date | string,
+    qr?: QueryRunner,
+  ): Promise<number> {
+    const d =
+      typeof dateInput === 'string' ? new Date(dateInput) : new Date(dateInput);
     d.setHours(0, 0, 0, 0);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     if (this.skCache.temps.has(key)) return this.skCache.temps.get(key)!;
 
@@ -244,7 +326,11 @@ export class EtlService {
     );
 
     if (!res.length) {
-      res = await this.query(`SELECT sk_temps FROM dw.dim_temps WHERE date_key = $1`, [key], qr);
+      res = await this.query(
+        `SELECT sk_temps FROM dw.dim_temps WHERE date_key = $1`,
+        [key],
+        qr,
+      );
     }
 
     const sk = res[0].sk_temps;
@@ -256,15 +342,19 @@ export class EtlService {
     const rows = await this.formationRepo.find();
     if (rows.length === 0) return;
 
-    const placeholders = rows.map((_, i) => `($${i * 4 + 1},$${i * 4 + 2},$${i * 4 + 3},$${i * 4 + 4})`).join(',');
+    const placeholders = rows
+      .map(
+        (_, i) => `($${i * 4 + 1},$${i * 4 + 2},$${i * 4 + 3},$${i * 4 + 4})`,
+      )
+      .join(',');
     await this.query(
       `INSERT INTO dw.dim_formation (formation_id, titre, categorie, statut)
        VALUES ${placeholders} ON CONFLICT (formation_id) DO NOTHING`,
-      rows.flatMap(f => [f.id, f.titre, f.categorie, f.statut]),
+      rows.flatMap((f) => [f.id, f.titre, f.categorie, f.statut]),
       qr,
     );
 
-    const ids = rows.map(f => f.id);
+    const ids = rows.map((f) => f.id);
     const skRows = await this.query(
       `SELECT sk_formation, formation_id FROM dw.dim_formation WHERE formation_id = ANY($1)`,
       [ids],
@@ -279,8 +369,10 @@ export class EtlService {
     const rows = await this.formateurRepo.find();
     if (rows.length === 0) return;
 
-    const placeholders = rows.map((_, i) => `($${i * 2 + 1},$${i * 2 + 2})`).join(',');
-    const params = rows.flatMap(f => [f.id, `${f.nom} ${f.prenom}`.trim()]);
+    const placeholders = rows
+      .map((_, i) => `($${i * 2 + 1},$${i * 2 + 2})`)
+      .join(',');
+    const params = rows.flatMap((f) => [f.id, `${f.nom} ${f.prenom}`.trim()]);
 
     await this.query(
       `INSERT INTO dw.dim_formateur (formateur_id, nom) VALUES ${placeholders}
@@ -289,7 +381,7 @@ export class EtlService {
       qr,
     );
 
-    const ids = rows.map(f => f.id);
+    const ids = rows.map((f) => f.id);
     const skRows = await this.query(
       `SELECT sk_formateur, formateur_id FROM dw.dim_formateur WHERE formateur_id = ANY($1)`,
       [ids],
@@ -304,8 +396,10 @@ export class EtlService {
     const rows = await this.apprenantRepo.find({ relations: ['user'] });
     if (rows.length === 0) return;
 
-    const placeholders = rows.map((_, i) => `($${i * 2 + 1},$${i * 2 + 2})`).join(',');
-    const params = rows.flatMap(a => [
+    const placeholders = rows
+      .map((_, i) => `($${i * 2 + 1},$${i * 2 + 2})`)
+      .join(',');
+    const params = rows.flatMap((a) => [
       a.id,
       a.user ? `${a.user.nom} ${a.user.prenom}`.trim() : `Apprenant #${a.id}`,
     ]);
@@ -317,7 +411,7 @@ export class EtlService {
       qr,
     );
 
-    const ids = rows.map(a => a.id);
+    const ids = rows.map((a) => a.id);
     const skRows = await this.query(
       `SELECT sk_apprenant, apprenant_id FROM dw.dim_apprenant WHERE apprenant_id = ANY($1)`,
       [ids],
@@ -355,7 +449,7 @@ export class EtlService {
       qr,
     );
 
-    const ids = rows.map(s => s.id);
+    const ids = rows.map((s) => s.id);
     const skRows = await this.query(
       `SELECT sk_session, session_id FROM dw.dim_session WHERE session_id = ANY($1)`,
       [ids],
@@ -370,92 +464,129 @@ export class EtlService {
   /* ================================================================
      FAITS
      ================================================================ */
-  private async loadFactFinance(qr?: QueryRunner): Promise<void> {
-    await this.query(`TRUNCATE TABLE dw.fact_finance RESTART IDENTITY`, [], qr);
-    this.logger.log('  • fact_finance vidée.');
+  private async loadFactFinance(
+    qr: QueryRunner,
+    runId: number,
+  ): Promise<number> {
+    // ❌ حذف TRUNCATE
+    // ✅ Incremental
+    const lastRun = await this.getLastEtlTimestamp(qr);
 
-    const batch: any[][] = [];
-    const flush = async (force = false) => {
-      if (batch.length >= 500 || (force && batch.length > 0)) {
-        const values = batch.map((_, i) => {
-          const o = i * 8;
-          return `($${o + 1},$${o + 2},$${o + 3},$${o + 4},$${o + 5},$${o + 6},$${o + 7},$${o + 8})`;
-        }).join(',');
-        const flat = batch.flat();
-        await this.query(
-          `INSERT INTO dw.fact_finance
-             (sk_temps, sk_session, sk_formation, sk_formateur, sk_apprenant, sk_type_finance, montant, finance_id_source)
-           VALUES ${values}`,
-          flat,
-          qr,
-        );
-        batch.length = 0;
-      }
-    };
+    const finances = lastRun
+      ? await this.financeRepo.find({
+          where: { updatedAt: MoreThan(lastRun) },
+          relations: [
+            'session',
+            'session.formation',
+            'session.formateur',
+            'apprenant',
+          ],
+        })
+      : await this.financeRepo.find({
+          relations: [
+            'session',
+            'session.formation',
+            'session.formateur',
+            'apprenant',
+          ],
+        });
 
-    const finances = await this.financeRepo.find({
-      relations: ['session', 'session.formation', 'session.formateur', 'apprenant'],
-    });
+    this.logger.log(`  • Incremental: ${finances.length} finance(s)`);
+
+    let inserted = 0;
 
     for (const fin of finances) {
-      const typeLabel = this.mapFinanceType(fin.type);
-      if (!typeLabel) {
-        this.logger.warn(`⚠️ Finance#${fin.id} type="${fin.type}" non mappé — ignoré.`);
-        continue;
+      try {
+        const typeLabel = this.mapFinanceType(fin.type);
+        if (!typeLabel) {
+          await this.logEtlError(
+            runId,
+            'Finance',
+            String(fin.id),
+            'Type non mappé',
+          );
+          continue;
+        }
+
+        const skType = this.getSk(this.skCache.typeFinance, typeLabel, 'type');
+        const skTemps = await this.getOrCreateSkTemps(fin.date, qr);
+
+        const skSession = fin.sessionId
+          ? this.getSk(this.skCache.session, fin.sessionId, 'session')
+          : this.getSk(
+              this.skCache.session,
+              this.UNKNOWN_SESSION_UUID,
+              'unknown',
+            );
+
+        const skFormation = fin.session?.formationId
+          ? this.getSk(
+              this.skCache.formation,
+              fin.session.formationId,
+              'formation',
+            )
+          : this.getSk(this.skCache.formation, -1, 'unknown');
+
+        const skFormateur = fin.session?.formateurId
+          ? this.getSk(
+              this.skCache.formateur,
+              fin.session.formateurId,
+              'formateur',
+            )
+          : this.getSk(this.skCache.formateur, -1, 'unknown');
+
+        const skApprenant = fin.apprenantId
+          ? this.getSk(this.skCache.apprenant, fin.apprenantId, 'apprenant')
+          : this.getSk(this.skCache.apprenant, -1, 'unknown');
+
+        let montant = Number(fin.montant);
+        montant =
+          fin.type === FinanceType.PAIEMENT
+            ? Math.abs(montant)
+            : -Math.abs(montant);
+
+        await this.query(
+          `INSERT INTO dw.fact_finance
+         (sk_temps, sk_session, sk_formation, sk_formateur, sk_apprenant, sk_type_finance, montant, finance_id_source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (finance_id_source)
+         DO UPDATE SET
+           montant = EXCLUDED.montant,
+           sk_temps = EXCLUDED.sk_temps,
+           sk_type_finance = EXCLUDED.sk_type_finance`,
+          [
+            skTemps,
+            skSession,
+            skFormation,
+            skFormateur,
+            skApprenant,
+            skType,
+            montant,
+            `FINANCE-${fin.id}`,
+          ],
+          qr,
+        );
+
+        inserted++;
+      } catch (err) {
+        await this.logEtlError(runId, 'Finance', String(fin.id), String(err));
       }
-
-      const skType = this.getSk(this.skCache.typeFinance, typeLabel, `type="${typeLabel}"`);
-      const skTemps = await this.getOrCreateSkTemps(fin.date, qr);
-      
-      // ← CORRECTION : fin.sessionId est déjà string, pas de Number()
-      const skSession = fin.sessionId
-        ? this.getSk(this.skCache.session, fin.sessionId, `sessionId=${fin.sessionId}`)
-        : this.getSk(this.skCache.session, this.UNKNOWN_SESSION_UUID, 'session_inconnue');
-
-      const skFormation = fin.session?.formationId
-        ? this.getSk(this.skCache.formation, fin.session.formationId, `formationId=${fin.session.formationId}`)
-        : this.getSk(this.skCache.formation, -1, 'formation_inconnue');
-
-      let skFormateur: number;
-      if (fin.type === FinanceType.DEPENSE_LOGISTIQUE) {
-        skFormateur = this.getSk(this.skCache.formateur, -1, 'formateur_inconnu_logistique');
-      } else {
-        skFormateur = fin.session?.formateurId
-          ? this.getSk(this.skCache.formateur, fin.session.formateurId, `formateurId=${fin.session.formateurId}`)
-          : this.getSk(this.skCache.formateur, -1, 'formateur_inconnu');
-      }
-
-      const skApprenant = fin.apprenantId
-        ? this.getSk(this.skCache.apprenant, fin.apprenantId, `apprenantId=${fin.apprenantId}`)
-        : this.getSk(this.skCache.apprenant, -1, 'apprenant_inconnu');
-
-      let montant = Number(fin.montant);
-      if (
-        fin.type === FinanceType.REMBOURSEMENT ||
-        fin.type === FinanceType.DEPENSE_FORMATEUR ||
-        fin.type === FinanceType.DEPENSE_LOGISTIQUE
-      ) {
-        montant = -Math.abs(montant);
-      } else {
-        montant = Math.abs(montant);
-      }
-
-      batch.push([
-        skTemps,
-        skSession,
-        skFormation,
-        skFormateur,
-        skApprenant,
-        skType,
-        montant,
-        `FINANCE-${fin.id}`,
-      ]);
-      await flush();
     }
 
-    await flush(true);
+    return inserted;
+  }
 
-    const countRes = await this.query(`SELECT COUNT(*) AS cnt FROM dw.fact_finance`, [], qr);
-    this.logger.log(`  • ${countRes[0].cnt} lignes insérées dans fact_finance.`);
+  // ETLError
+  private async logEtlError(
+    runId: number,
+    entityType: string,
+    entityId: string,
+    message: string,
+  ): Promise<void> {
+    await this.dataSource.query(
+      `INSERT INTO dw.etl_errors (run_id, entity_type, entity_id, error_message)
+     VALUES ($1,$2,$3,$4)`,
+      [runId, entityType, entityId, message],
+    );
   }
 }

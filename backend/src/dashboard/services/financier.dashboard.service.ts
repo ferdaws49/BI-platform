@@ -23,43 +23,63 @@ export class FinancierDashboardService {
   async getKpisGlobaux(filter: FinancierDashboardFilterDto): Promise<DashboardKpisDto> {
   const { startDate, endDate } = await this.getResolvedDates(filter);
 
-  // 1. Préparation des paramètres pour éviter les injections SQL
   const params: any[] = [startDate, endDate];
   let formationFilter = '';
 
   if (filter.formationId) {
     params.push(filter.formationId);
-    // On ajoute le filtre dynamiquement
     formationFilter = `AND fo.formation_id = $${params.length}`;
   }
 
-  // 2. Exécution de la requête en SQL brut
-  const rawResult = await this.dataSource.query(`
+  // 1. CA RÉALISÉ (paiements - remboursements)
+  const caRealiseResult = await this.dataSource.query(`
     SELECT 
-      SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) AS "caRealise",
-      SUM(CASE WHEN tf.type = 'impaye' THEN f.montant ELSE 0 END) AS "caFacture",
-      SUM(CASE WHEN tf.type IN ('depense_formateur', 'depense_logistique') THEN -f.montant ELSE 0 END) AS "totalCouts"
+      COALESCE(SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END), 0) -
+      COALESCE(SUM(CASE WHEN tf.type = 'remboursement' THEN f.montant ELSE 0 END), 0) as total
     FROM dw.fact_finance f
-    INNER JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-    INNER JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
     LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
     WHERE t.date_key BETWEEN $1 AND $2
-    ${formationFilter}
+      ${formationFilter}
   `, params);
+  const caRealise = parseFloat(caRealiseResult[0]?.total || 0);
 
-  // 3. Extraction des résultats (PostgreSQL renvoie un tableau)
-  const res = rawResult[0];
+  // 2. CA FACTURÉ (prix × inscriptions) — NOUVELLE REQUÊTE CORRECTE
+  const caFactureResult = await this.dataSource.query(`
+    SELECT COALESCE(SUM(ds.prix_session * inscrits.count), 0) as total
+    FROM dw.dim_session ds
+    JOIN LATERAL (
+      SELECT COUNT(DISTINCT f.sk_apprenant) as count
+      FROM dw.fact_finance f
+      JOIN dw.dim_temps dt ON f.sk_temps = dt.sk_temps
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      WHERE f.sk_session = ds.sk_session
+        AND dt.date_key BETWEEN $1 AND $2
+        AND tf.type = 'paiement'
+        AND f.sk_apprenant != -1
+    ) inscrits ON true
+    WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
+  `, [startDate, endDate]);
+  const caFacture = parseFloat(caFactureResult[0]?.total || 0);
 
-  const caRealise = parseFloat(res?.caRealise || 0);
-  const caFacture = parseFloat(res?.caFacture || 0);
-  const couts = parseFloat(res?.totalCouts || 0);
+  // 3. COÛTS (dépenses)
+  const coutsResult = await this.dataSource.query(`
+    SELECT COALESCE(SUM(CASE WHEN tf.type IN ('depense_formateur', 'depense_logistique') THEN -f.montant ELSE 0 END), 0) as total
+    FROM dw.fact_finance f
+    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+    WHERE t.date_key BETWEEN $1 AND $2
+      ${formationFilter}
+  `, params);
+  const couts = parseFloat(coutsResult[0]?.total || 0);
 
-  // 4. Calculs Business
-  const encoursClient = caFacture - caRealise;
+  // 4. CALCULS CORRECTS
+  const encoursClient = Math.max(0, caFacture - caRealise);  // ← ne peut pas être négatif
   const margeBrute = caRealise - couts;
   const tauxMarge = caRealise > 0 ? (margeBrute / caRealise) * 100 : 0;
   
-  // Utilise aussi la version DWH pour la croissance
   const croissance = await this.computeCroissanceDwh(filter);
 
   return {
@@ -214,7 +234,7 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
         caRealise: Number(parseFloat(row.caRealise || 0).toFixed(2)),
     }));
 }
-
+hh
   async getSessionsPerformance(filter: FinancierDashboardFilterDto): Promise<SessionsPerformanceResponseDto> {
   const { startDate, endDate } = await this.getResolvedDates(filter);
 
@@ -224,8 +244,6 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
       SELECT DISTINCT f_filter.sk_session
       FROM dw.fact_finance f_filter
       JOIN dw.dim_temps dt_filter ON f_filter.sk_temps = dt_filter.sk_temps
-      JOIN dw.dim_type_finance tf_filter ON f_filter.sk_type_finance = tf_filter.sk_type_finance
-      WHERE tf_filter.type IN ('depense_formateur', 'depense_logistique')
         AND dt_filter.date_key BETWEEN $1 AND $2
     )
     SELECT 

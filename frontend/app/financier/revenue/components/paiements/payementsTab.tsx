@@ -277,7 +277,7 @@ function SuccessToast({ message, onClose }: { message: string; onClose: () => vo
   }, [onClose]);
 
   return (
-    <div className="fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg border"
+    <div className="fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg border"
       style={{ background: "rgba(26,113,73,0.95)", borderColor: "rgba(255,255,255,0.2)" }}>
       <span className="text-lg">✅</span>
       <span className="text-sm font-medium text-white">{message}</span>
@@ -446,7 +446,11 @@ export function PaiementModal({
   // ── Submit ──
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    
+    
     if (!form.apprenantId || !form.sessionId || !form.formationId || !form.montant || !form.paymentDate) {
+       console.log("❌ VALIDATION FAILED");
       setError("Veuillez remplir tous les champs obligatoires.");
       return;
     }
@@ -476,7 +480,7 @@ export function PaiementModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit}  className="space-y-4">
           {/* ─── Apprenant (autocomplete) ─── */}
           <div className="relative" ref={dropdownRef}>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
@@ -599,13 +603,15 @@ export function PaiementModal({
             >
               Annuler
             </button>
+            
             <button
-              type="submit"
-              className="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90"
-              style={{ background: "#1a7149" }}
-            >
-              {isEditing ? "Modifier" : "Valider le paiement"}
-            </button>
+  type="button"
+  onClick={handleSubmit}
+  className="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90"
+  style={{ background: "#1a7149" }}
+>
+  {isEditing ? "Modifier" : "Valider le paiement"}
+</button>
           </div>
         </form>
       </div>
@@ -1334,6 +1340,7 @@ export default function PaiementsTab({
         onClose={() => {
           setModalOpen(false);
           setEditItem(null);
+          
         }}
         onSave={handleSave}
         editItem={editItem}

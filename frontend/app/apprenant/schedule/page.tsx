@@ -22,7 +22,7 @@ interface Schedule {
   end: string;
   startISO: string;
   room: string;
-  type: 'Online' | 'In-Person';
+  type: 'Online' | 'In-Person' | 'en_ligne' | 'présentiel';
   courseName: string;
   color: string;
 }
@@ -147,8 +147,8 @@ function SessionCard({ session }: { session: any}) {
 
 
 
-    const isOnline = session.type === 'en_ligne';
-  const displayType = isOnline ? 'Online' : 'In-Person';
+    const isOnline = session.type === 'en_ligne' || session.type === 'Online';
+  const displayType = isOnline ? 'En ligne' : 'Présentiel';
 
   const handleJoin = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation(); // ⛔ Empêche la carte de naviguer vers le détail formation
@@ -177,7 +177,7 @@ function SessionCard({ session }: { session: any}) {
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded uppercase tracking-wider">{session.sessionName}</span>
-          <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${session.type === 'Online' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+          <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${(session.type === 'Online' || session.type === 'en_ligne') ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
             {displayType}
           </span>
         </div>

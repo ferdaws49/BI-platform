@@ -11,13 +11,13 @@ import {
 import { useRouter } from 'next/navigation';
 
 const navItems = [
-  { name: 'Dashboard', href: '/apprenant/dashboard', icon: LayoutDashboard },
-  { name: 'My Trainings', href: '/apprenant/trainings', icon: BookOpen },
-  { name: 'My Registrations', href: '/apprenant/registrations', icon: ClipboardList },
-  { name: 'My Results', href: '/apprenant/results', icon: BarChart3 },
-  { name: 'Session Schedule', href: '/apprenant/schedule', icon: Calendar },
-  { name: 'My Paiements', href: '/apprenant/paiement', icon: DollarSign },
-  { name: 'My Profile', href: '/apprenant/profile', icon: User },
+  { name: 'Tableau de bord', href: '/apprenant/dashboard', icon: LayoutDashboard },
+  { name: 'Mes formations', href: '/apprenant/trainings', icon: BookOpen },
+  { name: 'Mes inscriptions', href: '/apprenant/registrations', icon: ClipboardList },
+  { name: 'Mes résultats', href: '/apprenant/results', icon: BarChart3 },
+  { name: 'Planning des sessions', href: '/apprenant/schedule', icon: Calendar },
+  { name: 'Mes paiements', href: '/apprenant/paiement', icon: DollarSign },
+  { name: 'Mon profil', href: '/apprenant/profile', icon: User },
 
 ];
 
@@ -78,7 +78,7 @@ export default function Sidebar() {
         <button onClick={handleLogout}
          className="flex items-center gap-3 px-4 py-3 w-full text-sm font-bold text-red-400 hover:bg-red-50 rounded-xl transition-all">
           <LogOut size={18} />
-          Logout
+          Déconnexion
         </button>
       </div>
     </div>

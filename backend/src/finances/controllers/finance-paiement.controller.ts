@@ -16,6 +16,8 @@ import { AddPaymentDto } from '../dto/add-payement.dto';
 import { RevenueFilterDto } from '../dto/revenue-filter.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Formation } from 'src/formations/entities/formation.entity';
+import { Roles } from 'src/auth/roles.decorator';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
 
 
 /**
@@ -25,7 +27,8 @@ import { Formation } from 'src/formations/entities/formation.entity';
 @ApiTags('Finance — Paiements')
 @ApiBearerAuth()
 @Controller('finance/payments')
-//@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('resp_financier')
 export class PaymentsController {
   
   constructor(private readonly dashboard: FinanceRevenueService) {}

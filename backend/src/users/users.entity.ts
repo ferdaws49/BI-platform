@@ -54,7 +54,7 @@ resetToken: string | null;
 
 @Column({ type: 'timestamptz', nullable: true })
 resetTokenExpiry: Date | null;
-    @CreateDateColumn()
+@CreateDateColumn()
   createdAt: Date;
  
   @UpdateDateColumn()

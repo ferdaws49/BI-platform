@@ -57,22 +57,22 @@ export default function ApprenantWelcomePage() {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-gray-50 flex items-center justify-center p-6">
       <div className="max-w-2xl text-center space-y-8">
         <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold uppercase tracking-wider">
-          <Sparkles size={14} /> Welcome to your learning space
+          <Sparkles size={14} /> Bienvenue dans votre espace d'apprentissage
         </div>
         
         <h1 className="text-5xl md:text-6xl font-bold text-gray-900 leading-tight">
-          Start your <span className="text-[#1b5333]">journey</span> today
+          Commencez votre <span className="text-[#1b5333]">parcours</span> dès aujourd'hui
         </h1>
         
         <p className="text-gray-500 text-lg max-w-lg mx-auto">
-          You are validated by the administration. Explore our available programs and enroll in your first training session.
+          Vous êtes validé par l'administration. Découvrez nos programmes disponibles et inscrivez-vous à votre première session de formation.
         </p>
         
         <button 
           onClick={() => router.push('/apprenant/catalogue')}
           className="bg-[#1b5333] text-white px-10 py-5 rounded-2xl font-bold text-lg flex items-center gap-3 hover:bg-[#154128] transition-all shadow-xl mx-auto"
         >
-          Browse All Trainings <ArrowRight size={22} />
+          Parcourir toutes les formations <ArrowRight size={22} />
         </button>
       </div>
     </div>

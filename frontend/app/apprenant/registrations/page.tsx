@@ -29,7 +29,7 @@ export default function RegistrationsPage() {
 
   // 2. Gérer l'annulation
   const handleCancel = async (id: string) => {
-    if (!confirm("Are you sure you want to cancel this registration?")) return;
+    if (!confirm("Êtes-vous sûr de vouloir annuler cette inscription ?")) return;
     try {
       const response = await cancelInscription(id);
       alert(response.message || "Désinscription réussie");
@@ -56,15 +56,15 @@ export default function RegistrationsPage() {
     <div className="space-y-8 max-w-7xl mx-auto p-6">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">My Registrations</h1>
-          <p className="text-gray-500">View and manage your training registrations</p>
+          <h1 className="text-3xl font-bold text-gray-900">Mes inscriptions</h1>
+          <p className="text-gray-500">Voir et gérer vos inscriptions aux formations</p>
         </div>
         
         <button 
           onClick={() => router.push('/apprenant/catalogue')} 
           className="bg-[#1b5333] text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-[#154128] transition-all shadow-lg"
         >
-          <Plus size={18} /> New Registration
+          <Plus size={18} /> Nouvelle inscription
         </button>
       </div>
 
@@ -78,10 +78,10 @@ export default function RegistrationsPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-50 bg-gray-50/50">
-                  <th className="px-6 py-4">Training</th>
+                  <th className="px-6 py-4">Formation</th>
                   <th className="px-6 py-4">Session</th>
-                  <th className="px-6 py-4">Price</th>
-                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Prix</th>
+                  <th className="px-6 py-4">Statut</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -112,18 +112,18 @@ export default function RegistrationsPage() {
                       <td className="px-6 py-4 text-right">
                         {reg.status?.toLowerCase() === 'cancelled' ? (
                           <span className="text-[10px] font-bold text-red-400 uppercase block text-right">
-                            Session cancelled
+                            Session annulée
                             </span>
                             ) : (reg.status?.toLowerCase() === 'actif' || reg.status?.toLowerCase() === 'active') && isSessionUpcoming(reg.sessionDate) ? (
                             <button 
                             onClick={() => handleCancel(String(reg.id))}
                             className="text-red-400 hover:text-red-600 flex items-center gap-1 ml-auto text-[10px] font-bold"
                             >
-                              <X size={14} /> CANCEL
+                              <X size={14} /> ANNULER
                               </button>
                               ) : (
                               <span className="text-[10px] text-gray-300 italic text-right block">
-                                No actions
+                                Aucune action
                                 </span>
                               )}
                               </td>
@@ -133,7 +133,7 @@ export default function RegistrationsPage() {
                               {registrations.length === 0 && (
                                 <tr>
                                   <td colSpan={6} className="px-6 py-12 text-center text-gray-400 text-sm">
-                                    No registrations found. Click "New Registration" to get started.
+                                    Aucune inscription trouvée. Cliquez sur "Nouvelle inscription" pour commencer.
                                     </td>
                                     </tr>
                                   )}

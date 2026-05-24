@@ -107,11 +107,11 @@ export default function CataloguePage() {
           onClick={() => router.back()}
           className="flex items-center gap-2 text-gray-500 hover:text-[#1b5333] transition-colors mb-6"
         >
-          <ArrowLeft size={20} /> Back
+          <ArrowLeft size={20} /> Retour
         </button>
         
-        <h1 className="text-3xl font-bold text-gray-900">Training Catalogue</h1>
-        <p className="text-gray-500 mt-2">Explore and enroll in our available programs</p>
+        <h1 className="text-3xl font-bold text-gray-900">Catalogue de formations</h1>
+        <p className="text-gray-500 mt-2">Découvrez et inscrivez-vous à nos programmes disponibles</p>
       </div>
 
       {/* Error */}
@@ -147,7 +147,7 @@ export default function CataloguePage() {
                   onClick={() => openModal(f)}
                   className="w-full py-3 bg-[#1b5333] hover:bg-[#154128] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"
                 >
-                  <BookPlus size={16} /> View Sessions
+                  <BookPlus size={16} /> Voir les sessions
                 </button>
               </div>
             ))}
@@ -155,8 +155,8 @@ export default function CataloguePage() {
             {formations.length === 0 && !loading && (
               <div className="col-span-full text-center py-20 bg-white rounded-[24px] border border-gray-100">
                 <CheckCircle size={48} className="mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500 font-medium">No available programs at the moment.</p>
-                <p className="text-gray-400 text-sm mt-2">Check back later for new trainings.</p>
+                <p className="text-gray-500 font-medium">Aucune formation disponible pour le moment.</p>
+                <p className="text-gray-400 text-sm mt-2">Revenez plus tard pour de nouvelles formations.</p>
               </div>
             )}
           </div>
@@ -170,11 +170,8 @@ export default function CataloguePage() {
             <div className="p-5 border-b border-gray-100 flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">{selectedFormation.title}</h2>
-                <p className="text-sm text-gray-500">Available sessions</p>
+                <p className="text-sm text-gray-500">Sessions disponibles</p>
               </div>
-              <button onClick={() => setSelectedFormation(null)} className="p-2 hover:bg-gray-100 rounded-full">
-                <X size={18} className="text-gray-500" />
-              </button>
             </div>
             
             <div className="p-5 overflow-y-auto flex-1 space-y-3">
@@ -185,7 +182,7 @@ export default function CataloguePage() {
               ) : sessions.length === 0 ? (
                 <div className="text-center py-10 text-gray-500">
                   <Calendar size={40} className="mx-auto mb-3 text-gray-300" />
-                  <p>No available sessions.</p>
+                  <p>Aucune session disponible.</p>
                 </div>
               ) : (
                 sessions.map((session) => (
@@ -194,7 +191,7 @@ export default function CataloguePage() {
                       <p className="font-bold text-gray-800 text-sm">{session.title || `Session #${session.id}`}</p>
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                         {session.date && <span className="flex items-center gap-1"><Calendar size={12} /> {new Date(session.date).toLocaleDateString()}</span>}
-                        {session.capacite != null && <span className="flex items-center gap-1"><Users size={12} /> Cap: {session.capacite}</span>}
+                        {session.capacite != null && <span className="flex items-center gap-1"><Users size={12} /> Capacité : {session.capacite}</span>}
                       </div>
                     </div>
                     <button
@@ -202,7 +199,7 @@ export default function CataloguePage() {
                       disabled={enrollingId === session.id}
                       className="bg-[#1b5333] hover:bg-[#154128] disabled:opacity-50 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all"
                     >
-                      {enrollingId === session.id ? <Loader2 size={14} className="animate-spin" /> : 'Join'}
+                      {enrollingId === session.id ? <Loader2 size={14} className="animate-spin" /> : `S'inscrire`}
                     </button>
                   </div>
                 ))

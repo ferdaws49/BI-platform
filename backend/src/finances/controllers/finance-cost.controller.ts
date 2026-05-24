@@ -5,7 +5,6 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { AuthGuard } from 'src/auth/guards/auth.guard';
 import { CostFilterDto } from '../dto/cost-filter.dto';
 import { FinanceCostService } from '../services/finance-cost.service';
 import {
@@ -17,12 +16,16 @@ import {
   TopFormateurCostDto,
 } from '../dto/cost-response.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/roles.decorator';
 
 
 
 @ApiTags('Finance — Coûts & rentabilité')
 @Controller('finance/cout')
-@UseGuards(AuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('resp_financier')
+
 export class FinanceCostController {
   constructor(private readonly financeCostService: FinanceCostService) {}
 

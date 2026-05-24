@@ -46,7 +46,7 @@ export default function DetailsPage() {
         onClick={() => router.back()} 
         className="flex items-center gap-2 text-gray-400 text-xs font-bold uppercase hover:text-brand-dark transition-colors"
       >
-        <ArrowLeft size={14} /> Back to results
+          <ArrowLeft size={14} /> Retour aux résultats
       </button>
 
       {/* Header avec la moyenne de la formation */}
@@ -57,7 +57,7 @@ export default function DetailsPage() {
         </div>
         <div className="text-right">
           <p className="text-5xl font-black">{data.average}<span className="text-xl opacity-50">/20</span></p>
-          <p className="text-xs font-bold uppercase mt-2">Overall Average</p>
+          <p className="text-xs font-bold uppercase mt-2">Moyenne générale</p>
         </div>
       </div>
 
@@ -67,7 +67,7 @@ export default function DetailsPage() {
         {data.sessions && data.sessions.length > 0 ? (
           data.sessions.map((item: any) => {
             // Calcul du statut à la volée
-            const status = item.note >= 10 ? 'Passed' : 'Failed';
+            const status = item.note >= 10 ? 'Réussi' : 'Échoué';
             
             return (
               <div key={item.sessionId} className="p-6 flex justify-between items-center border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
@@ -77,9 +77,9 @@ export default function DetailsPage() {
                   </div>
                   <div>
                     {/* On affiche Formation + ID de session ou Titre si dispo */}
-                    <p className="font-bold text-gray-700">Evaluation Session</p>
+                    <p className="font-bold text-gray-700">Session d'évaluation</p>
                     <p className="text-[10px] text-gray-400">
-                      {item.date ? new Date(item.date).toLocaleDateString('en-GB') : 'No date'}
+                      {item.date ? new Date(item.date).toLocaleDateString('en-GB') : 'Pas de date'}
                     </p>
                   </div>
                 </div>
@@ -89,7 +89,7 @@ export default function DetailsPage() {
                     {/* ✅ LIAISON : On utilise 'item.note' (nom du back) */}
                     <p className="text-lg font-bold text-gray-900">{item.note} <span className="text-xs text-gray-400">/ 20</span></p>
                     <span className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${
-                      status === 'Passed' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                      status === 'Réussi' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                     }`}>
                       {status}
                     </span>
@@ -99,7 +99,7 @@ export default function DetailsPage() {
             );
           })
         ) : (
-          <div className="p-10 text-center text-gray-400 italic">No detailed sessions found.</div>
+          <div className="p-10 text-center text-gray-400 italic">Aucune session détaillée trouvée.</div>
         )}
       </div>
     </div>

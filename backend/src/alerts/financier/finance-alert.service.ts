@@ -19,7 +19,7 @@ export interface AlertInputData {
   costKpis?: CostKpiDto;
   sessionCosts?: SessionCostTableResponseDto;
 }
-//une IA basée sur des règles métiers (Rule-Based AI)(mahouch ia generative ama yaamel recomendation enti w el cas mte3ek)
+
 @Injectable()
 export class FinanceAlertService {
   private readonly MAX_ALERTS = 15;
@@ -64,6 +64,42 @@ export class FinanceAlertService {
     };
   }
 
+  // ============================================================
+  // ACTIONS DYNAMIQUES - Helpers
+  // ============================================================
+
+  private actionRecouvrement(rate: number): string {
+    if (rate < 30) return `Taux critique (${rate}%). Bloquer les nouvelles inscriptions, contacter chaque client impayé personnellement, proposer des remises de 10-20% pour paiement immédiat.`;
+    if (rate < 50) return `Relancer tous les impayés par téléphone dans les 48h. Proposer des échéanciers en 3 fois sans frais.`;
+    if (rate < 75) return `Envoyer des rappels automatisés. Offrir un délai de 15 jours supplémentaires avec acompte de 30%.`;
+    return `Maintenir la pression commerciale. Relance douce par email.`;
+  }
+
+  private actionChuteCA(percent: number): string {
+    if (percent < -40) return `Chute sévère (${percent}%). Réunion d'urgence ce jour. Analyser les concurrents, baisser les prix de 15% temporairement, contacter tous les anciens clients.`;
+    if (percent < -20) return `Lancer une campagne promotionnelle -20% sur les formations les plus demandées. Contacter les prospects en sommeil.`;
+    if (percent < -10) return `Proposer des packs combinés (2 formations = -15%). Relancer les devis en cours.`;
+    return `Surveiller la tendance. Renforcer le marketing digital.`;
+  }
+
+  private actionBreakEven(ratio: number, needed: number, actual: number): string {
+    if (ratio < 0.5) return `Seuil très loin (${actual}/${needed}). Réduire les coûts de 30% (négocier formateurs, réduire logistique) ou augmenter les prix de 25%. Envisager l'annulation.`;
+    if (ratio < 0.8) return `Optimiser les coûts logistiques. Augmenter le prix de 10-15%. Lancer une campagne de recrutement urgente.`;
+    if (ratio < 1.0) return `Campagne de recrutement ciblée. Offrir des parrainages (-10% pour filleul).`;
+    return `Maintenir la stratégie actuelle. Prévoir des sessions supplémentaires.`;
+  }
+
+  private actionTauxRemplissage(percent: number): string {
+    if (percent < 30) return `Taux critique. Fusionner avec une autre session ou reporter. Contacter la liste d'attente.`;
+    if (percent < 50) return `Lancer une campagne urgente sur les réseaux sociaux. Offrir une place gratuite pour chaque 3 inscrits.`;
+    if (percent < 70) return `Relancer les prospects intéressés. Proposer un tarif groupe (-15% pour 3+ inscrits).`;
+    return `Taux satisfaisant. Maintenir les actions marketing actuelles.`;
+  }
+
+  // ============================================================
+  // ALERTES PAIEMENTS
+  // ============================================================
+
   private buildPaymentAlerts(
     kpis: PaymentManagementKpisDto,
     pie?: PaymentManagementPieDto,
@@ -78,7 +114,7 @@ export class FinanceAlertService {
         priority: AlertPriority.CRITICAL,
         title: 'Taux de recouvrement critique',
         message: `Le taux de recouvrement est de ${kpis.paymentRatePercent}%. La trésorerie est en danger.`,
-        action: 'Relancer immédiatement tous les impayés et proposer des échéanciers.',
+        action: this.actionRecouvrement(kpis.paymentRatePercent),
         value: kpis.paymentRatePercent,
         createdAt: ts,
       });
@@ -88,19 +124,22 @@ export class FinanceAlertService {
         priority: AlertPriority.WARNING,
         title: 'Taux de recouvrement faible',
         message: `Le taux de recouvrement est de ${kpis.paymentRatePercent}%, sous l'objectif de 75%.`,
-        action: 'Envoyer des rappels de paiement automatisés.',
+        action: this.actionRecouvrement(kpis.paymentRatePercent),
         value: kpis.paymentRatePercent,
         createdAt: ts,
       });
     }
 
     if (kpis.totalNonEncaisse > kpis.totalEncaisse && kpis.totalEncaisse > 0) {
+      const ratio = Math.round((kpis.totalNonEncaisse / kpis.totalEncaisse) * 100);
       alerts.push({
         type: AlertType.PAYMENT,
         priority: AlertPriority.CRITICAL,
         title: 'Impayés supérieurs aux encaissements',
-        message: `Les impayés (${kpis.totalNonEncaisse.toFixed(2)}€) dépassent les encaissements (${kpis.totalEncaisse.toFixed(2)}€).`,
-        action: "Suspendre les nouvelles inscriptions jusqu'à régularisation.",
+        message: `Les impayés (${kpis.totalNonEncaisse.toFixed(2)} TND) dépassent les encaissements (${kpis.totalEncaisse.toFixed(2)} TND) de ${ratio}%.`,
+        action: ratio > 150 
+          ? `Situation extrême (${ratio}%). Bloquer toutes les nouvelles inscriptions, mandater un recouvrement judiciaire pour les +3 mois, proposer des remises de 25% pour règlement immédiat.`
+          : `Renforcer les relances téléphoniques. Proposer des échéanciers courts (2 fois). Exiger un acompte de 50% pour les nouvelles inscriptions.`,
         value: kpis.totalNonEncaisse,
         createdAt: ts,
       });
@@ -114,7 +153,9 @@ export class FinanceAlertService {
           priority: AlertPriority.WARNING,
           title: 'Taux de sessions impayées élevé',
           message: `${impaye.percent}% des sessions sont totalement impayées.`,
-          action: "Mettre en place un acompte obligatoire à l'inscription.",
+          action: impaye.percent > 50
+            ? `${impaye.percent}% des sessions sans aucun paiement ! Instaurer un acompte obligatoire de 100% à l'inscription immédiatement.`
+            : `Mettre en place un acompte obligatoire de 50% à l'inscription. Relancer les ${impaye.count} sessions concernées.`,
           value: impaye.percent,
           createdAt: ts,
         });
@@ -127,7 +168,9 @@ export class FinanceAlertService {
           priority: AlertPriority.WARNING,
           title: 'Trop de paiements partiels',
           message: `${avance.percent}% des sessions sont en paiement partiel uniquement.`,
-          action: 'Standardiser les échéances (30/40/30).',
+          action: avance.percent > 60
+            ? `Majorité en avance (${avance.percent}%). Standardiser les échéances strictes : 50% à l'inscription, 50% à J-7. Pénalités de retard de 2%/semaine.`
+            : `Standardiser les échéances (30/40/30). Envoyer des rappels 7 jours avant chaque échéance.`,
           value: avance.percent,
           createdAt: ts,
         });
@@ -136,6 +179,10 @@ export class FinanceAlertService {
 
     return alerts;
   }
+
+  // ============================================================
+  // ALERTES FINANCES (REVENUS)
+  // ============================================================
 
   private buildFinanceAlerts(kpis: KpiCardsDto, createdAt?: string): AlertItem[] {
     const alerts: AlertItem[] = [];
@@ -147,7 +194,7 @@ export class FinanceAlertService {
         priority: AlertPriority.CRITICAL,
         title: 'Chute sévère du chiffre d\'affaires',
         message: `Le CA a chuté de ${kpis.totalRevenueGrowthPercent}% par rapport à la période précédente.`,
-        action: 'Réunion d\'urgence commerciale : analyser les causes et ajuster le pricing.',
+        action: this.actionChuteCA(kpis.totalRevenueGrowthPercent),
         value: kpis.totalRevenueGrowthPercent,
         createdAt: ts,
       });
@@ -157,7 +204,7 @@ export class FinanceAlertService {
         priority: AlertPriority.WARNING,
         title: 'Baisse du chiffre d\'affaires',
         message: `Le CA est en baisse de ${kpis.totalRevenueGrowthPercent}%.`,
-        action: 'Lancer une campagne promotionnelle ou contacter les prospects en sommeil.',
+        action: this.actionChuteCA(kpis.totalRevenueGrowthPercent),
         value: kpis.totalRevenueGrowthPercent,
         createdAt: ts,
       });
@@ -169,7 +216,7 @@ export class FinanceAlertService {
         priority: AlertPriority.CRITICAL,
         title: 'Taux de recouvrement financier critique',
         message: `Seulement ${kpis.recoveryRatePercent}% du facturé a été encaissé.`,
-        action: 'Renforcer le contrôle de gestion et les relances clients.',
+        action: this.actionRecouvrement(kpis.recoveryRatePercent),
         value: kpis.recoveryRatePercent,
         createdAt: ts,
       });
@@ -179,7 +226,7 @@ export class FinanceAlertService {
         priority: AlertPriority.WARNING,
         title: 'Taux de recouvrement à surveiller',
         message: `${kpis.recoveryRatePercent}% du facturé est encaissé.`,
-        action: 'Relancer les soldes impayés avant la clôture mensuelle.',
+        action: this.actionRecouvrement(kpis.recoveryRatePercent),
         value: kpis.recoveryRatePercent,
         createdAt: ts,
       });
@@ -191,7 +238,9 @@ export class FinanceAlertService {
         priority: AlertPriority.WARNING,
         title: 'Panier moyen en chute libre',
         message: `Le panier moyen a diminué de ${kpis.averageBasketGrowthPercent}%.`,
-        action: 'Proposer des formations premium ou des packs combinés.',
+        action: kpis.averageBasketGrowthPercent < -30
+          ? `Chute sévère du panier (${kpis.averageBasketGrowthPercent}%). Arrêter les remises. Créer des packs premium à +30%. Cibler les entreprises (budgets plus élevés).`
+          : `Proposer des formations premium ou des packs combinés (3 formations = -10%).`,
         value: kpis.averageBasketGrowthPercent,
         createdAt: ts,
       });
@@ -212,6 +261,10 @@ export class FinanceAlertService {
     return alerts;
   }
 
+  // ============================================================
+  // ALERTES SESSIONS (COÛTS)
+  // ============================================================
+
   private buildSessionAlerts(
     kpis: CostKpiDto,
     sessions?: SessionCostTableResponseDto,
@@ -221,26 +274,28 @@ export class FinanceAlertService {
     const ts = createdAt || new Date().toISOString();
 
     if (kpis.breakEven?.status === 'hard') {
-      const ratio =
-        kpis.breakEven.studentsNeeded > 0
-          ? kpis.breakEven.totalStudents / kpis.breakEven.studentsNeeded
-          : 0;
+      const ratio = kpis.breakEven.studentsNeeded > 0
+        ? kpis.breakEven.totalStudents / kpis.breakEven.studentsNeeded
+        : 0;
       alerts.push({
         type: AlertType.SESSION,
         priority: AlertPriority.CRITICAL,
         title: 'Rentabilité des sessions critique',
-        message: `Le seuil de rentabilité est loin d'être atteint (${kpis.breakEven.totalStudents}/${kpis.breakEven.studentsNeeded} étudiants).`,
-        action: 'Réduire les coûts logistiques ou augmenter les prix de vente.',
+        message: `Seuil de rentabilité loin d'être atteint (${kpis.breakEven.totalStudents}/${kpis.breakEven.studentsNeeded} étudiants, ratio ${(ratio * 100).toFixed(0)}%).`,
+        action: this.actionBreakEven(ratio, kpis.breakEven.studentsNeeded, kpis.breakEven.totalStudents),
         value: Number(ratio.toFixed(2)),
         createdAt: ts,
       });
     } else if (kpis.breakEven?.status === 'medium') {
+      const ratio = kpis.breakEven.studentsNeeded > 0
+        ? kpis.breakEven.totalStudents / kpis.breakEven.studentsNeeded
+        : 0;
       alerts.push({
         type: AlertType.SESSION,
         priority: AlertPriority.WARNING,
         title: 'Rentabilité des sessions fragile',
         message: `Le seuil de rentabilité est juste atteint (${kpis.breakEven.totalStudents}/${kpis.breakEven.studentsNeeded} étudiants).`,
-        action: 'Surveiller les dépenses et optimiser le taux de remplissage.',
+        action: this.actionBreakEven(ratio, kpis.breakEven.studentsNeeded, kpis.breakEven.totalStudents),
         value: kpis.breakEven.totalStudents,
         createdAt: ts,
       });
@@ -254,42 +309,42 @@ export class FinanceAlertService {
         priority: AlertPriority.WARNING,
         title: 'Coût formateurs dominant',
         message: `Les coûts formateurs représentent ${formateurRatio.toFixed(1)}% du coût total.`,
-        action: 'Négocier les TJM ou privilégier les formations internes.',
+        action: formateurRatio > 85
+          ? `Ratio extrême (${formateurRatio.toFixed(1)}%). Négocier les TJM à -20%. Privilégier les formateurs internes. Externaliser uniquement si expertise unique.`
+          : `Négocier les TJM à -10%. Former des instructeurs internes sur les modules récurrents.`,
         value: Number(formateurRatio.toFixed(2)),
         createdAt: ts,
       });
     }
 
     if (sessions?.items?.length) {
-      const deficitCount = sessions.items.filter(
-        (s) => s.statutRentabilite === 'deficitaire',
-      ).length;
-      const lowFillCount = sessions.items.filter(
-        (s) => s.tauxRemplissagePercent < 50,
-      ).length;
-      const midFillCount = sessions.items.filter(
-        (s) => s.tauxRemplissagePercent >= 50 && s.tauxRemplissagePercent < 70,
-      ).length;
+      const deficitCount = sessions.items.filter((s) => s.statutRentabilite === 'deficitaire').length;
+      const lowFillCount = sessions.items.filter((s) => s.tauxRemplissagePercent < 50).length;
+      const midFillCount = sessions.items.filter((s) => s.tauxRemplissagePercent >= 50 && s.tauxRemplissagePercent < 70).length;
 
       if (deficitCount > 0) {
+        const deficitPercent = Math.round((deficitCount / sessions.items.length) * 100);
         alerts.push({
           type: AlertType.SESSION,
           priority: AlertPriority.CRITICAL,
-          title: `${deficitCount} session(s) en déficit`,
-          message: `${deficitCount} session(s) génèrent une marge négative sur la période analysée.`,
-          action: 'Réviser le pricing ou annuler les sessions non rentables.',
+          title: `${deficitCount} session(s) en déficit (${deficitPercent}%)`,
+          message: `${deficitCount} session(s) sur ${sessions.items.length} génèrent une marge négative.`,
+          action: deficitPercent > 30
+            ? `${deficitPercent}% des sessions en déficit ! Réviser le pricing global de +20%. Annuler les sessions avec <3 inscrits. Négocier tous les contrats formateurs.`
+            : `Réviser le pricing des ${deficitCount} sessions concernées. Chercher des synergies logistiques.`,
           value: deficitCount,
           createdAt: ts,
         });
       }
 
       if (lowFillCount > 0) {
+        const lowFillPercent = Math.round((lowFillCount / sessions.items.length) * 100);
         alerts.push({
           type: AlertType.SESSION,
           priority: AlertPriority.CRITICAL,
-          title: `${lowFillCount} session(s) sous-remplies (< 50%)`,
-          message: `${lowFillCount} session(s) ont un taux de remplissage critique.`,
-          action: 'Activer les listes d\'attente ou fusionner les sessions.',
+          title: `${lowFillCount} session(s) sous-remplies (${lowFillPercent}%)`,
+          message: `${lowFillCount} session(s) ont un taux de remplissage < 50%.`,
+          action: this.actionTauxRemplissage(lowFillPercent < 20 ? 40 : 25),
           value: lowFillCount,
           createdAt: ts,
         });
@@ -299,7 +354,7 @@ export class FinanceAlertService {
           priority: AlertPriority.WARNING,
           title: `${midFillCount} session(s) à remplissage moyen (50-70%)`,
           message: `${midFillCount} session(s) pourraient être optimisées.`,
-          action: 'Lancer une campagne de recrutement ciblée.',
+          action: this.actionTauxRemplissage(60),
           value: midFillCount,
           createdAt: ts,
         });

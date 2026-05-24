@@ -81,8 +81,8 @@ export default function TrainingsPage() {
   return (
     <div className="space-y-8 min-h-screen">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">My Trainings</h1>
-        <p className="text-gray-500">View and manage your enrolled programs</p>
+        <h1 className="text-3xl font-bold text-gray-900">Mes formations</h1>
+        <p className="text-gray-500">Consultez et gérez vos formations inscrites</p>
       </div>
 
       {/* FILTRES */}
@@ -91,7 +91,7 @@ export default function TrainingsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
           <input 
             type="text" 
-            placeholder="Search trainings..." 
+            placeholder="Rechercher des formations..." 
             className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-[#1b5333] outline-none" 
           />
         </div>
@@ -101,14 +101,14 @@ export default function TrainingsPage() {
           onChange={handleFilterChange}
           className="px-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-[#1b5333] cursor-pointer outline-none"
         >
-          <option value="">All Status</option>
-          <option value="active">Ongoing</option>
-          <option value="completed">Completed</option>
+          <option value="">Tous les statuts</option>
+          <option value="active">En cours</option>
+          <option value="completed">Terminées</option>
         </select>
       </div>
 
       {loading ? (
-        <div className="py-20 text-center text-gray-400 font-medium">Loading trainings...</div>
+        <div className="py-20 text-center text-gray-400 font-medium">Chargement des formations...</div>
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -131,7 +131,7 @@ export default function TrainingsPage() {
 
                   <div className="mb-4 flex items-center justify-between">
                 <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Rate this training</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">Noter cette formation</p>
                     <div className="flex items-center gap-1">
                         {[1,2,3,4,5].map(s => (
                             <Star key={s} size={14} className={s <= (training.userRating || 0) ? "fill-yellow-400 text-yellow-400" : "text-gray-200"} />
@@ -152,7 +152,7 @@ export default function TrainingsPage() {
                   onClick={() => router.push(`/apprenant/trainings/${training.id}`)}
                   className="w-full py-4 border-t border-gray-50 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                 >
-                  <BookOpen size={14} /> View Details <ChevronRight size={14} />
+                  <BookOpen size={14} /> Voir les détails <ChevronRight size={14} />
                 </button>
               </div>
             ))}

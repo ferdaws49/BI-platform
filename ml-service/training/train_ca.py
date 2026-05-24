@@ -91,7 +91,7 @@ def generate_data():
     df = completer_historique(df_real, target_months=36)
     return df
 
-
+#lezemni nthabet  ml features elli rbat bih  ca_lag_1
 def build_features(df):
     df = df.sort_values(["annee", "mois"]).reset_index(drop=True)
 

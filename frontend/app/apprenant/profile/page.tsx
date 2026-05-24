@@ -50,10 +50,10 @@ export default function ProfilePage() {
       password: '' 
     });
     
-    alert("Profile updated successfully!");
+alert("Profil mis à jour avec succès !");
   } catch (error) {
     console.error(error);
-    alert("Error updating profile.");
+    alert("Erreur lors de la mise à jour du profil.");
   } finally {
     setSaving(false);
   }
@@ -102,8 +102,8 @@ export default function ProfilePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
-        <p className="text-gray-500">Manage your personal information</p>
+        <h1 className="text-3xl font-bold text-gray-900">Mon profil</h1>
+        <p className="text-gray-500">Gérez vos informations personnelles</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -155,7 +155,7 @@ export default function ProfilePage() {
         <div className="lg:col-span-2 bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-8 space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase">Username</label>
+              <label className="text-xs font-bold text-gray-500 uppercase">Nom</label>
               <input 
                 type="text" 
                 value={formData.nom || ''} 
@@ -173,7 +173,7 @@ export default function ProfilePage() {
   />
 </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase">Phone Number</label>
+              <label className="text-xs font-bold text-gray-500 uppercase">Numéro de téléphone</label>
               <input 
                 type="tel" 
                 value={formData.phone || ''} 
@@ -182,7 +182,7 @@ export default function ProfilePage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase">New Password (leave blank to keep current)</label>
+              <label className="text-xs font-bold text-gray-500 uppercase">Nouveau mot de passe (laisser vide pour garder l'actuel)</label>
               <input 
                 type="password" 
                 placeholder="••••••••"
@@ -198,7 +198,7 @@ export default function ProfilePage() {
                 className="bg-[#1b5333] text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-[#154128] transition-all shadow-lg"
               >
                 {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                Save Changes
+                Enregistrer les modifications
               </button>
             </div>
           </div>

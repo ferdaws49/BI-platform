@@ -41,7 +41,7 @@ export default function ResultsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-bold">My Results</h1>
+      <h1 className="text-3xl font-bold">Mes résultats</h1>
       
       <div className="space-y-4 w-full">
         {formationsSummary.length === 0 ? (
@@ -90,7 +90,7 @@ export default function ResultsPage() {
                   <p className="text-3xl font-black text-gray-900 leading-none">
                     {f.average}<span className="text-sm text-gray-400 ml-1">/20</span>
                   </p>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Average</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Moyenne</p>
                 </div>
                 <ChevronRight className="text-gray-300 group-hover:text-[#1b5333] transition-colors" />
               </div>

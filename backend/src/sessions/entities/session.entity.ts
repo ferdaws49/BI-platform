@@ -38,12 +38,6 @@ export class Session {
   @Column({nullable: true})
   title: string; // Ex: "Groupe Alpha - Hiver 2024"
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Coût formateur pour cette session' })
-  cout_formateur: number;
-  
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Coût matériel/logistique' })
-  cout_logistique: number;
-
   @Column({ type: 'date' })
   date: string;
 

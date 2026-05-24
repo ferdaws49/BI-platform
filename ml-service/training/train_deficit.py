@@ -1,85 +1,130 @@
-import numpy as np
-import joblib
+"""
+train_deficit.py
+─────────────────────────────────────────────────────────────────────────────
+Standalone training script for Session Deficit Prediction model.
+
+Usage:
+  python train_deficit.py --input data/sessions.json
+  python train_deficit.py --input data/sessions.json --min-samples 20
+
+Can also be called programmatically from deficit_route.py /train endpoint.
+─────────────────────────────────────────────────────────────────────────────
+"""
+
+import argparse
+import json
+import logging
+import sys
 from pathlib import Path
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression # On utilise la Régression Logistique
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, roc_auc_score
-
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
-MODELS_DIR.mkdir(exist_ok=True)
-
-#from data.postgres_loader import load_sessions_data
-
-#def generate_data():
-    #df = load_sessions_data()
-    #assert len(df) >= 50, "Pas assez de sessions historiques (minimum 50)"
-
-    #X = df[[
-    #    "nb_inscrits",
-    #    "cout_formateur",
-    #    "cout_logistique",
-    #    "montant_inscriptions",
-    #    "duree_jours",
-    #    "mois",
-    #]].values
-
-    #y = df["est_deficitaire"].values
-    #return X, y
-
-def generate_data():
-    np.random.seed(99)
-    n = 500
-    nb_inscrits          = np.random.randint(2, 25, n)
-    cout_formateur       = np.random.uniform(500, 3000, n)
-    cout_logistique      = np.random.uniform(100, 800, n)
-    tarif_moyen          = np.random.uniform(150, 800, n)
-    montant_inscriptions = nb_inscrits * tarif_moyen
-    duree_jours          = np.random.randint(1, 10, n)
-    mois                 = np.random.randint(1, 13, n)
-    cout_total           = cout_formateur + cout_logistique
-    marge_brute          = montant_inscriptions - cout_total
-    est_deficitaire      = (cout_total > montant_inscriptions).astype(int)
-
-    X = np.column_stack([
-        nb_inscrits, cout_formateur, cout_logistique,
-        montant_inscriptions,
-        duree_jours, mois,
-    ])
-    return X, est_deficitaire
 
 
-def train():
-    X, y     = generate_data()
-    scaler   = StandardScaler()
-    
-    # --- 1. DIVISION 80/20 ---
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # --- 2. NORMALISATION ---
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled  = scaler.transform(X_test)
+from schemas.deficit_schema import RawSessionInput, TrainResponse
+from services.deficit_service import (
+    clean_sessions,
+    create_labels,
+    engineer_features,
+    load_model,
+    model_exists,
+    save_model,
+    train_model,
+)
 
-    # --- 3. ENTRAÎNEMENT ---
-    model = LogisticRegression()
-    model.fit(X_train_scaled, y_train)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+)
+logger = logging.getLogger("train_deficit")
 
-    # --- 4. CALCUL DES SCORES ---
-    y_pred = model.predict(X_test_scaled)
-    y_prob = model.predict_proba(X_test_scaled)[:, 1] # Pour le score AUC
-    
-    acc = accuracy_score(y_test, y_pred)
-    auc = roc_auc_score(y_test, y_prob)
 
-    print("-" * 30)
-    print(f"📊 PERFORMANCE MODÈLE DÉFICIT")
-    print(f"Précision Globale (Accuracy) : {acc*100:.1f} %")
-    print(f"Score AUC : {auc:.2f}")
-    print("-" * 30)
 
-    # --- 5. SAUVEGARDE ---
-    joblib.dump({"model": model, "scaler": scaler, "model_name": "LogisticRegression"},
-                MODELS_DIR / "deficit_model.pkl")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI ENTRY POINT
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Train the Session Deficit Prediction model",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python train_deficit.py --input data/sessions.json
+  python train_deficit.py --input data/sessions.json --min-samples 20
+  python train_deficit.py --input data/sessions.json --output-metrics metrics.json
+        """,
+    )
+    parser.add_argument(
+        "--input",
+        required=True,
+        type=Path,
+        help="Path to JSON file containing list of raw session objects",
+    )
+    parser.add_argument(
+        "--min-samples",
+        type=int,
+        default=10,
+        help="Minimum number of sessions required to train (default: 10)",
+    )
+    parser.add_argument(
+        "--output-metrics",
+        type=Path,
+        default=None,
+        help="Optional path to save training metrics as JSON",
+    )
+
+    args = parser.parse_args()
+
+    # Load sessions from JSON file
+    if not args.input.exists():
+        logger.error(f"Input file not found: {args.input}")
+        sys.exit(1)
+
+    with open(args.input, "r", encoding="utf-8") as f:
+        raw_data = json.load(f)
+
+    # Handle both {"sessions": [...]} and plain [...] formats
+    if isinstance(raw_data, dict) and "sessions" in raw_data:
+        raw_data = raw_data["sessions"]
+
+    logger.info(f"Loaded {len(raw_data)} sessions from {args.input}")
+
+    # Parse into Pydantic models
+    try:
+        sessions = [RawSessionInput(**item) for item in raw_data]
+    except Exception as e:
+        logger.error(f"Failed to parse session data: {e}")
+        sys.exit(1)
+
+    # Run training pipeline
+    try:
+        result = run_training(sessions, min_samples=args.min_samples)
+        logger.info(f"\n{'='*60}")
+        logger.info(f"TRAINING RESULTS:")
+        logger.info(f"  {result.message}")
+        logger.info(f"  Accuracy:   {result.metrics.accuracy:.3f}")
+        logger.info(f"  ROC-AUC:    {result.metrics.roc_auc:.3f}")
+        logger.info(f"  Precision:  {result.metrics.precision:.3f}")
+        logger.info(f"  Recall:     {result.metrics.recall:.3f}")
+        logger.info(f"  F1 Score:   {result.metrics.f1_score:.3f}")
+        logger.info(f"  Train size: {result.metrics.n_samples_train}")
+        logger.info(f"  Test size:  {result.metrics.n_samples_test}")
+        logger.info(f"{'='*60}")
+
+        if args.output_metrics:
+            metrics_dict = result.metrics.dict()
+            with open(args.output_metrics, "w", encoding="utf-8") as f:
+                json.dump(metrics_dict, f, indent=2)
+            logger.info(f"Metrics saved to {args.output_metrics}")
+
+    except ValueError as e:
+        logger.error(f"Training failed: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        sys.exit(1)
+
 
 if __name__ == "__main__":
-    train()
+    main()

@@ -40,15 +40,15 @@ export default function Dashboard() {
       });
   }, []);
 
-  if (loading) return <div className="p-10 text-center">Loading dashboard...</div>;
-  if (!data) return <div className="p-10 text-center text-red-500">Error loading data.</div>;
+  if (loading) return <div className="p-10 text-center">Chargement du tableau de bord...</div>;
+  if (!data) return <div className="p-10 text-center text-red-500">Erreur de chargement des données.</div>;
 
   // Mapping des stats du backend vers votre design
   const stats = [
-    { label: 'Trainings Enrolled', value: data.stats.totalEnrolled, subtext: 'Active trainings', icon: BookOpen, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'successRate', value: `${data.stats.successRate ?? 0}%`, subtext: ' de réussite', icon: CheckCircle, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Average Score', value: data.stats.average, subtext: 'Global performance', icon: Trophy, color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Upcoming Sessions', value: data.stats.upcomingCount, subtext: 'Total scheduled', icon: Calendar, color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Formations suivies', value: data.stats.totalEnrolled, subtext: 'Formations actives', icon: BookOpen, color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Taux de réussite', value: `${data.stats.successRate ?? 0}%`, subtext: 'de réussite', icon: CheckCircle, color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Score moyen', value: data.stats.average, subtext: 'Performance globale', icon: Trophy, color: 'bg-emerald-50 text-emerald-600' },
+    { label: 'Sessions à venir', value: data.stats.upcomingCount, subtext: 'Total planifié', icon: Calendar, color: 'bg-emerald-50 text-emerald-600' },
   ];
 
 
@@ -57,8 +57,8 @@ export default function Dashboard() {
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-brand-dark">Welcome back, {userName}!</h1>
-        <p className="text-gray-500 text-sm">Here's an overview of your learning progress</p>
+        <h1 className="text-2xl font-bold text-brand-dark">Bon retour, {userName} !</h1>
+        <p className="text-gray-500 text-sm">Voici un aperçu de votre progression</p>
       </div>
 
       {/* Stats Grid */}
@@ -80,11 +80,11 @@ export default function Dashboard() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* My Trainings */}
+        {/* Mes formations */}
         <div onClick={() => router.push('/apprenant/trainings')}
          className="bg-white rounded-[24px] border border-gray-100 overflow-hidden">
   <div className="p-5 flex justify-between items-center border-b border-gray-50">
-    <h2 className="font-bold text-brand-dark">My Trainings</h2>
+    <h2 className="font-bold text-brand-dark">Mes formations</h2>
   </div>
   <div className="p-5 space-y-6">
     {data.myTrainings?.map((t: any, i: number) => (
@@ -104,11 +104,11 @@ export default function Dashboard() {
   </div>
 </div>
 
-        {/* Upcoming Sessions */}
+        {/* Sessions à venir */}
         <div onClick={() => router.push('/apprenant/schedule')}
         className="bg-white rounded-[24px] border border-gray-100 overflow-hidden">
           <div className="p-5 flex justify-between items-center border-b border-gray-50">
-            <h2 className="font-bold text-brand-dark">Upcoming Sessions</h2>
+            <h2 className="font-bold text-brand-dark">Sessions à venir</h2>
           </div>
           <div className="p-5 space-y-4">
             {data.upcomingSessions?.map((s: any, i: number) => (
@@ -127,11 +127,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Recent Results */}
+        {/* Résultats récents */}
         <div  onClick={() => router.push('/apprenant/results')}
         className="bg-white rounded-[24px] border border-gray-100 overflow-hidden">
           <div className="p-5 flex justify-between items-center border-b border-gray-50">
-            <h2 className="font-bold text-brand-dark">Recent Results</h2>
+            <h2 className="font-bold text-brand-dark">Résultats récents</h2>
           </div>
           <div className="p-5 space-y-4">
             {data.recentGrades?.map((r: any, i: number) => (
@@ -152,11 +152,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* My Registrations */}
+        {/* Mes inscriptions */}
         <div  onClick={() => router.push('/apprenant/registrations')}
         className="bg-white rounded-[24px] border border-gray-100 overflow-hidden">
           <div className="p-5 flex justify-between items-center border-b border-gray-50">
-            <h2 className="font-bold text-brand-dark">My Registrations</h2>
+            <h2 className="font-bold text-brand-dark">Mes inscriptions</h2>
           </div>
           <div className="p-5 space-y-4">
             {data.myRegistrations?.map((reg: any, i: number) => (

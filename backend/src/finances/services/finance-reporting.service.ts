@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Finance, FinanceType } from '../entities/finance.entity';
-import { Formation } from 'src/formations/entities/formation.entity';
-import { Session } from 'src/sessions/entities/session.entity';
-import { Between, Repository } from 'typeorm';
+import { DataSource } from 'typeorm';
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
 import {
@@ -19,16 +15,12 @@ import {
   SessionFinancialStatus,
 } from '../dto/finance-report-response.dto';
 
-
 type DateRange = { startDate: Date; endDate: Date };
 
 @Injectable()
 export class FinanceReportingService {
   constructor(
-    @InjectRepository(Session)
-    private readonly sessionRepository: Repository<Session>,
-    @InjectRepository(Finance)
-    private readonly financeRepository: Repository<Finance>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async getPreviewReport(filter: FinanceReportFilterDto): Promise<FinanceReportResponseDto> {
@@ -87,50 +79,83 @@ export class FinanceReportingService {
     const sd = range.startDate.toISOString().split('T')[0];
     const ed = range.endDate.toISOString().split('T')[0];
 
-    const qb = this.sessionRepository.createQueryBuilder('s')
-      .leftJoin('s.formation', 'fo')
-      .select([
-        's.id AS "sessionId"',
-        's.title AS "sessionName"',
-        's.date AS "sessionDate"',
-        'fo.titre AS "formationName"',
-        'COALESCE(s.prix, fo.prix, 0) AS "unitPrice"',
-        'COALESCE(s.cout_formateur, 0) AS "trainerCost"',
-        'COALESCE(s.cout_logistique, 0) AS "logisticsCost"',
-        's.capacite AS "capacite"',
-      ]);
-      qb.addSelect(sub => {
-        return sub.select('COUNT(*)', 'count').from('sessions_apprenants', 'sa').where('sa.sessionId = s.id');
-      }, 'inscrits');
-
-       // Sous-requête pour le CA ENCAISSÉ (Finances)
-       qb.addSelect(sub => {
-        return sub.select('SUM(fin.montant)', 'sum')
-        .from('finances', 'fin') // Table exacte : finances
-        .where('fin.sessionId = s.id')
-        .andWhere('fin.type = :type', { type: FinanceType.PAIEMENT });
-       }, 'collectedAmount');
-       // Filtre sur la date de session
-       qb.where('CAST(s.date AS DATE) BETWEEN :sd AND :ed', { sd, ed });
-
-    const rawRows = await qb.getRawMany();
+    const rawRows = await this.dataSource.query(`
+      WITH session_inscrits AS (
+        SELECT 
+          f.sk_session,
+          COUNT(DISTINCT f.sk_apprenant) as inscrits
+        FROM dw.fact_finance f
+        JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+        WHERE t.date_key BETWEEN $1 AND $2
+          AND f.sk_apprenant != -1
+        GROUP BY f.sk_session
+      ),
+      session_revenue AS (
+        SELECT 
+          f.sk_session,
+          COALESCE(SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END), 0) as collected_amount
+        FROM dw.fact_finance f
+        JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+        JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+        WHERE t.date_key BETWEEN $1 AND $2
+        GROUP BY f.sk_session
+      ),
+      session_couts AS (
+        SELECT 
+          f.sk_session,
+          COALESCE(SUM(CASE WHEN tf.type = 'depense_formateur' THEN -f.montant ELSE 0 END), 0) as trainer_cost,
+          COALESCE(SUM(CASE WHEN tf.type = 'depense_logistique' THEN -f.montant ELSE 0 END), 0) as logistics_cost
+        FROM dw.fact_finance f
+        JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+        JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+        WHERE t.date_key BETWEEN $1 AND $2
+        GROUP BY f.sk_session
+      ),
+      session_formation AS (
+        SELECT DISTINCT ON (f.sk_session)
+          f.sk_session,
+          df.titre as formation_name
+        FROM dw.fact_finance f
+        JOIN dw.dim_formation df ON f.sk_formation = df.sk_formation
+        ORDER BY f.sk_session, f.id_fact_finance
+      )
+      SELECT 
+        ds.session_id as "sessionId",
+        COALESCE(ds.titre, ds.type_session, 'Session sans nom') as "sessionName",
+        ds.date as "sessionDate",
+        COALESCE(sf.formation_name, 'Formation inconnue') as "formationName",
+        COALESCE(ds.prix_session, 0) as "unitPrice",
+        COALESCE(sc.trainer_cost, 0) as "trainerCost",
+        COALESCE(sc.logistics_cost, 0) as "logisticsCost",
+        ds.capacite as "capacite",
+        COALESCE(si.inscrits, 0) as "inscrits",
+        COALESCE(sr.collected_amount, 0) as "collectedAmount"
+      FROM dw.dim_session ds
+      LEFT JOIN session_inscrits si ON si.sk_session = ds.sk_session
+      LEFT JOIN session_revenue sr ON sr.sk_session = ds.sk_session
+      LEFT JOIN session_couts sc ON sc.sk_session = ds.sk_session
+      LEFT JOIN session_formation sf ON sf.sk_session = ds.sk_session
+      WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
+        AND ds.date BETWEEN $1 AND $2
+    `, [sd, ed]);
 
     return rawRows.map((row) => {
-        const collectedAmount = Number(row.collectedAmount);
-        const unitPrice = parseFloat(row.unitPrice) || 0;
-        const invoicedRevenue = Number(row.revenue);
-        const cost =parseFloat(row.trainerCost) + parseFloat(row.logisticsCost);
-        const margin = collectedAmount - cost;
-        const inscrits = parseInt(row.inscrits);
-        const expectedRevenue = unitPrice * inscrits;
-        const recoveryRate = expectedRevenue > 0 ? Number(((collectedAmount / expectedRevenue) * 100).toFixed(2)) : 0;
-        const capacite = parseInt(row.capacite);
-        const fillRate = capacite > 0 ? (inscrits / capacite) * 100 : 0;
-        const status = this.resolveSessionStatus(margin);
+      const collectedAmount = Number(row.collectedAmount) || 0;
+      const unitPrice = parseFloat(row.unitPrice) || 0;
+      const trainerCost = parseFloat(row.trainerCost) || 0;
+      const logisticsCost = parseFloat(row.logisticsCost) || 0;
+      const cost = trainerCost + logisticsCost;
+      const margin = collectedAmount - cost;
+      const inscrits = parseInt(row.inscrits) || 0;
+      const expectedRevenue = unitPrice * inscrits;
+      const recoveryRate = expectedRevenue > 0 ? Number(((collectedAmount / expectedRevenue) * 100).toFixed(2)) : 0;
+      const capacite = parseInt(row.capacite) || 0;
+      const fillRate = capacite > 0 ? (inscrits / capacite) * 100 : 0;
+      const status = this.resolveSessionStatus(margin);
 
       return {
         sessionName: row.sessionName || 'Session sans nom',
-        formationName: row.formationName,
+        formationName: row.formationName || 'Formation inconnue',
         inscrits,
         capacite,
         revenue: collectedAmount,
@@ -144,7 +169,9 @@ export class FinanceReportingService {
     });
   }
 
-  private async computeKpis(rows: FinanceReportSessionRowDto[], range: DateRange,
+  private async computeKpis(
+    rows: FinanceReportSessionRowDto[],
+    range: DateRange,
   ): Promise<FinanceReportKpisDto> {
     const revenue = rows.reduce((sum, row) => sum + row.revenue, 0);
     const cost = rows.reduce((sum, row) => sum + row.cost, 0);
@@ -158,7 +185,7 @@ export class FinanceReportingService {
       cost: Number(cost.toFixed(2)),
       margin: Number(margin.toFixed(2)),
       recoveryRate: Number(recoveryRate.toFixed(2)),
-      performanceVsPreviousPeriod : Number(performanceVsPreviousPeriod.toFixed(2)),
+      performanceVsPreviousPeriod: Number(performanceVsPreviousPeriod.toFixed(2)),
     };
   }
 
@@ -167,30 +194,31 @@ export class FinanceReportingService {
     const prevStart = new Date(range.startDate.getTime() - duration);
     const prevEnd = new Date(range.endDate.getTime() - duration);
 
-    const result = await this.financeRepository.createQueryBuilder('f')
-      .select('SUM(f.montant)', 'total')
-      .where('f.type = :type', { type: FinanceType.PAIEMENT })
-      .andWhere('f.date BETWEEN :start AND :end', { start: prevStart, end: prevEnd })
-      .getRawOne();
+    const prevStartStr = prevStart.toISOString().split('T')[0];
+    const prevEndStr = prevEnd.toISOString().split('T')[0];
 
-    const previousRevenue = parseFloat(result?.total) || 0;
+    const result = await this.dataSource.query(`
+      SELECT COALESCE(SUM(f.montant), 0) as total
+      FROM dw.fact_finance f
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      WHERE tf.type = 'paiement'
+        AND t.date_key BETWEEN $1 AND $2
+    `, [prevStartStr, prevEndStr]);
+
+    const previousRevenue = parseFloat(result[0]?.total) || 0;
 
     if (previousRevenue <= 0) return currentRevenue > 0 ? 100 : 0;
     return ((currentRevenue - previousRevenue) / previousRevenue) * 100;
   }
-
-
 
   private resolveDateRange(filter: FinanceReportFilterDto): DateRange {
     const now = new Date();
     if (filter.period === FinanceReportPeriod.CUSTOM && filter.startDate && filter.endDate) {
       return { startDate: new Date(filter.startDate), endDate: new Date(filter.endDate) };
     }
-    // ... reste de votre logique de période ...
     return { startDate: new Date(now.getFullYear(), now.getMonth(), 1), endDate: now };
   }
-
-
 
   private generateCsv(report: FinanceReportResponseDto): Buffer {
     const csvLines: string[] = [];
@@ -199,9 +227,7 @@ export class FinanceReportingService {
     csvLines.push(`Cost,${report.kpis.cost}`);
     csvLines.push(`Margin,${report.kpis.margin}`);
     csvLines.push(`Recovery Rate,${report.kpis.recoveryRate}`);
-    csvLines.push(
-      `Performance vs Previous Period,${report.kpis.performanceVsPreviousPeriod}`,
-    );
+    csvLines.push(`Performance vs Previous Period,${report.kpis.performanceVsPreviousPeriod}`);
     csvLines.push('');
     csvLines.push(
       'Session,Formation,Inscrits,Capacite,CA (Revenue),Cost,Margin,Recovery Rate,Fill Rate,Status',

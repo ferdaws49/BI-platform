@@ -34,7 +34,7 @@ export default function Navbar() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
         <input 
           type="text" 
-          placeholder="Search trainings, sessions..." 
+          placeholder="Rechercher formations, sessions..." 
           className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-brand-dark outline-none text-sm transition-all"
         />
       </div>
