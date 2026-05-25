@@ -133,7 +133,7 @@ export default function PlanningPage() {
       // Revenue total des sessions filtrées (hors annulées)
       revenue: filteredSessions
         .filter((s) => s.statut !== "Annulé")
-        .reduce((sum, s) => sum + (s.revenue ?? 0), 0),
+        .reduce((sum, s) => sum + (s.revenuAttendu ?? s.revenue ?? 0), 0),
     }),
     [filteredSessions],
   );
@@ -226,7 +226,9 @@ export default function PlanningPage() {
       }
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === id ? { ...s, statut: "Annulé" as const, revenue: 0 } : s,
+          s.id === id
+            ? { ...s, statut: "Annulé" as const, revenue: 0, revenuAttendu: 0 }
+            : s,
         ),
       );
 
@@ -555,3 +557,5 @@ export default function PlanningPage() {
     </div>
   );
 }
+
+

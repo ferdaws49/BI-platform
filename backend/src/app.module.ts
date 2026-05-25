@@ -29,7 +29,8 @@ import { FinanceAlertModule } from './alerts/financier/finance-alert.module';
 import { FinancePredictModule } from './ai/financier/ai-prediction.module';
 import { DwModule } from './dw/dw.module';
 import { SatisfactionModule } from './satisfaction/satisfaction.module';
-import { AlertsModule } from './ai/alerts/alerts.module';
+import { AlertsModule as ResponsableAlertsModule } from './ai/alerts/alerts.module';
+import { AlertsModule as DirecteurAlertsModule } from './alerts/alerts.module';
 import { ForecastModule } from './ai/forecast/forecast.module';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -91,7 +92,8 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
     FinancePredictModule,
     DwModule,
     SatisfactionModule,
-    AlertsModule,
+    ResponsableAlertsModule,
+    DirecteurAlertsModule,
     ForecastModule,
   ] /* providers: [
     /* 4. Activer cette partie pour protéger TOUTES tes routes par défaut.

@@ -44,6 +44,7 @@ type KPIItem = {
 };
 
 type FinancialRecord = {
+  rowKey: string;
   formationId: number;
   titre: string;
   formation: string;
@@ -122,10 +123,17 @@ export default function FinanceSection({
       const periodeToSend =
         filters.periode === "Année" ? "Annee" : filters.periode;
 
+      const typeToSend =
+        filters.type === "Pr�sentiel"
+          ? "pr�sentiel"
+          : filters.type === "En ligne"
+            ? "en_ligne"
+            : (filters.type || "Tous");
+
       const params = new URLSearchParams({
         periode: periodeToSend || "Ce mois",
         formation: filters.formation || "Tous",
-        type: filters.type || "Tous",
+        type: typeToSend,
         statut: filters.statut || "Tous",
       });
 
@@ -155,10 +163,21 @@ export default function FinanceSection({
         setOverview(ovData);
         // Normalize table data (handling different possible title fields)
         setRecords(
-          tableData.map((r) => ({
-            ...r,
-            formation: r.titre ?? r.formation ?? "N/A",
-          })),
+          tableData.map((r, index) => {
+            const formation = r.titre ?? r.formation ?? "N/A";
+
+            return {
+              ...r,
+              rowKey: [
+                r.formationId,
+                formation,
+                r.type,
+                r.statut,
+                index,
+              ].join("-"),
+              formation,
+            };
+          }),
         );
         setPage(1); // Reset to first page when data changes
       } catch (err) {
@@ -439,7 +458,7 @@ export default function FinanceSection({
               ) : (
                 pagedData.map((row, idx) => (
                   <tr
-                    key={row.formationId}
+                    key={row.rowKey}
                     className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}
                   >
                     <td className="px-3 py-2 font-medium">{row.formation}</td>
@@ -491,3 +510,4 @@ export default function FinanceSection({
     </main>
   );
 }
+

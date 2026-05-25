@@ -1,77 +1,33 @@
+"""
+training/train_ca.py — Prévision CA mensuel
+
+Commande : python -m training.train_ca
+Sortie   : models/ca_model.pkl
+
+Split chronologique 80/20 (pas de shuffle — séries temporelles).
+"""
+
 import numpy as np
 import pandas as pd
 import joblib
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.ensemble import GradientBoostingRegressor
+import warnings
+import os
 
-from data.postgres_loader import load_ca_data
+USE_DB = os.getenv("USE_DB", "0") in ("1", "true", "True")
+try:
+    from data.postgres_loader import load_ca_data
+except Exception:
+    load_ca_data = None
+
+from training.eval_utils import print_regression_metrics
+
+warnings.filterwarnings("ignore")
 
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 MODELS_DIR.mkdir(exist_ok=True)
-
-
-def completer_historique(df_real: pd.DataFrame, target_months: int = 36) -> pd.DataFrame:
-    """Complète avec du synthétique basé sur les vraies données."""
-    n = len(df_real)
-    if n >= target_months:
-        return df_real
-
-    print(f"[train] ➕ Complétion : {n} réels → {target_months} mois total")
-
-    # Tendance linéaire sur les vraies données
-    x = np.arange(n)
-    y = df_real["ca_mensuel"].values
-    a, b = np.polyfit(x, y, 1)
-
-    # Ratios moyens du business réel
-    ca_total = df_real["ca_mensuel"].sum()
-    ratio_form = df_real["total_cout_formateur"].sum() / (ca_total + 1)
-    ratio_log  = df_real["total_cout_logistique"].sum() / (ca_total + 1)
-    ratio_imp  = df_real["total_impaye"].sum() / (ca_total + 1)
-    mean_sess  = int(df_real["nb_sessions"].mean())
-    mean_insc  = int(df_real["total_inscrits"].mean())
-
-    # Écart-type des résidus (pour le bruit réaliste)
-    trend_vals = a * x + b
-    residus = y - trend_vals
-    std_residus = np.std(residus) if np.std(residus) > 0 else y.mean() * 0.05
-
-    # Dernier mois réel comme point de départ
-    last = df_real.iloc[-1]
-    start_year = int(last["annee"])
-    start_month = int(last["mois"])
-
-    rows = df_real.to_dict("records")
-
-    # Générer les mois manquants
-    for i in range(1, target_months - n + 1):
-        mois_total = (start_month - 1) + i
-        year = start_year + (mois_total // 12)
-        month = (mois_total % 12) + 1
-        trimestre = ((month - 1) // 3) + 1
-
-        # CA = tendance + effet saisonnier moyen + bruit
-        trend = a * (n + i - 1) + b
-        saison = np.mean(residus) if len(residus) > 0 else 0
-        bruit = np.random.normal(0, std_residus * 0.5)
-        ca = max(0, trend + saison + bruit)
-
-        rows.append({
-            "annee": year,
-            "mois": month,
-            "trimestre": trimestre,
-            "ca_mensuel": round(ca, 2),
-            "total_cout_formateur": round(ca * ratio_form + np.random.normal(0, 200), 2),
-            "total_cout_logistique": round(ca * ratio_log + np.random.normal(0, 100), 2),
-            "nb_sessions": max(1, mean_sess + np.random.randint(-2, 3)),
-            "total_inscrits": max(1, int(ca / 500) if ca > 500 else mean_insc),
-            "total_impaye": round(ca * ratio_imp, 2),
-        })
-
-    return pd.DataFrame(rows)
 
 
 def generate_data():
@@ -134,37 +90,45 @@ FEATURES = [
 
 
 def train():
-    df = generate_data()
-    df = build_features(df)
+    if USE_DB and load_ca_data is not None:
+        df = build_features(load_ca_data())
+    else:
+        df = build_features(generate_data())
 
-    print(f"[train] 📊 {len(df)} mois utilisables après feature engineering")
-
-    scaler = StandardScaler()
     X = df[FEATURES].values
     y = df["ca_mensuel"].values
 
-    # 80/20 temporel
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, shuffle=False
-    )
+    split_index = int(len(X) * 0.8)
+    X_train, X_test = X[:split_index], X[split_index:]
+    y_train, y_test = y[:split_index], y[split_index:]
 
+    scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled  = scaler.transform(X_test)
+    X_test_scaled = scaler.transform(X_test)
 
-    model = LinearRegression()
+    model = GradientBoostingRegressor(
+        n_estimators=300, learning_rate=0.03,
+        max_depth=4, random_state=42,
+    )
     model.fit(X_train_scaled, y_train)
 
-    y_pred = model.predict(X_test_scaled)
-    score_r2 = r2_score(y_test, y_pred)
-    mae = mean_absolute_error(y_test, y_pred)
-
-    print(f"\n📊 RÉSULTATS : R²={score_r2:.4f}, MAE={mae:.2f} DT")
+    y_pred_test = model.predict(X_test_scaled)
+    test_metrics = print_regression_metrics("GradientBoosting (CA)", y_test, y_pred_test)
 
     joblib.dump(
-        {"model": model, "scaler": scaler, "last_data": df, "features": FEATURES},
-        MODELS_DIR / "ca_model.pkl"
+        {
+            "model":        model,
+            "scaler":       scaler,
+            "last_data":    df,
+            "features":     FEATURES,
+            "test_metrics": test_metrics,
+        },
+        MODELS_DIR / "ca_model.pkl",
     )
-    print(f"💾 Modèle sauvegardé : {MODELS_DIR}/ca_model.pkl")
+    print(
+        f"[train_ca] OK Sauvegarde : models/ca_model.pkl "
+        f"({split_index} mois train / {len(X) - split_index} mois test)"
+    )
 
 
 if __name__ == "__main__":

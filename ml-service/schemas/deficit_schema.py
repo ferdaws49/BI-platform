@@ -1,24 +1,39 @@
-from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Literal
+"""
+schemas/deficit_schema.py — Schémas Pydantic pour les sessions et déficit
 
+Contient :
+    - `SessionFeatures` : features d'une session attendues par l'API
+    - `SessionDeficitRequest/Response` : contrat POST /predict-sessions-deficit
+
+Notes : `session_id` est `str` (UUID possible en base).
+"""
+
+from pydantic import BaseModel
+from typing import List
+
+
+class SessionFeatures(BaseModel):
+    session_id:           str
+    nb_inscrits:          int
+    cout_formateur:       float
+    cout_logistique:      float
+    montant_inscriptions: float
+    duree_jours:          int
+    mois:                 int
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INPUT SCHEMAS (received from NestJS)
 # ─────────────────────────────────────────────────────────────────────────────
 
-class RawSessionInput(BaseModel):
-    """
-    Raw session data as sent by NestJS.
-    No feature engineering applied yet — that happens in ML service.
-    """
-    session_id: str
-    nb_inscrits: float = Field(ge=0, default=0)
-    capacite: float = Field(gt=0)
-    revenu: float = Field(ge=0, default=0)
-    cout_formateur: float = Field(ge=0, default=0)
-    cout_logistique: float = Field(ge=0, default=0)
-    impayes: float = Field(ge=0, default=0)
-    date: str  # ISO date string: "YYYY-MM-DD"
+class SessionDeficitResult(BaseModel):
+    session_id:      str
+    est_deficitaire: bool
+    probabilite:     float
+    score_risque:    int
+    niveau_risque:   str
+    deficit_estime:  float
+    raison:          str
+    recommandation:  str
 
     @validator("capacite")
     def capacite_must_be_positive(cls, v):

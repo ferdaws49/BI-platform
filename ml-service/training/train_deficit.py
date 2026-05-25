@@ -1,130 +1,128 @@
 """
-train_deficit.py
-─────────────────────────────────────────────────────────────────────────────
-Standalone training script for Session Deficit Prediction model.
+training/train_deficit.py — Sessions déficitaires
 
-Usage:
-  python train_deficit.py --input data/sessions.json
-  python train_deficit.py --input data/sessions.json --min-samples 20
+Commande : python -m training.train_deficit
+Sortie   : models/deficit_model.pkl
 
-Can also be called programmatically from deficit_route.py /train endpoint.
-─────────────────────────────────────────────────────────────────────────────
+Pipeline : split 80/20 stratifié, imputer + scaler (fit train),
+           GradientBoosting vs RandomForest, métriques sur test.
 """
 
-import argparse
-import json
-import logging
-import sys
+import numpy as np
+import joblib
 from pathlib import Path
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import warnings
+import os
+
+USE_DB = os.getenv("USE_DB", "0") in ("1", "true", "True")
+try:
+    from data.postgres_loader import load_sessions_data
+except Exception:
+    load_sessions_data = None
+
+from training.eval_utils import print_classification_metrics
+
+warnings.filterwarnings("ignore")
+
+MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+MODELS_DIR.mkdir(exist_ok=True)
 
 
+def generate_data():
+    np.random.seed(99)
+    n = 500
+    nb_inscrits          = np.random.randint(2, 25, n)
+    cout_formateur       = np.random.uniform(500, 3000, n)
+    cout_logistique      = np.random.uniform(100, 800, n)
+    tarif_moyen          = np.random.uniform(150, 800, n)
+    montant_inscriptions = nb_inscrits * tarif_moyen
+    duree_jours          = np.random.randint(1, 10, n)
+    mois                 = np.random.randint(1, 13, n)
+    cout_total           = cout_formateur + cout_logistique
+    est_deficitaire      = (cout_total > montant_inscriptions).astype(int)
 
-from schemas.deficit_schema import RawSessionInput, TrainResponse
-from services.deficit_service import (
-    clean_sessions,
-    create_labels,
-    engineer_features,
-    load_model,
-    model_exists,
-    save_model,
-    train_model,
-)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-)
-logger = logging.getLogger("train_deficit")
+    X = np.column_stack([
+        nb_inscrits, cout_formateur, cout_logistique,
+        montant_inscriptions,
+        duree_jours, mois,
+    ])
+    return X, est_deficitaire
 
 
+def train():
+    if USE_DB and load_sessions_data is not None:
+        df = load_sessions_data()
+        X = df[["nb_inscrits", "cout_formateur", "cout_logistique", "montant_inscriptions", "duree_jours", "mois"]].values
+        y = df["est_deficitaire"].values
+    else:
+        X, y = generate_data()
 
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Train the Session Deficit Prediction model",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python train_deficit.py --input data/sessions.json
-  python train_deficit.py --input data/sessions.json --min-samples 20
-  python train_deficit.py --input data/sessions.json --output-metrics metrics.json
-        """,
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y,
     )
-    parser.add_argument(
-        "--input",
-        required=True,
-        type=Path,
-        help="Path to JSON file containing list of raw session objects",
+
+    imputer = SimpleImputer(strategy="mean")
+    X_train = imputer.fit_transform(X_train)
+    X_test = imputer.transform(X_test)
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    gb = GradientBoostingClassifier(
+        n_estimators=150, max_depth=4, learning_rate=0.05, random_state=42
     )
-    parser.add_argument(
-        "--min-samples",
-        type=int,
-        default=10,
-        help="Minimum number of sessions required to train (default: 10)",
-    )
-    parser.add_argument(
-        "--output-metrics",
-        type=Path,
-        default=None,
-        help="Optional path to save training metrics as JSON",
+    rf = RandomForestClassifier(
+        n_estimators=100, max_depth=5, random_state=42
     )
 
-    args = parser.parse_args()
+    gb.fit(X_train_scaled, y_train)
+    rf.fit(X_train_scaled, y_train)
 
-    # Load sessions from JSON file
-    if not args.input.exists():
-        logger.error(f"Input file not found: {args.input}")
-        sys.exit(1)
+    y_pred_gb = gb.predict(X_test_scaled)
+    y_proba_gb = gb.predict_proba(X_test_scaled)[:, 1]
 
-    with open(args.input, "r", encoding="utf-8") as f:
-        raw_data = json.load(f)
+    y_pred_rf = rf.predict(X_test_scaled)
+    y_proba_rf = rf.predict_proba(X_test_scaled)[:, 1]
 
-    # Handle both {"sessions": [...]} and plain [...] formats
-    if isinstance(raw_data, dict) and "sessions" in raw_data:
-        raw_data = raw_data["sessions"]
+    metrics_gb = print_classification_metrics(
+        "GradientBoosting", y_test, y_pred_gb, y_proba_gb
+    )
+    metrics_rf = print_classification_metrics(
+        "RandomForest", y_test, y_pred_rf, y_proba_rf
+    )
 
-    logger.info(f"Loaded {len(raw_data)} sessions from {args.input}")
+    auc_gb = metrics_gb.get("auc", 0.0)
+    auc_rf = metrics_rf.get("auc", 0.0)
 
-    # Parse into Pydantic models
-    try:
-        sessions = [RawSessionInput(**item) for item in raw_data]
-    except Exception as e:
-        logger.error(f"Failed to parse session data: {e}")
-        sys.exit(1)
+    if auc_gb >= auc_rf:
+        best_model, best_name = gb, "GradientBoosting"
+        best_metrics = metrics_gb
+    else:
+        best_model, best_name = rf, "RandomForest"
+        best_metrics = metrics_rf
 
-    # Run training pipeline
-    try:
-        result = run_training(sessions, min_samples=args.min_samples)
-        logger.info(f"\n{'='*60}")
-        logger.info(f"TRAINING RESULTS:")
-        logger.info(f"  {result.message}")
-        logger.info(f"  Accuracy:   {result.metrics.accuracy:.3f}")
-        logger.info(f"  ROC-AUC:    {result.metrics.roc_auc:.3f}")
-        logger.info(f"  Precision:  {result.metrics.precision:.3f}")
-        logger.info(f"  Recall:     {result.metrics.recall:.3f}")
-        logger.info(f"  F1 Score:   {result.metrics.f1_score:.3f}")
-        logger.info(f"  Train size: {result.metrics.n_samples_train}")
-        logger.info(f"  Test size:  {result.metrics.n_samples_test}")
-        logger.info(f"{'='*60}")
+    print(f"\n[train_deficit] Meilleur modele : {best_name} (AUC test = {best_metrics.get('auc', 0):.4f})")
 
-        if args.output_metrics:
-            metrics_dict = result.metrics.dict()
-            with open(args.output_metrics, "w", encoding="utf-8") as f:
-                json.dump(metrics_dict, f, indent=2)
-            logger.info(f"Metrics saved to {args.output_metrics}")
-
-    except ValueError as e:
-        logger.error(f"Training failed: {e}")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}", exc_info=True)
-        sys.exit(1)
+    joblib.dump(
+        {
+            "model":        best_model,
+            "scaler":       scaler,
+            "imputer":      imputer,
+            "model_name":   best_name,
+            "test_metrics": best_metrics,
+        },
+        MODELS_DIR / "deficit_model.pkl",
+    )
+    print("[train_deficit] OK Sauvegarde : models/deficit_model.pkl")
 
 
 if __name__ == "__main__":
-    main()
+    train()

@@ -1,3 +1,10 @@
+"""
+services/ca_service.py — CA forecasting registry and prediction helper
+
+Rôle : charge `models/ca_model.pkl` et propose `predict_next_months(nb_mois)`.
+Liens : `training/train_ca.py`, `api/ca_routes.py`, `models/registry.py` (pattern similaire).
+"""
+
 import numpy as np
 import pandas as pd
 import joblib

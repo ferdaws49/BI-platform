@@ -23,6 +23,7 @@ export class ApprenantsService {
       prenom: a.user?.prenom || '',
       email: a.user?.email || '',
       telephone: a.user?.phone || null,
+      profileImage: a.user?.profileImage || null,
       dateInscription: a.dateAccepted ? a.dateAccepted.toISOString() : new Date().toISOString(),
       statut: 'accepted',
       formations: (a.sessions || []).map((sa) => ({

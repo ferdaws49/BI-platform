@@ -1,3 +1,13 @@
+"""
+api/ca_routes.py — Endpoints pour la prévision du chiffre d'affaires (CA)
+
+Routes exposées :
+    - GET /predict-ca         : retourne 3 mois de prévision CA (par défaut)
+    - GET /predict-ca/backtest: backtest simple sur les 3 derniers mois
+
+Utilise : `services/ca_service.CAModelRegistry` et `schemas/ca_schema`.
+"""
+
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter

@@ -1,26 +1,13 @@
 """
-deficit_service.py
-─────────────────────────────────────────────────────────────────────────────
-Core ML logic for Session Deficit Prediction.
+services/deficit_service.py — Registry and prediction helper for session deficit model
 
-Responsibilities:
-  1. Data cleaning
-  2. Feature engineering
-  3. Label creation (is_deficit)
-  4. Train / test split
-  5. Logistic Regression training
-  6. Evaluation (accuracy, ROC-AUC, confusion matrix, classification report)
-  7. Model persistence (.pkl)
-  8. Prediction with risk scoring
-  9. Recommendation engine
-
-NestJS sends RAW data → this service does ALL ML work.
+Rôle : charge `models/deficit_model.pkl` et expose une interface `predict(sessions)`
+qui reçoit des objets Pydantic `SessionFeatures` et renvoie `SessionDeficitResult`.
+Liens : `training/train_deficit.py`, `schemas/deficit_schema.py`, `api/deficit_routes.py`.
 """
 
-import logging
-import os
-import re
-from datetime import datetime, date
+import numpy as np
+import joblib
 from pathlib import Path
 from typing import List, Tuple
 
@@ -74,26 +61,38 @@ RISK_HIGH_THRESHOLD   = 0.8
 RISK_MEDIUM_THRESHOLD = 0.5
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — DATA CLEANING
-# ─────────────────────────────────────────────────────────────────────────────
+class SessionDeficitRegistry:
+    def __init__(self):
+        self.model      = None
+        self.scaler     = None
+        self.imputer    = None
+        self.model_name = ""
+        self._load()
 
-#lenna bech nadhfou(preparation des donnés)
-def clean_sessions(raw_sessions: List[RawSessionInput]) -> pd.DataFrame:
-    """
-    Convert raw NestJS payload to a cleaned DataFrame.
-    Removes invalid rows. Fills missing numerics with 0.
-    """
-    if not raw_sessions:
-        raise ValueError("No sessions provided for cleaning.")
+    def _load(self):
+        if not MODEL_PATH.exists():
+            raise FileNotFoundError(
+                "❌ models/deficit_model.pkl introuvable. "
+                "Lance d'abord : python -m training.train_deficit"
+            )
+        bundle          = joblib.load(MODEL_PATH)
+        self.model      = bundle["model"]
+        self.scaler     = bundle["scaler"]
+        self.imputer    = bundle.get("imputer")
+        self.model_name = bundle["model_name"]
+        print(f"[SessionDeficitRegistry] ✅ Modèle chargé : {self.model_name}")
 
     records = [s.dict() for s in raw_sessions]
     df = pd.DataFrame(records)
 
     logger.info(f"[CLEAN] Raw input: {len(df)} sessions")
 
-    # Drop rows with missing session_id or date
-    df = df.dropna(subset=["session_id", "date"]) 
+        X = np.array(feature_matrix)
+        if self.imputer is not None:
+            X = self.imputer.transform(X)
+        probabilities = self.model.predict_proba(
+            self.scaler.transform(X)
+        )[:, 1]
 
     # Ensure numeric types
     numeric_cols = ["nb_inscrits", "capacite", "revenu",
@@ -481,38 +480,6 @@ def predict_sessions(
     return results
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 9 — RISK CLASSIFICATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _classify_risk(risk_score: float) -> str:
-    """
-    risk_score > 0.8  → HIGH
-    risk_score > 0.5  → MEDIUM
-    else              → LOW
-    """
-    if risk_score > RISK_HIGH_THRESHOLD:
-        return "high"
-    elif risk_score > RISK_MEDIUM_THRESHOLD:
-        return "medium"
-    return "low"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 10 — RECOMMENDATION ENGINE
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _recommend(risk_level: str, fill_rate: float) -> str:
-    """
-    HIGH risk + low fill_rate (< 50%) → Cancel session
-    HIGH risk + decent fill_rate      → Reduce costs urgently
-    MEDIUM risk                       → Promote session to increase enrollment
-    LOW risk                          → Keep session as planned
-    """
-    if risk_level == "high":
-        if fill_rate < 0.5:
-            return "Cancel session — high deficit risk and low enrollment"
-        return "Reduce costs urgently — session at high deficit risk"
-    elif risk_level == "medium":
-        return "Promote session — increase enrollment to avoid deficit"
-    return "Keep session — deficit risk is low"
+# Instance globale
+# Instance globale
+session_deficit_registry = SessionDeficitRegistry()

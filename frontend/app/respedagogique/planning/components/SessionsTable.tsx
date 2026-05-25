@@ -194,7 +194,7 @@ export default function SessionsTable({
               </th>
               <th className="px-4 py-3">Type</th>
               <th className="px-4 py-3">Participants</th>
-              <th className="px-4 py-3">Revenue</th>
+              <th className="px-4 py-3">Revenu attendu</th>
               <th
                 className="px-4 py-3 cursor-pointer hover:bg-slate-100 select-none"
                 onClick={() => handleSort("statut")}
@@ -283,9 +283,9 @@ export default function SessionsTable({
                   </button>
                 </td>
 
-                {/* Revenue */}
+                {/* Revenu attendu */}
                 <td className="px-4 py-3.5 font-semibold text-slate-700">
-                  {session.revenue?.toLocaleString("fr-TN")} <span className="text-[10px] font-normal text-slate-400">DT</span>
+                  {(session.revenuAttendu ?? session.revenue ?? 0).toLocaleString("fr-TN")} <span className="text-[10px] font-normal text-slate-400">DT</span>
                 </td>
 
                 {/* Statut */}

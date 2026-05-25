@@ -4,6 +4,7 @@ scikit-learn==1.4.2
 numpy==1.26.4
 pydantic==2.7.1
 prophet
+<<<<<<< HEAD
 pandas==2.2.3
 
 
@@ -11,3 +12,10 @@ pandas==2.2.3
 joblib==1.4.2
 python-dotenv==1.0.1
 httpx==0.27.2
+=======
+pandas
+plotly
+sqlalchemy
+psycopg2-binary
+python-dotenv
+>>>>>>> 3e44c1a (updated ML et devep)

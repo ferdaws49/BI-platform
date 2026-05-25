@@ -1,7 +1,16 @@
 """
-deficit_route.py
-─────────────────────────────────────────────────────────────────────────────
-FastAPI router for Session Deficit Prediction endpoints.
+api/deficit_routes.py — Endpoint pour prédire les sessions déficitaires
+
+Route : POST /predict-sessions-deficit
+Entrée : `SessionDeficitRequest` (liste de `SessionFeatures`)
+Sortie : `SessionDeficitResponse` (résultats par session + résumé)
+
+Utilise : `services/deficit_service.SessionDeficitRegistry`.
+"""
+
+from fastapi import APIRouter, HTTPException
+from schemas.deficit_schema import SessionDeficitRequest, SessionDeficitResponse
+from services.deficit_service import session_deficit_registry
 
 Endpoints:
   POST /predict  — predict risk for a batch of sessions

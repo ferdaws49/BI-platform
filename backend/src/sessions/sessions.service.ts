@@ -371,7 +371,7 @@ if (dto.apprenantIds?.length) {
           : 0;
 
     // ✅ revenue يتحسب هنا فقط — موش يتخزن
-    const revenue = prixEffectif * nbApprenants;
+    const revenuAttendu = prixEffectif * nbApprenants;
 
     return {
       id: s.id,
@@ -384,21 +384,20 @@ if (dto.apprenantIds?.length) {
       capacite: s.capacite ?? null, // ✅
       prix: s.prix !== null && s.prix !== undefined ? Number(s.prix) : null,
       prixEffectif,
-      revenue,
+      // Compat frontend: keep the legacy field name until the UI switches to revenuAttendu.
+      revenue: revenuAttendu,
+      revenuAttendu,
       formationId: s.formationId,
       formation: s.formation?.titre ?? '',
       formateurId: s.formateurId ?? null,
       formateur: s.formateur ? `${s.formateur.prenom} ${s.formateur.nom}` : '',
       // ✅ nom/prenom من user
-      apprenants: (s.apprenants??[]).map((a) => ({
-      id: a.id,
-      nom: a.user?.nom ?? '',
-      prenom: a.user?.prenom ?? '',
-      email: a.user?.email ?? '',
-    })),
-
-    
-      
+      apprenants: (s.apprenants ?? []).map((a) => ({
+        id: a.id,
+        nom: a.user?.nom ?? '',
+        prenom: a.user?.prenom ?? '',
+        email: a.user?.email ?? '',
+      })),
     };
     {/** apprenants: (s.apprenants ?? []).map((a) => ({
         id: a.id,

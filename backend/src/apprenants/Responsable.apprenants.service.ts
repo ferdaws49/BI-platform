@@ -148,6 +148,7 @@ export class ResponsableApprenantsService {
         scoreMoyen,
         tauxCompletion,
         email: a.user?.email,
+        profileImage: a.user?.profileImage || null,
       };
     });
   }
