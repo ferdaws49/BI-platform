@@ -28,6 +28,7 @@ from services.deficit_service import (
     model_exists,
     save_model,
     train_model,
+    run_training,
 )
 
 logging.basicConfig(

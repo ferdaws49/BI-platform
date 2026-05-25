@@ -1084,7 +1084,7 @@ export default function PaiementsTab({
             valueColor="#DC2626"
           />
           <KPICard
-            label="Taux de Recouvrement"
+            label="Taux de Paiement"
             value={`${Math.round(tauxPaiement)}%`}
             accentColor="#3b82f6"
             sub={`${fmtCurrency(totalEncaisse)} / ${fmtCurrency(totalFacture)}`}

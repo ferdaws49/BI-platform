@@ -167,7 +167,6 @@ export class EtlService {
     const types = [
       'paiement',
       'impaye',
-      'remboursement',
       'depense_formateur',
       'depense_logistique',
     ];

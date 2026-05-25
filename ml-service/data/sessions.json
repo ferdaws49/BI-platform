@@ -1,0 +1,192 @@
+[
+  {
+    "session_id": "0cfbfd95-027f-4edf-a505-82fbbf6d4299",
+    "nb_inscrits": 1,
+    "capacite": 25,
+    "revenu": 1400.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-05-10"
+  },
+  {
+    "session_id": "229a5030-87d4-411c-aba4-248efd62559a",
+    "nb_inscrits": 2,
+    "capacite": 10,
+    "revenu": 1520.5,
+    "cout_formateur": 450.0,
+    "cout_logistique": 80.0,
+    "impayes": 0.0,
+    "date": "2026-05-01"
+  },
+  {
+    "session_id": "31e09eee-07c4-4c0e-8319-cb3d64cbe040",
+    "nb_inscrits": 1,
+    "capacite": 25,
+    "revenu": 1600.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-01-19"
+  },
+  {
+    "session_id": "572186bd-3def-419a-8aab-e8dd23e3a666",
+    "nb_inscrits": 1,
+    "capacite": 15,
+    "revenu": 2200.0,
+    "cout_formateur": 550.0,
+    "cout_logistique": 120.5,
+    "impayes": 0.0,
+    "date": "2026-02-10"
+  },
+  {
+    "session_id": "675e988e-3360-430d-9a8b-505a96291c55",
+    "nb_inscrits": 0,
+    "capacite": 19,
+    "revenu": 0.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-05-16"
+  },
+  {
+    "session_id": "6ea9aed3-4894-4307-93f0-e67b0362c0a8",
+    "nb_inscrits": 1,
+    "capacite": 20,
+    "revenu": 2100.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-03-03"
+  },
+  {
+    "session_id": "97edb42a-2fb6-448a-bd34-6751d622ad1c",
+    "nb_inscrits": 3,
+    "capacite": 25,
+    "revenu": 1470.0,
+    "cout_formateur": 300.0,
+    "cout_logistique": 45.0,
+    "impayes": 30.0,
+    "date": "2026-05-19"
+  },
+  {
+    "session_id": "990c8042-a888-4a9d-bbd3-ef7d47314e3d",
+    "nb_inscrits": 1,
+    "capacite": 20,
+    "revenu": 2200.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-01-08"
+  },
+  {
+    "session_id": "c8905b26-19d9-4a07-856d-46c71cf8098e",
+    "nb_inscrits": 1,
+    "capacite": 20,
+    "revenu": 2100.0,
+    "cout_formateur": 550.0,
+    "cout_logistique": 120.5,
+    "impayes": 0.0,
+    "date": "2026-01-26"
+  },
+  {
+    "session_id": "cf1b6c64-f7a0-47a8-96be-b0723247b69c",
+    "nb_inscrits": 1,
+    "capacite": 20,
+    "revenu": 1600.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-02-24"
+  },
+  {
+    "session_id": "d9256e20-ec17-43c2-a6eb-5760e3179e96",
+    "nb_inscrits": 1,
+    "capacite": 24,
+    "revenu": 1300.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-05-08"
+  },
+  {
+    "session_id": "dde2800d-dfef-4fdf-b23f-7ad27aee9ab9",
+    "nb_inscrits": 1,
+    "capacite": 20,
+    "revenu": 1900.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-03-24"
+  },
+  {
+    "session_id": "e6edcd08-7a45-4441-afe2-908d1b466b99",
+    "nb_inscrits": 0,
+    "capacite": 30,
+    "revenu": 0.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-05-12"
+  },
+  {
+    "session_id": "eabfd952-72c3-47c9-9e69-61f152691fae",
+    "nb_inscrits": 1,
+    "capacite": 15,
+    "revenu": 1900.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-01-12"
+  },
+  {
+    "session_id": "f241b573-1358-4613-97d5-c19a9c734851",
+    "nb_inscrits": 1,
+    "capacite": 15,
+    "revenu": 2200.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-03-17"
+  },
+  {
+    "session_id": "f9029e82-21b4-4297-a41c-c682e5a01832",
+    "nb_inscrits": 1,
+    "capacite": 20,
+    "revenu": 1750.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-02-03"
+  },
+  {
+    "session_id": "fa5d726c-ab39-493b-9f5c-f5a04a56cc96",
+    "nb_inscrits": 1,
+    "capacite": 20,
+    "revenu": 0.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-04-20"
+  },
+  {
+    "session_id": "fd4a48de-8f67-4983-95e2-a17b30172fcc",
+    "nb_inscrits": 1,
+    "capacite": 30,
+    "revenu": 1750.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-03-10"
+  },
+  {
+    "session_id": "feff2c8a-12f3-4ba6-94c4-1a85c471c302",
+    "nb_inscrits": 1,
+    "capacite": 25,
+    "revenu": 1900.0,
+    "cout_formateur": 0.0,
+    "cout_logistique": 0.0,
+    "impayes": 0.0,
+    "date": "2026-02-17"
+  }
+]

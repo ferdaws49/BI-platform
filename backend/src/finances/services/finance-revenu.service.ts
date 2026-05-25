@@ -123,28 +123,22 @@ export class FinanceRevenueService {
 
   if (formationId) {
     params.push(formationId);
-    formationFilter = `
-      AND EXISTS (
-        SELECT 1 FROM dw.fact_finance f2 
-        JOIN dw.dim_formation df ON f2.sk_formation = df.sk_formation
-        WHERE f2.sk_session = ds.sk_session 
-          AND df.formation_id = $${params.length}
-      )`;
+    formationFilter = `AND ds.sk_formation = (SELECT sk_formation FROM dw.dim_formation WHERE formation_id = $3)`;
   }
 
   const res = await this.dataSource.query(`
-    SELECT COALESCE(SUM(COALESCE(ds.prix_session, 0) * inscrits.count), 0) as total
+    SELECT COALESCE(SUM(ds.prix_session * sub.count_apprenants), 0) as total
     FROM dw.dim_session ds
-    JOIN LATERAL (
-      SELECT COUNT(DISTINCT f.sk_apprenant) as count
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps dt ON f.sk_temps = dt.sk_temps
-      WHERE f.sk_session = ds.sk_session
-        AND dt.date_key BETWEEN $1 AND $2
-        AND f.sk_apprenant <> -1
-    ) inscrits ON true
-    WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
-      ${formationFilter}
+    INNER JOIN (
+      -- On compte combien d'élèves sont inscrits à CHAQUE session
+      SELECT sk_session, COUNT(DISTINCT sk_apprenant) as count_apprenants
+      FROM dw.fact_finance
+      WHERE sk_apprenant != -1
+      GROUP BY sk_session
+    ) sub ON ds.sk_session = sub.sk_session
+    -- IMPORTANT : On filtre sur la date de la SESSION
+    WHERE ds.date BETWEEN $1 AND $2
+    ${formationFilter}
   `, params);
 
   return parseFloat(res[0]?.total) || 0;
@@ -756,37 +750,41 @@ export class FinanceRevenueService {
   const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
   const months = this.enumerateMonths(currentStart, currentEnd);
 
-  // CA ENCAISSE (facile : c'est dans fact_finance)
-  const enc = await this.dataSource.query(`
+  // 1. CA ENCAISSE (Date du paiement)
+   const enc = await this.dataSource.query(`
     SELECT t.annee || '-' || LPAD(t.mois::text, 2, '0') as month,
-           COALESCE(SUM(f.montant), 0) as total
+           SUM(f.montant) as total
     FROM dw.fact_finance f
     JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
     JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-    WHERE tf.type = 'paiement'
-      AND t.date_key BETWEEN $1 AND $2
+    WHERE tf.type = 'paiement' AND t.date_key BETWEEN $1 AND $2
     GROUP BY t.annee, t.mois
-    ORDER BY t.annee, t.mois
   `, [currentStart, currentEnd]);
 
-  // CA FACTURE (par mois : chaque inscription = 1 × prix_session)
-  const fact = await this.dataSource.query(`
-    SELECT t.annee || '-' || LPAD(t.mois::text, 2, '0') as month,
-           COALESCE(SUM(ds.prix_session), 0) as total
-    FROM dw.fact_finance f
-    JOIN dw.dim_session ds ON f.sk_session = ds.sk_session
-    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-    WHERE t.date_key BETWEEN $1 AND $2
-      AND f.sk_apprenant != -1
-    GROUP BY t.annee, t.mois
-    ORDER BY t.annee, t.mois
+  // 2. CA FACTURE (Date de la session)
+  // Pour le CA FACTURÉ par mois
+const fact = await this.dataSource.query(`
+    SELECT 
+      TO_CHAR(ds.date, 'YYYY-MM') as month,
+      SUM(ds.prix_session * sub.nb) as total
+    FROM dw.dim_session ds
+    INNER JOIN (
+      SELECT sk_session, COUNT(DISTINCT sk_apprenant) as nb
+      FROM dw.fact_finance WHERE sk_apprenant != -1
+      GROUP BY sk_session
+    ) sub ON ds.sk_session = sub.sk_session
+    WHERE ds.date BETWEEN $1 AND $2
+    GROUP BY 1
   `, [currentStart, currentEnd]);
+
+  const encMap: Map<string, number> = new Map(enc.map((r: any) => [r.month, parseFloat(r.total)]));
+  const factMap: Map<string, number> = new Map(fact.map((r: any) => [r.month, parseFloat(r.total)]));
 
   return {
     rows: months.map((m) => ({
       month: m,
-      caEncaisse: parseFloat(enc.find((e: any) => e.month === m)?.total || 0),
-      caFacture: parseFloat(fact.find((f: any) => f.month === m)?.total || 0),
+      caEncaisse: encMap.get(m) ?? 0,
+      caFacture: factMap.get(m) ?? 0,
     }))
   };
 }

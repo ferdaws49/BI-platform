@@ -62,10 +62,7 @@ MODEL_DIR.mkdir(parents=True, exist_ok=True)
 FEATURE_COLUMNS = [
     "fill_rate",
     "cout_total",
-    "marge",
-    "taux_impaye",
     "month",
-    "revenu",
     "nb_inscrits",
 ]
 
@@ -416,11 +413,7 @@ def predict_sessions(
     """
     df = clean_sessions(raw_sessions)
     if df.empty:
-        return {
-            "predictions": [],
-            "insights": ["No valid sessions remaining after data cleaning."],
-            "recommendations": []
-        }
+        return []
     df = engineer_features(df)
 
     missing = [f for f in FEATURE_COLUMNS if f not in df.columns]
@@ -444,23 +437,29 @@ def predict_sessions(
         has_cost = (row["cout_formateur"] > 0) or (row["cout_logistique"] > 0)
         marge = float(row["marge"])
 
-        if not has_revenue or not has_cost:
+        if not has_cost:
             is_deficit = 0
             estimated_loss = 0.0
             recommendation = "Données financières incomplètes — vérifier les coûts et le prix de vente"
         else:
-            # Données complètes : is_deficit = vraie marge négative
-            is_deficit = 1 if marge < 0 else 0
-            estimated_loss = abs(marge) if marge < 0 else 0.0
+            # ── is_deficit vient du MODÈLE (prédiction) ──
+            is_deficit = 1 if risk_score > 0.5 else 0
 
-            if risk_level == "high" and row["fill_rate"] < 0.5:
-                recommendation = "Cancel session — high deficit risk and low enrollment"
-            elif risk_level == "high":
-                recommendation = "Reduce costs urgently — session at high deficit risk"
-            elif risk_level == "medium":
-                recommendation = "Promote session — increase enrollment to avoid deficit"
+            # ── estimated_loss : PRÉDICTIF ──
+            # Si on a la marge réelle et qu'elle est négative → perte réelle
+            # Sinon (session future) → estimer la perte potentielle
+            cout_total = float(row["cout_formateur"]) + float(row["cout_logistique"])
+            if marge < 0:
+                # Données réelles : on sait que c'est déficitaire
+                estimated_loss = abs(marge)
+            elif is_deficit == 1:
+                # Le modèle prédit déficit, mais on n'a pas encore les chiffres
+                # Estimation : risque × coûts totaux (marge potentielle perdue)
+                estimated_loss = round(cout_total * risk_score * 0.3, 2)
             else:
-                recommendation = "Keep session — deficit risk is low"
+                estimated_loss = 0.0
+
+            recommendation = _recommend(risk_level, float(row["fill_rate"]))
 
         results.append(SessionRiskOutput(
             session_id=str(row["session_id"]),

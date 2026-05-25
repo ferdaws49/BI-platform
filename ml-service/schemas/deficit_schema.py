@@ -1,10 +1,14 @@
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Literal
+from schemas.filters import CommonFilters
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INPUT SCHEMAS (received from NestJS)
 # ─────────────────────────────────────────────────────────────────────────────
+class SessionFilter(CommonFilters):
+    """Filtres pour la prédiction/entraînement des sessions déficitaires."""
+    pass  # Tout est dans CommonFilters
 
 class RawSessionInput(BaseModel):
     """
@@ -12,13 +16,13 @@ class RawSessionInput(BaseModel):
     No feature engineering applied yet — that happens in ML service.
     """
     session_id: str
-    nb_inscrits: float = Field(ge=0, default=0)
-    capacite: float = Field(gt=0)
-    revenu: float = Field(ge=0, default=0)
-    cout_formateur: float = Field(ge=0, default=0)
-    cout_logistique: float = Field(ge=0, default=0)
-    impayes: float = Field(ge=0, default=0)
-    date: str  # ISO date string: "YYYY-MM-DD"
+    nb_inscrits: float = 0
+    capacite: float
+    revenu: float = 0
+    cout_formateur: float = 0
+    cout_logistique: float = 0
+    impayes: float = 0  # <--- ENLÈVE le Field(ge=0) ici
+    date: str
 
     @validator("capacite")
     def capacite_must_be_positive(cls, v):
