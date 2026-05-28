@@ -1,3 +1,18 @@
+"""
+api/predict_routes.py — Endpoint HTTP risque d'abandon
+
+Route : POST /predict
+
+Pipeline :
+  1. Valider la requête (schemas/risk.PredictRequest)
+  2. Construire la matrice de features dans l'ordre FEATURE_NAMES
+  3. Appeler models/registry.predict → probabilités
+  4. Enrichir avec services/risk (niveau + facteurs texte)
+  5. Renvoyer PredictResponse
+
+Monté dans main.py via app.include_router(predict_router).
+"""
+
 from fastapi import APIRouter, HTTPException
 
 from config import FEATURE_NAMES, FEATURE_WEIGHTS
@@ -10,13 +25,10 @@ router = APIRouter(tags=["Risk Prediction"])
 
 @router.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
-    """
-    Pipeline risque d'abandon :
-    features JSON → matrice numpy → proba ML → score 0-100 → niveau + facteurs texte
-    """
     if not req.apprenants:
         raise HTTPException(status_code=400, detail="Liste d'apprenants vide")
 
+    # Ordre des colonnes = ordre d'entraînement dans train_risk.FEATURES
     feature_matrix = [
         [
             f.taux_presence,
@@ -34,6 +46,7 @@ def predict(req: PredictRequest):
     results = []
     for i, apprenant in enumerate(req.apprenants):
         prob = float(probabilities[i])
+        # Score affiché 0–100 (proba × 100), plafonné pour l'UI
         risk_score = min(100, int(round(prob * 100)))
         results.append(RiskResult(
             apprenant_id=apprenant.apprenant_id,
@@ -47,8 +60,8 @@ def predict(req: PredictRequest):
     return PredictResponse(
         results=results,
         model_info={
-            "model":       registry.model_name,
-            "features":    FEATURE_NAMES,
+            "model":        registry.model_name,
+            "features":     FEATURE_NAMES,
             "weights_used": FEATURE_WEIGHTS,
         },
     )

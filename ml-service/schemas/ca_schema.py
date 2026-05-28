@@ -1,8 +1,5 @@
-# schemas/ca_schema.py
-from typing import Literal
-from typing import Optional, List  # ← AJOUTER CETTE LIGNE
-from pydantic import BaseModel, Field
-from schemas.filters import CommonFilters
+from typing import List, Optional, Literal
+from pydantic import BaseModel
 
 class CommonFilters(BaseModel):
     date_from: Optional[str] = None
@@ -11,13 +8,11 @@ class CommonFilters(BaseModel):
     formateur_id: Optional[int] = None
     session_type: Optional[str] = None
 
-
 class CAFilter(CommonFilters):
-    periode: Literal[1, 3, 6] = 3
-
+    periode: int = 1
 
 class CAHistoriquePoint(BaseModel):
-    mois: str                # "2024-01"
+    mois: str
     annee: int
     mois_num: int
     ca: float
@@ -25,23 +20,22 @@ class CAHistoriquePoint(BaseModel):
     nb_sessions: int
     total_inscrits: int
 
-
 class CAHistoriqueResponse(BaseModel):
     historique: List[CAHistoriquePoint]
     total_mois: int
     ca_moyen: float
-    filtres: CommonFilters
-
+    filtres: CAFilter
 
 class CAMoisPrevu(BaseModel):
     mois: str
     ca_predit: float
     marge_estimee: float
-
+    nb_sessions: int
+    source: str
 
 class CAPredictResponse(BaseModel):
     previsions: List[CAMoisPrevu]
     periode: int
-    unite: str = "DT"
-    model_used: str
+    ca_total: Optional[float] = None
+    marge_total: Optional[float] = None
     tendance: str

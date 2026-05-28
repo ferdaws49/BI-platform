@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Res, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, Res, UseGuards, Get } from '@nestjs/common';
 import type { Response as ExpressResponse } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -11,6 +11,11 @@ import { ExportDto } from './dto/export-filter.dto';
 @Roles('directeur')
 export class ExportController {
   constructor(private readonly exportService: ExportService) {}
+
+  @Get('options')
+  getOptions() {
+    return this.exportService.getFilterOptions();
+  }
 
   @Post()
   exportReport(

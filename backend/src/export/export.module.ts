@@ -7,6 +7,7 @@ import { Formation } from '../formations/entities/formation.entity';
 import { Formateur } from '../formateurs/entities/formateur.entity';
 import { Finance } from '../finances/entities/finance.entity';
 import { Performance } from '../performances/entities/performance.entity';
+import { Session } from '../sessions/entities/session.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { Performance } from '../performances/entities/performance.entity';
       Formateur,
       Finance,
       Performance,
+      Session,
     ]),
   ],
   controllers: [ExportController],

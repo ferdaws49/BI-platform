@@ -7,7 +7,7 @@ import {
   BubbleController, CategoryScale, LinearScale, Tooltip, Legend, Filler,
 } from "chart.js";
 import {
-  glassCard, fmtCurrency, KPICard, SectionTitle,
+  cardClass, fmtCurrency, KPICard, SectionTitle,
   SearchBox, ExportBtn, FilterSelect, GrowthBadge, COLORS,
 } from  "@/app/financier/revenue/components/ui";
 import { revenueApi } from "@/lib/financier-revenue.api";
@@ -290,7 +290,7 @@ function SessionsTable({ data }: { data: TableResp | null }) {
   );
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={glassCard}>
+    <div className={`overflow-hidden ${cardClass}`}>
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b" style={{ borderColor: "#e5eadd" }}>
         <div>
           <p className="font-bold text-sm" style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}>CA par session</p>
@@ -416,9 +416,9 @@ export default function CATab({ filters }: { filters: Record<string, any> }) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="grid grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="h-28 rounded-2xl" style={{ background: "rgba(229,234,221,0.5)" }} />)}
+          {[1,2,3,4].map(i => <div key={i} className="h-28 rounded-xl border border-border bg-muted animate-pulse" />)}
         </div>
-        <div className="h-64 rounded-2xl" style={{ background: "rgba(229,234,221,0.5)" }} />
+        <div className="h-64 rounded-xl border border-border bg-muted animate-pulse" />
       </div>
     );
   }
@@ -462,11 +462,11 @@ export default function CATab({ filters }: { filters: Record<string, any> }) {
 
       {/* Line chart + Bar chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 rounded-2xl p-5" style={glassCard}>
+        <div className={`lg:col-span-2 p-4 ${cardClass}`}>
           <SectionTitle title="Évolution du CA par Formation" sub="Multi-courbes — cliquez sur la légende pour filtrer" />
           {evolution && <RevenueLineChart data={evolution} />}
         </div>
-        <div className="rounded-2xl p-5" style={glassCard}>
+        <div className={`p-4 ${cardClass}`}>
           <SectionTitle title="Répartition par Catégorie" sub="Part du CA total" />
           {categories.length > 0 && <CategoryPieChart data={categories} />}
         </div>
@@ -475,12 +475,12 @@ export default function CATab({ filters }: { filters: Record<string, any> }) {
 
       {/* Bar chart + Bubble chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-2xl p-5" style={glassCard}>
+        <div className={`p-4 ${cardClass}`}>
           <SectionTitle title="Top Formations par CA" sub="Revenus par formation — exercice 2025" />
           {topFormations.length > 0 && <RevenueBarChart data={topFormations} />}
         </div>
 
-        <div className="rounded-2xl p-5" style={glassCard}>
+        <div className={`p-4 ${cardClass}`}>
           <SectionTitle title="Analyse Inscrits vs Revenu" sub="Taille de bulle = marge ou prix" />
           <p className="text-xs mb-2" style={{ color: "#2d4a3e", opacity: 0.5 }}>
             Haut-gauche = formations Premium · Bas-droite = formations Massives

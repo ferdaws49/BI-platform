@@ -1,3 +1,6 @@
+// Dans le module, DataSource est disponible automatiquement via TypeORM
+// Pas besoin de l'ajouter dans providers, il est global
+import { DataSource } from 'typeorm';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DashboardController } from './dashboard.controller';
@@ -33,12 +36,18 @@ import { DirecteurReportsService } from './services/directeur.reports.service';
       Finance,
       PerformanceEntity,
       User,
-      Satisfaction, // 
+      Satisfaction, //
       Session,
       Inscription,
-    ])
+    ]),
   ],
-  controllers: [DashboardController, PedagogiqueDashboardController,AdminDashboardController, FinancierDashboardController, ApprenantDashboardController],
+  controllers: [
+    DashboardController,
+    PedagogiqueDashboardController,
+    AdminDashboardController,
+    FinancierDashboardController,
+    ApprenantDashboardController,
+  ],
   providers: [
     DashboardService,
     DirecteurDashboardService,
@@ -47,8 +56,7 @@ import { DirecteurReportsService } from './services/directeur.reports.service';
     FinancierDashboardService,
     ApprennatDashboardService,
     DirecteurReportsService,
-
   ],
-  exports: [FinancierDashboardService]
+  exports: [FinancierDashboardService],
 })
 export class DashboardModule {}

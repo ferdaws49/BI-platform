@@ -10,13 +10,6 @@ interface FiltersBarProps {
   onFilterChange: (filters: FilterState) => void;
 }
 
-const glassStyle = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
-
 function SelectDropdown({
   icon: Icon,
   value,
@@ -55,7 +48,7 @@ function SelectDropdown({
   );
 }
 
-const DIVIDER = <div className="w-px h-6 mx-1 shrink-0" style={{ background: "#e5eadd" }} />;
+const DIVIDER = <div className="w-px h-6 mx-1 shrink-0 bg-border" />;
 
 const PERIODS: PeriodOption[] = ["Mois", "Trimestre", "Année", "Personnalisé"];
 
@@ -82,13 +75,12 @@ export default function FiltersBar({ formations, formateurs, onFilterChange }: F
   return (
     <div className="flex flex-col gap-3">
       <div
-        className="flex flex-wrap items-center gap-3 p-4 rounded-2xl"
-        style={glassStyle}
+        className="flex flex-wrap items-center gap-3 p-2 rounded-xl bg-card border border-border shadow-sm"
       >
         {/* ── Période ─────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2">
-          <CalendarDays size={16} style={{ color: "#1a7149" }} />
-          <span className="text-sm font-medium" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+          <CalendarDays size={16} className="text-primary" />
+          <span className="text-sm font-medium text-muted-foreground">
             Période :
           </span>
         </div>
@@ -97,12 +89,11 @@ export default function FiltersBar({ formations, formateurs, onFilterChange }: F
             <button
               key={p}
               onClick={() => { setPeriod(p); apply({ period: p }); }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
-              style={
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                 period === p
-                  ? { background: "#1a7149", color: "#fff" }
-                  : { background: "#efefea", color: "#2d4a3e" }
-              }
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-foreground hover:bg-accent/20 hover:text-accent-foreground"
+              }`}
             >
               {p}
             </button>
@@ -164,8 +155,8 @@ export default function FiltersBar({ formations, formateurs, onFilterChange }: F
 
         {/* ── Type de session ──────────────────────────────────────────── */}
         <div className="flex items-center gap-2">
-          <Monitor size={16} style={{ color: "#1a7149" }} />
-          <span className="text-sm font-medium" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+          <Monitor size={16} className="text-primary" />
+          <span className="text-sm font-medium text-muted-foreground">
             Type :
           </span>
         </div>
@@ -174,12 +165,11 @@ export default function FiltersBar({ formations, formateurs, onFilterChange }: F
             <button
               key={s}
               onClick={() => { setSessionType(s); apply({ sessionType: s }); }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
-              style={
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                 sessionType === s
-                  ? { background: "#2d4a3e", color: "#fff" }
-                  : { background: "#efefea", color: "#2d4a3e" }
-              }
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-secondary text-foreground hover:bg-accent/20 hover:text-accent-foreground"
+              }`}
             >
               {s}
             </button>
@@ -188,11 +178,10 @@ export default function FiltersBar({ formations, formateurs, onFilterChange }: F
 
         {/* ── Badge exercice ───────────────────────────────────────────── */}
         <div
-          className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg shrink-0"
-          style={{ background: "rgba(26,113,73,0.1)" }}
+          className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg shrink-0 bg-primary/10 border border-primary/20"
         >
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#1a7149" }} />
-          <span className="text-xs font-medium" style={{ color: "#1a7149" }}>
+          <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+          <span className="text-xs font-medium text-primary">
             Exercice 2025
           </span>
         </div>

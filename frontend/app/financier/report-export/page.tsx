@@ -16,8 +16,10 @@ import {
 // ── Design tokens ─────────────────────────────
 const C = {
   dark: "#2d4a3e", primary: "#1a7149", error: "#DC2626",
-  warning: "#D97706", blue: "#3b82f6", glass: "bg-white/60 backdrop-blur-md border border-[#e5eadd]",
+  warning: "#D97706", blue: "#3b82f6",
 };
+const cardClass =
+  "rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-shadow";
 
 // ── Types ─────────────────────────────────────
 type ReportType = "mensuel" | "trimestriel" | "annuel";
@@ -134,11 +136,11 @@ export default function ReportingPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-8 max-w-screen-xl mx-auto">
+      <div className="p-4 md:p-6 space-y-8">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-[#2d4a3e]">Rapports Financiers</h1>
-          <p className="text-sm text-gray-500 mt-1">Générez et exportez vos rapports BI</p>
+          <h1 className="text-lg font-semibold text-foreground">Rapports Financiers</h1>
+          <p className="text-sm text-muted-foreground mt-1">Générez et exportez vos rapports BI</p>
         </div>
 
         {error && (
@@ -153,8 +155,10 @@ export default function ReportingPage() {
             <div
               key={card.type}
               onClick={() => handlePreview(card.type)}
-              className={`cursor-pointer rounded-2xl p-5 border transition-all hover:-translate-y-1 hover:shadow-lg ${
-                selectedType === card.type ? "bg-green-50/50 border-[#1a7149] ring-1 ring-[#1a7149]" : C.glass
+              className={`cursor-pointer p-4 border transition-all hover:shadow-md ${
+                selectedType === card.type
+                  ? "bg-primary/5 border-primary ring-1 ring-primary"
+                  : cardClass
               }`}
             >
               <div className="flex items-start gap-3">
@@ -162,8 +166,8 @@ export default function ReportingPage() {
                   {card.icon}
                 </div>
                 <div>
-                  <h3 className="font-bold text-[#2d4a3e]">{card.title}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{card.description}</p>
+                  <h3 className="font-semibold text-foreground">{card.title}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">{card.description}</p>
                 </div>
               </div>
               <button className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: card.accentColor }}>
@@ -178,20 +182,20 @@ export default function ReportingPage() {
         <div ref={previewRef}>
           {loading && (
             <div className="space-y-4 animate-pulse">
-              <div className="h-24 rounded-2xl bg-gray-200" />
-              <div className="grid grid-cols-4 gap-4">{[1,2,3,4].map(i => <div key={i} className="h-28 rounded-2xl bg-gray-200" />)}</div>
-              <div className="h-64 rounded-2xl bg-gray-200" />
+              <div className="h-24 rounded-xl border border-border bg-muted" />
+              <div className="grid grid-cols-4 gap-4">{[1,2,3,4].map(i => <div key={i} className="h-28 rounded-xl border border-border bg-muted" />)}</div>
+              <div className="h-64 rounded-xl border border-border bg-muted" />
             </div>
           )}
 
           {!loading && showPreview && reportData && selectedType && (
             <div className="space-y-6">
               <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-[#e5eadd]" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                   <Eye size={12} /> Aperçu · {TYPE_LABELS[selectedType]}
                 </span>
-                <div className="h-px flex-1 bg-[#e5eadd]" />
+                <div className="h-px flex-1 bg-border" />
               </div>
 
               {/* KPIs */}
@@ -203,29 +207,29 @@ export default function ReportingPage() {
               </div>
 
               {/* Table */}
-              <div className={`rounded-2xl overflow-hidden ${C.glass}`}>
-                <div className="px-5 py-4 border-b border-[#e5eadd] flex justify-between items-center">
+              <div className={`overflow-hidden ${cardClass}`}>
+                <div className="px-5 py-4 border-b border-border flex justify-between items-center">
                   <div>
-                    <p className="font-bold text-[#2d4a3e]">Top Sessions</p>
-                    <p className="text-xs text-gray-400">Les 5 sessions les plus significatives</p>
+                    <p className="font-semibold text-foreground">Top Sessions</p>
+                    <p className="text-xs text-muted-foreground">Les 5 sessions les plus significatives</p>
                   </div>
-                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-green-50 text-[#1a7149]">Aperçu uniquement</span>
+                  <span className="text-xs font-semibold px-2 py-1 rounded-full bg-primary/10 text-primary">Aperçu uniquement</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-[#e5eadd]/40">
+                      <tr className="bg-muted">
                         {["Session / Formation","Inscrits","CA","Coût","Marge","Recouv.","Remplissage","Statut"].map(h => (
-                          <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
+                          <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">{h}</th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-border">
                       {reportData.sessions.map((row, i) => (
-                        <tr key={i} className="border-t border-[#e5eadd] hover:bg-white/50">
+                        <tr key={i} className="hover:bg-accent/20">
                           <td className="px-4 py-3">
-                            <p className="font-semibold text-[#2d4a3e]">{row.sessionName}</p>
-                            <p className="text-xs text-gray-400">{row.formationName}</p>
+                            <p className="font-semibold text-foreground">{row.sessionName}</p>
+                            <p className="text-xs text-muted-foreground">{row.formationName}</p>
                           </td>
                           <td className="px-4 py-3 text-xs"><span className="font-semibold">{row.inscrits}</span><span className="text-gray-400">/{row.capacite}</span></td>
                           <td className="px-4 py-3 text-xs font-semibold">{fmtMoney(row.revenue)}</td>
@@ -245,10 +249,10 @@ export default function ReportingPage() {
               </div>
 
               {/* Export */}
-              <div className={`rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 ${C.glass}`}>
+              <div className={`p-4 flex flex-wrap items-center justify-between gap-4 ${cardClass}`}>
                 <div>
-                  <p className="font-semibold text-[#2d4a3e]">Exporter le rapport complet</p>
-                  <p className="text-xs text-gray-400">{TYPE_LABELS[selectedType]} · toutes les sessions</p>
+                  <p className="font-semibold text-foreground">Exporter le rapport complet</p>
+                  <p className="text-xs text-muted-foreground">{TYPE_LABELS[selectedType]} · toutes les sessions</p>
                 </div>
                 <div className="flex gap-2">
                   <ExportBtn format="pdf" label="PDF" bg={C.error} onClick={handleExport} loading={exportLoading} />
@@ -260,9 +264,9 @@ export default function ReportingPage() {
           )}
 
           {!loading && !showPreview && (
-            <div className={`rounded-2xl p-12 text-center ${C.glass}`}>
-              <FileText size={32} className="mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">Sélectionnez un type de rapport pour voir l'aperçu</p>
+            <div className={`p-12 text-center ${cardClass}`}>
+              <FileText size={32} className="mx-auto text-muted-foreground/40 mb-3" />
+              <p className="text-muted-foreground">Sélectionnez un type de rapport pour voir l&apos;aperçu</p>
             </div>
           )}
         </div>
@@ -274,13 +278,12 @@ export default function ReportingPage() {
 // ── Sub-components ──────────────────────────────
 function KpiCard({ label, value, pct, color, isPct }: { label: string; value: number; pct: number; color: string; isPct?: boolean }) {
   return (
-    <div className={`rounded-2xl p-5 ${C.glass} relative`}>
-      <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: color }} />
+    <div className={`p-4 relative ${cardClass}`}>
       <div className="flex justify-between items-start">
-        <p className="text-xs font-medium text-gray-400 uppercase">{label}</p>
+        <p className="text-xs font-medium text-muted-foreground uppercase">{label}</p>
         {pct !== 0 && <span className={`inline-flex items-center gap-0.5 text-xs font-semibold px-2 py-0.5 rounded-full ${pct >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{pct >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}{fmtPct(pct)}</span>}
       </div>
-      <p className="text-2xl font-bold text-[#2d4a3e] mt-2">{isPct ? `${value.toFixed(1)}%` : fmtMoney(value)}</p>
+      <p className="text-2xl font-bold text-foreground mt-2">{isPct ? `${value.toFixed(1)}%` : fmtMoney(value)}</p>
     </div>
   );
 }

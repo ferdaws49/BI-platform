@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { directeurLinks } from "./sidebar/directeurLinks";
 import { respedLinks } from "./sidebar/respedLinks";
 import { adminLinks } from "./sidebar/adminLinks";
+import { financierLinks } from "./sidebar/financierLinks";
 
-type Role = "directeur" | "responsablePedagogique" | "admin";
+type Role = "directeur" | "responsablePedagogique" | "admin" | "financier";
 
 export default function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
@@ -16,14 +17,18 @@ export default function Sidebar({ role }: { role: Role }) {
       ? respedLinks
       : role === "admin"
         ? adminLinks
-        : directeurLinks;
+        : role === "financier"
+          ? financierLinks
+          : directeurLinks;
 
   const roleLabel =
     role === "responsablePedagogique"
       ? "Responsable Pédagogique"
       : role === "admin"
         ? "Administrateur"
-        : "Directeur";
+        : role === "financier"
+          ? "Responsable Financier"
+          : "Directeur";
 
   return (
     <aside className="w-64 min-h-screen p-6 flex flex-col border-r border-border bg-sidebar-background transition-colors duration-300">

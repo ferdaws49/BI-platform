@@ -22,7 +22,6 @@ import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
 import { RolesGuard } from "src/auth/guards/roles.guard";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.APPRENANT)
 @Controller("profile")
 export class ProfileController{
     constructor(
@@ -75,7 +74,6 @@ public async getFullProfile(@CurrentUser() payload: any) {
 
         //PUT: ~/profile/
         @Put()
-        @Roles(UserRole.APPRENANT)
         public updateProfile(@CurrentUser() payload : any, @Body() body: UpdateProfileDto) {
              console.log("Données reçues :", body)
             return this.profileService.update(payload.userId, body)

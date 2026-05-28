@@ -1,517 +1,125 @@
-"""
-deficit_service.py
-─────────────────────────────────────────────────────────────────────────────
-Core ML logic for Session Deficit Prediction.
-
-Responsibilities:
-  1. Data cleaning
-  2. Feature engineering
-  3. Label creation (is_deficit)
-  4. Train / test split
-  5. Logistic Regression training
-  6. Evaluation (accuracy, ROC-AUC, confusion matrix, classification report)
-  7. Model persistence (.pkl)
-  8. Prediction with risk scoring
-  9. Recommendation engine
-
-NestJS sends RAW data → this service does ALL ML work.
-"""
-
-import logging
-import os
-import re
-from datetime import datetime, date
-from pathlib import Path
-from typing import List, Tuple
-
-import joblib
 import numpy as np
 import pandas as pd
+import joblib
+import os
+from pathlib import Path
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    confusion_matrix,
-    f1_score,
-    precision_score,
-    recall_score,
-    roc_auc_score,
-)
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, roc_auc_score
+from typing import List, Tuple
 
-from schemas.deficit_schema import (
-    RawSessionInput,
-    SessionRiskOutput,
-    TrainMetrics,
-    TrainResponse,
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────────────────────────────────────
-
-logger = logging.getLogger(__name__)
-
-MODEL_DIR = Path(os.getenv("MODEL_DIR", "./models"))
+# --- CONFIGURATION DES CHEMINS ---
+MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
+MODEL_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_PATH = MODEL_DIR / "session_deficit_model.pkl"
 SCALER_PATH = MODEL_DIR / "session_deficit_scaler.pkl"
 
-MODEL_DIR.mkdir(parents=True, exist_ok=True)
+# FEATURES PRÉDICTIVES (SANS Data Leakage)
+FEATURE_COLUMNS = ["fill_rate", "cout_total", "nb_inscrits", "capacite", "month"]
 
-FEATURE_COLUMNS = [
-    "fill_rate",
-    "cout_total",
-    "month",
-    "nb_inscrits",
-]
+# --- FONCTIONS DE GESTION DU MODÈLE (Celles qui manquaient) ---
+def model_exists() -> bool:
+    """Vérifie si le modèle et le scaler existent sur le disque."""
+    return MODEL_PATH.exists() and SCALER_PATH.exists()
 
-# Risk thresholds
-RISK_HIGH_THRESHOLD   = 0.8
-RISK_MEDIUM_THRESHOLD = 0.5
+def load_model() -> Tuple[LogisticRegression, StandardScaler]:
+    """Charge le modèle et le scaler depuis le disque."""
+    if not model_exists():
+        raise FileNotFoundError("Modèle ou Scaler introuvable.")
+    model = joblib.load(MODEL_PATH)
+    scaler = joblib.load(SCALER_PATH)
+    return model, scaler
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — DATA CLEANING
-# ─────────────────────────────────────────────────────────────────────────────
-
-#lenna bech nadhfou(preparation des donnés)
-def clean_sessions(raw_sessions: List[RawSessionInput]) -> pd.DataFrame:
-    """
-    Convert raw NestJS payload to a cleaned DataFrame.
-    Removes invalid rows. Fills missing numerics with 0.
-    """
-    if not raw_sessions:
-        raise ValueError("No sessions provided for cleaning.")
-
-    records = [s.dict() for s in raw_sessions]
-    df = pd.DataFrame(records)
-
-    logger.info(f"[CLEAN] Raw input: {len(df)} sessions")
-
-    # Drop rows with missing session_id or date
-    df = df.dropna(subset=["session_id", "date"]) 
-
-    # Ensure numeric types
-    numeric_cols = ["nb_inscrits", "capacite", "revenu",
-                    "cout_formateur", "cout_logistique", "impayes"]
-    for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-    # Remove sessions with zero or negative capacity (can't compute fill_rate)
-    df = df[df["capacite"] > 0].copy()
-
-    # Remove sessions with all-zero financials (no data)
-    df = df[
-        (df["revenu"] > 0) |
-        (df["cout_formateur"] > 0) |  # Au moins 1 chiffre
-        (df["cout_logistique"] > 0)
-    ].copy()
-
-    logger.info(f"[CLEAN] After cleaning: {len(df)} sessions")
-
-    if len(df) == 0:
-        raise ValueError("All sessions were removed during cleaning. Check data quality.")
-
-    return df.reset_index(drop=True)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — FEATURE ENGINEERING
-# ─────────────────────────────────────────────────────────────────────────────
-
-#C'est ici que les vraies variables intelligentes sont créées :
-#Ces features sont calculées exactement de la même manière pendant l'entraînement et la prédiction. Sinon le modèle ne comprend rien.
+# --- LOGIQUE ML ---
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Compute all ML features from cleaned raw data.
-    This is the ONLY place where features are created.
-    """
     df = df.copy()
-
-    # fill_rate: occupancy ratio
+    # Calcul des variables intelligentes
     df["fill_rate"] = (df["nb_inscrits"] / df["capacite"]).clip(0, 1)
-
-    # cout_total: total cost
     df["cout_total"] = df["cout_formateur"] + df["cout_logistique"]
-
-    # marge: net margin
     df["marge"] = df["revenu"] - df["cout_total"]
-
-    # taux_impaye: unpaid ratio relative to revenue
-    # If revenu = 0, taux_impaye = 1 (worst case)
-    df["taux_impaye"] = np.where(
-        df["revenu"] > 0,
-        (df["impayes"] / df["revenu"]).clip(0, 1),
-        1.0
-    )
-
-    # month: seasonality feature
-    df["month"] = df["date"].apply(_extract_month)
-
-    logger.info(
-        f"[FEATURES] Engineered {len(FEATURE_COLUMNS)} features for {len(df)} sessions. "
-        f"Avg fill_rate={df['fill_rate'].mean():.2f}, "
-        f"Avg marge={df['marge'].mean():.2f}, "
-        f"Deficit rate={((df['marge'] < 0).sum() / len(df)):.2%}"
-    )
-
+    
+    # Extraction du mois pour la saisonnalité
+    df["date"] = pd.to_datetime(df["date"])
+    df["month"] = df["date"].dt.month
+    
+    # LABEL : 1 si marge < 100 DT (Seuil de risque)
+    if "is_deficit" not in df.columns:
+        df["is_deficit"] = (df["marge"] < 100).astype(int)
+    
     return df
 
+def run_training(raw_sessions):
+    """Pipeline d'entraînement complet."""
+    # Conversion de la liste Pydantic en DataFrame
+    df = pd.DataFrame([s.dict() for s in raw_sessions])
+    df = engineer_features(df)
+    
+    if df["is_deficit"].nunique() < 2:
+        raise ValueError("L'historique doit contenir des sessions rentables ET des sessions à risque.")
 
-def _extract_month(date_val) -> int:
-    """Extract month integer from ISO string or date object."""
-    if isinstance(date_val, (datetime, date)):
-        return date_val.month
-    try:
-        return datetime.fromisoformat(str(date_val)).month
-    except Exception:
-        return 1  # Default to January if unparseable
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — LABEL CREATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def create_labels(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    y = 1 if session is DEFICIT (marge < 0) else 0.
-    """
-    df = df.copy()
-    df["is_deficit"] = (df["marge"] < 0).astype(int)
-
-    n_deficit = df["is_deficit"].sum()
-    logger.info(
-        f"[LABELS] {n_deficit}/{len(df)} sessions labeled as DEFICIT "
-        f"({n_deficit/len(df):.1%})"
-    )
-
-    return df
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 4 + 5 — TRAIN/TEST SPLIT + MODEL TRAINING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def train_model(df: pd.DataFrame) -> Tuple[LogisticRegression, StandardScaler, TrainMetrics]:
-    """
-    Full training pipeline:
-      - Feature matrix preparation
-      - Train/test split (80/20)
-      - StandardScaler normalization
-      - Logistic Regression training
-      - Evaluation
-      - Returns trained model, scaler, and metrics
-    """
     X = df[FEATURE_COLUMNS].values
     y = df["is_deficit"].values
 
-    if len(np.unique(y)) < 2:
-        raise ValueError(
-            "Cannot train: only one class present in labels. "
-            "Need both DEFICIT and NON-DEFICIT sessions."
-        )
-
-    class_counts = np.bincount(y)
-    if len(class_counts) < 2 or np.any(class_counts < 2):
-        raise ValueError(
-            "Cannot train: each class must have at least 2 samples for stratified split. "
-            "Collect more data or reduce the test_size."
-        )
-
-    # STEP 4 — Split
+    # Split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
-
-    logger.info(
-        f"[TRAIN] Split: {len(X_train)} train / {len(X_test)} test | "
-        f"Deficit in train: {y_train.sum()}"
-    )
-
-    # Normalize features (critical for Logistic Regression)
+    
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled  = scaler.transform(X_test)
-
-    # STEP 5 — Train Logistic Regression
-    model = LogisticRegression(
-        random_state=42,
-        max_iter=1000,
-        class_weight="balanced",  # handles class imbalance
-        solver="lbfgs",
-    )
-    model.fit(X_train_scaled, y_train)
-
-    # STEP 6 — Evaluate
-    metrics = _evaluate_model(model, scaler, X_test_scaled, y_test, y_train)
-
-    return model, scaler, metrics
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 6 — EVALUATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _evaluate_model(
-    model: LogisticRegression,
-    scaler: StandardScaler,
-    X_test_scaled: np.ndarray,
-    y_test: np.ndarray,
-    y_train: np.ndarray,
-) -> TrainMetrics:
-    """
-    Evaluate trained model and return structured metrics.
-
-    Precision: of all sessions predicted as DEFICIT, how many really are?
-    Recall:    of all real DEFICIT sessions, how many did we detect?
-    ROC-AUC:   overall discriminative ability (1.0 = perfect, 0.5 = random)
-    """
-    y_pred      = model.predict(X_test_scaled)
-    y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-
-    acc       = float(accuracy_score(y_test, y_pred))
-    if len(np.unique(y_test)) < 2:
-        raise ValueError(
-            "Cannot compute ROC-AUC: test set contains only one class. "
-            "Ensure enough samples per class before training."
-        )
-    roc_auc   = float(roc_auc_score(y_test, y_pred_proba))
-    precision = float(precision_score(y_test, y_pred, zero_division=0))
-    recall    = float(recall_score(y_test, y_pred, zero_division=0))
-    f1        = float(f1_score(y_test, y_pred, zero_division=0))
-    cm        = confusion_matrix(y_test, y_pred).tolist()
-
-    logger.info(
-        f"[EVAL] accuracy={acc:.3f} | roc_auc={roc_auc:.3f} | "
-        f"precision={precision:.3f} | recall={recall:.3f} | f1={f1:.3f}"
-    )
-    logger.info(f"[EVAL] Confusion Matrix:\n{confusion_matrix(y_test, y_pred)}")
-    logger.info(f"[EVAL] Classification Report:\n{classification_report(y_test, y_pred)}")
-
-    return TrainMetrics(
-        accuracy=acc,
-        roc_auc=roc_auc,
-        precision=precision,
-        recall=recall,
-        f1_score=f1,
-        confusion_matrix=cm,
-        n_samples_train=len(y_train),
-        n_samples_test=len(y_test),
-        n_deficit_train=int(y_train.sum()),
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 7 — SAVE / LOAD MODEL
-# ─────────────────────────────────────────────────────────────────────────────
-
-def save_model(model: LogisticRegression, scaler: StandardScaler) -> None:
-    """Persist trained model and scaler to disk using joblib."""
+    X_train_sc = scaler.fit_transform(X_train)
+    
+    model = LogisticRegression(class_weight="balanced", random_state=42)
+    model.fit(X_train_sc, y_train)
+    
+    # Evaluation
+    X_test_sc = scaler.transform(X_test)
+    probs = model.predict_proba(X_test_sc)[:, 1]
+    acc = accuracy_score(y_test, model.predict(X_test_sc))
+    auc = roc_auc_score(y_test, probs)
+    
+    # Sauvegarde
     joblib.dump(model, MODEL_PATH)
     joblib.dump(scaler, SCALER_PATH)
-    logger.info(f"[SAVE] Model saved to {MODEL_PATH}")
-    logger.info(f"[SAVE] Scaler saved to {SCALER_PATH}")
-
-
-def load_model() -> Tuple[LogisticRegression, StandardScaler]:
-    """Load trained model and scaler from disk."""
-    if not MODEL_PATH.exists():
-        raise FileNotFoundError(
-            f"No trained model found at {MODEL_PATH}. "
-            "Please call /train first."
-        )
-    model  = joblib.load(MODEL_PATH)
-    scaler = joblib.load(SCALER_PATH)
-    logger.info(f"[LOAD] Model loaded from {MODEL_PATH}")
-    return model, scaler
-
-
-def model_exists() -> bool:
-    return MODEL_PATH.exists() and SCALER_PATH.exists()
-
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TRAINING PIPELINE (callable from API or CLI)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def run_training(
-    raw_sessions: list[RawSessionInput],
-    min_samples: int = 10,
-) -> TrainResponse:
-    """
-    Full training pipeline callable from API router or CLI script.
-    """
-    logger.info(f"[PIPELINE] Starting training with {len(raw_sessions)} sessions")
-
-    if len(raw_sessions) < min_samples:
-        raise ValueError(
-            f"Not enough sessions: got {len(raw_sessions)}, "
-            f"minimum required is {min_samples}."
-        )
-
-    # Step 1: Clean
-    df = clean_sessions(raw_sessions)
-
-    # Step 2: Feature Engineering
-    df = engineer_features(df)
-
-    # Step 3: Labels
-    df = create_labels(df)
-
-    # Validate class distribution
-    n_deficit = df["is_deficit"].sum()
-    n_non_deficit = len(df) - n_deficit
-
-    if n_deficit == 0:
-        raise ValueError("No DEFICIT sessions found. Cannot train — need at least 1 deficit session.")
-    if n_non_deficit == 0:
-        raise ValueError("No NON-DEFICIT sessions found. Cannot train — need both classes.")
-
-    logger.info(
-        f"[PIPELINE] Class distribution: "
-        f"{n_deficit} DEFICIT / {n_non_deficit} NON-DEFICIT"
-    )
-
-    # Step 4+5: Train + Evaluate
-    model, scaler, metrics = train_model(df)
-
-    # Step 6: Save
-    save_model(model, scaler)
-
-    logger.info(
-        f"[PIPELINE] Training complete. "
-        f"Accuracy={metrics.accuracy:.3f} | ROC-AUC={metrics.roc_auc:.3f}"
-    )
-
+    
+    from schemas.deficit_schema import TrainMetrics, TrainResponse
     return TrainResponse(
-        message=(
-            f"Model trained successfully on {metrics.n_samples_train + metrics.n_samples_test} sessions. "
-            f"Accuracy: {metrics.accuracy:.1%} | ROC-AUC: {metrics.roc_auc:.3f}"
-        ),
-        metrics=metrics,
+        message="Modèle de déficit entraîné avec succès",
+        metrics=TrainMetrics(
+            accuracy=round(acc, 3),
+            roc_auc=round(auc, 3),
+            n_samples_train=len(y_train)
+        )
     )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 8 — PREDICTION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def predict_sessions(
-    raw_sessions: List[RawSessionInput],
-    model: LogisticRegression,
-    scaler: StandardScaler,
-) -> List[SessionRiskOutput]:
-    """
-    Full prediction pipeline for a list of sessions:
-      1. Clean raw input
-      2. Feature engineering (same as training)
-      3. Predict probability with model.predict_proba()
-      4. Classify risk level
-      5. Compute estimated loss
-      6. Generate recommendation
-    """
-    df = clean_sessions(raw_sessions)
-    if df.empty:
-        return []
-    df = engineer_features(df)
-
-    missing = [f for f in FEATURE_COLUMNS if f not in df.columns]
-    if missing:
-        raise ValueError(f"Missing features after engineering: {missing}")
-
-    X = df[FEATURE_COLUMNS].values
-    X_scaled = scaler.transform(X) # Normalisation (moyenne=0, écart-type=1)
-
-    # Probability of being DEFICIT (class 1)
-    proba = model.predict_proba(X_scaled)[:, 1]  # Probabilité de déficit
-
-    results: List[SessionRiskOutput] = []
-
+def predict_sessions(raw_sessions, model, scaler):
+    """Pipeline de prédiction."""
+    df_raw = pd.DataFrame([s.dict() for s in raw_sessions])
+    df = engineer_features(df_raw)
+    
+    X_sc = scaler.transform(df[FEATURE_COLUMNS].values)
+    probs = model.predict_proba(X_sc)[:, 1]
+    
+    results = []
     for i, row in df.iterrows():
-        risk_score = float(proba[i])
-        risk_level = _classify_risk(risk_score)
-
-        # ── Gestion données manquantes ─────────────────────────────
-        has_revenue = row["revenu"] > 0
-        has_cost = (row["cout_formateur"] > 0) or (row["cout_logistique"] > 0)
-        marge = float(row["marge"])
-
-        if not has_cost:
-            is_deficit = 0
-            estimated_loss = 0.0
-            recommendation = "Données financières incomplètes — vérifier les coûts et le prix de vente"
+        score = float(probs[i])
+        # Classification du risque
+        level = "high" if score > 0.8 else "medium" if score > 0.5 else "low"
+        
+        # Recommandation dynamique
+        if level == "high":
+            rec = "Risque critique : Envisager l'annulation ou la réduction des coûts."
+        elif level == "medium":
+            rec = "Risque modéré : Booster les inscriptions via une promotion."
         else:
-            # ── is_deficit vient du MODÈLE (prédiction) ──
-            is_deficit = 1 if risk_score > 0.5 else 0
+            rec = "Session saine : Aucune action requise."
 
-            # ── estimated_loss : PRÉDICTIF ──
-            # Si on a la marge réelle et qu'elle est négative → perte réelle
-            # Sinon (session future) → estimer la perte potentielle
-            cout_total = float(row["cout_formateur"]) + float(row["cout_logistique"])
-            if marge < 0:
-                # Données réelles : on sait que c'est déficitaire
-                estimated_loss = abs(marge)
-            elif is_deficit == 1:
-                # Le modèle prédit déficit, mais on n'a pas encore les chiffres
-                # Estimation : risque × coûts totaux (marge potentielle perdue)
-                estimated_loss = round(cout_total * risk_score * 0.3, 2)
-            else:
-                estimated_loss = 0.0
-
-            recommendation = _recommend(risk_level, float(row["fill_rate"]))
-
-        results.append(SessionRiskOutput(
-            session_id=str(row["session_id"]),
-            risk_score=round(risk_score, 4),
-            risk_level=risk_level,
-            is_deficit=is_deficit,
-            estimated_loss=round(estimated_loss, 2),
-            recommendation=recommendation,
-        ))
-
-    logger.info(
-        f"[PREDICT] {len(results)} predictions | "
-        f"HIGH={sum(1 for r in results if r.risk_level == 'high')} | "
-        f"MEDIUM={sum(1 for r in results if r.risk_level == 'medium')} | "
-        f"LOW={sum(1 for r in results if r.risk_level == 'low')}"
-    )
-
+        results.append({
+            "session_id": str(row["session_id"]),
+            "risk_score": round(score, 4),
+            "risk_level": level,
+            "is_deficit": 1 if score > 0.5 else 0,
+            "estimated_loss": round(abs(min(0, row["marge"])), 2),
+            "recommendation": rec
+        })
     return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 9 — RISK CLASSIFICATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _classify_risk(risk_score: float) -> str:
-    """
-    risk_score > 0.8  → HIGH
-    risk_score > 0.5  → MEDIUM
-    else              → LOW
-    """
-    if risk_score > RISK_HIGH_THRESHOLD:
-        return "high"
-    elif risk_score > RISK_MEDIUM_THRESHOLD:
-        return "medium"
-    return "low"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 10 — RECOMMENDATION ENGINE
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _recommend(risk_level: str, fill_rate: float) -> str:
-    """
-    HIGH risk + low fill_rate (< 50%) → Cancel session
-    HIGH risk + decent fill_rate      → Reduce costs urgently
-    MEDIUM risk                       → Promote session to increase enrollment
-    LOW risk                          → Keep session as planned
-    """
-    if risk_level == "high":
-        if fill_rate < 0.5:
-            return "Cancel session — high deficit risk and low enrollment"
-        return "Reduce costs urgently — session at high deficit risk"
-    elif risk_level == "medium":
-        return "Promote session — increase enrollment to avoid deficit"
-    return "Keep session — deficit risk is low"

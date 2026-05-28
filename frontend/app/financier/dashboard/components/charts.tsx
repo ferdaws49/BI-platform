@@ -26,13 +26,6 @@ Chart.register(
   Tooltip, Legend, Filler
 );
 
-const glassCard = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
-
 const colors = [
   "rgb(44, 149, 83)", // foncé (accent)
   "rgb(20, 123, 73)",
@@ -47,10 +40,10 @@ const colors = [
 
 function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-4" style={glassCard}>
+    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow">
       <div>
-        <h3 className="text-base font-bold font-sora" style={{ color: "#2d4a3e" }}>{title}</h3>
-        <p className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.45 }}>{subtitle}</p>
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        <p className="text-xs mt-0.5 text-muted-foreground">{subtitle}</p>
       </div>
       {children}
     </div>

@@ -59,7 +59,6 @@ export class EtlService {
       formateur: new Map(),
       apprenant: new Map(),
     };
-
     // ✅ Audit START
     const [runRow] = await this.dataSource.query(
       `INSERT INTO dw.etl_runs (started_at, status)
@@ -256,8 +255,8 @@ export class EtlService {
   }
 
   private async loadDimTempsRange(qr?: QueryRunner): Promise<void> {
-    const start = new Date('2023-01-01');
-    const end = new Date('2025-12-31');
+    const start = new Date('2025-01-01');
+    const end = new Date('2026-12-31');
 
     const rows: any[] = [];
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {

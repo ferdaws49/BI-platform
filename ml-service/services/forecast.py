@@ -1,11 +1,26 @@
+"""
+services/forecast.py — Interprétation métier des prévisions d'inscriptions
+
+Rôle : après les valeurs numériques (models/forecast.py), produire
+       une tendance globale + un message pour le directeur.
+
+Seuils : variation ≥ +10 % → hausse ; ≤ -10 % → baisse ; sinon stable.
+         (comparaison entre le dernier mois observé et le 1er mois prédit)
+
+Fichiers liés :
+  - api/forecast_routes.py
+  - schemas/forecast.ForecastPoint
+"""
+
 from schemas.forecast import ForecastPoint
 from typing import List
 
 
 def compute_tendance(historique_y: list, previsions: List[ForecastPoint]) -> tuple:
     """
-    Calcule la tendance et génère un insight pour le directeur.
-    Seuils ±10% : hausse / baisse / stable.
+    Retourne (tendance, insight).
+    historique_y : liste des effectifs passés (colonne y du DataFrame)
+    previsions   : sortie de ForecastRegistry.predict_next_months
     """
     if not previsions:
         return "stable", "Données insuffisantes."
@@ -14,6 +29,7 @@ def compute_tendance(historique_y: list, previsions: List[ForecastPoint]) -> tup
     prochaine_valeur = previsions[0].valeur_prevue
 
     variation = prochaine_valeur - derniere_valeur
+    # max(1, ...) évite division par zéro si le dernier mois = 0 inscription
     pct = round((variation / max(1, derniere_valeur)) * 100)
 
     if pct >= 10:

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Save, Lock, Bell, User, Palette } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Save, Lock, Bell, User, Palette, Camera, Trash2 } from "lucide-react";
 import { useDirecteurContext } from "../DirecteurContext";
+
+const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
 
 // ─── API helpers ────────────────────────────────────────────────────────────
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
@@ -67,6 +69,12 @@ export default function SettingsPage() {
   const [notifSaved, setNotifSaved] = useState(false);
   const [prefSaved, setPrefSaved] = useState(false);
 
+  // ── Image state ──
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [imgUploading, setImgUploading] = useState(false);
+  const [imgError, setImgError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // ── Form state ──
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -111,6 +119,68 @@ export default function SettingsPage() {
         setProfileLoading(false);
       });
   }, []);
+
+  // ── Load profile image from /profile/me ──
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
+    fetch(`${BACKEND}/profile/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setProfileImage(data?.profileImage ?? null))
+      .catch(() => {});
+  }, []);
+
+  // ── Image upload handler ──
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImgUploading(true);
+    setImgError(null);
+    try {
+      const token = localStorage.getItem("access_token");
+      const fd = new FormData();
+      fd.append("user-image", file);
+      const res = await fetch(`${BACKEND}/profile/upload-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("Erreur upload");
+      const data = await res.json();
+      setProfileImage(data?.profileImage ?? null);
+      // Refresh profile from /profile/me to get latest image
+      const token2 = localStorage.getItem("access_token");
+      const me = await fetch(`${BACKEND}/profile/me`, { headers: { Authorization: `Bearer ${token2}` } }).then(r => r.json());
+      setProfileImage(me?.profileImage ?? null);
+    } catch (err: any) {
+      setImgError("Erreur lors de l'envoi de la photo");
+    } finally {
+      setImgUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // ── Image delete handler ──
+  const handleDeleteImage = async () => {
+    if (!window.confirm("Voulez-vous vraiment supprimer votre photo de profil ?")) return;
+    setImgUploading(true);
+    setImgError(null);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`${BACKEND}/profile/images/remove-profile-image`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erreur suppression");
+      setProfileImage(null);
+    } catch (err: any) {
+      setImgError("Erreur lors de la suppression de la photo");
+    } finally {
+      setImgUploading(false);
+    }
+  };
 
   // ── Handlers ──
   const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -234,6 +304,52 @@ export default function SettingsPage() {
             <h2 className={`text-lg font-semibold mb-6 ${textPrimary}`}>
               {t.profile.title}
             </h2>
+
+            {/* ── Photo de profil ── */}
+            <div className="flex flex-col items-center mb-8">
+              <div className="relative group">
+                {profileImage ? (
+                  <img
+                    src={`${BACKEND}/profile/images/${profileImage}?t=${Date.now()}`}
+                    alt="Photo de profil"
+                    className="w-24 h-24 rounded-full object-cover border-4 border-emerald-100 shadow-md"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-emerald-600 text-white flex items-center justify-center text-3xl font-bold border-4 border-emerald-100 shadow-md">
+                    {profile?.firstName?.charAt(0)?.toUpperCase() ?? <User className="h-10 w-10" />}
+                  </div>
+                )}
+                {/* Bouton upload */}
+                <label className="absolute bottom-0 right-0 p-1.5 bg-white border border-gray-200 rounded-full shadow cursor-pointer hover:bg-gray-50 transition-colors">
+                  {imgUploading ? (
+                    <div className="h-4 w-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4 text-gray-600" />
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={imgUploading}
+                  />
+                </label>
+                {/* Bouton suppression */}
+                {profileImage && (
+                  <button
+                    onClick={handleDeleteImage}
+                    disabled={imgUploading}
+                    className="absolute bottom-0 left-0 p-1.5 bg-white border border-gray-200 rounded-full shadow cursor-pointer hover:bg-red-50 text-red-500 transition-colors"
+                    title="Supprimer la photo"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-3">Cliquez sur l&apos;icône appareil photo pour changer votre photo</p>
+              {imgError && <p className="text-xs text-red-500 mt-1">{imgError}</p>}
+            </div>
 
             {profileLoading ? (
               <div className="flex items-center justify-center py-12">

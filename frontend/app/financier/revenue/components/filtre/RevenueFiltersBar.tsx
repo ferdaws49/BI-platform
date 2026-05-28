@@ -103,17 +103,10 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
   }, [period, formationId, paymentStatus, customStart, customEnd]);
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-3 p-4 rounded-2xl"
-      style={{
-        background: "rgba(255,255,255,0.6)",
-        backdropFilter: "blur(12px)",
-        border: "1px solid rgba(229,234,221,0.8)",
-      }}
-    >
+    <div className="flex flex-wrap items-center gap-3 p-2 rounded-xl bg-card border border-border shadow-sm">
       <div className="flex items-center gap-2">
-        <CalendarDays size={16} style={{ color: "#1a7149" }} />
-        <span className="text-sm font-medium" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+        <CalendarDays size={16} className="text-primary" />
+        <span className="text-sm font-medium text-muted-foreground">
           Période :
         </span>
       </div>
@@ -123,7 +116,9 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
             key={p.value}
             onClick={() => setPeriod(p.value)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              period === p.value ? "bg-[#1a7149] text-white" : "bg-[#efefea] text-[#2d4a3e]"
+              period === p.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-foreground hover:bg-accent/20"
             }`}
           >
             {p.label}
@@ -137,27 +132,26 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
       type="date"
       value={customStart}
       onChange={(e) => setCustomStart(e.target.value)}
-      className="px-2 py-1 rounded bg-[#efefea]"
+      className="px-2 py-1 rounded border border-border bg-secondary text-foreground text-sm"
     />
     <input
       type="date"
       value={customEnd}
       onChange={(e) => setCustomEnd(e.target.value)}
-      className="px-2 py-1 rounded bg-[#efefea]"
+      className="px-2 py-1 rounded border border-border bg-secondary text-foreground text-sm"
     />
   </div>
 )}
 
-      <div className="w-px h-6 mx-1" style={{ background: "#e5eadd" }} />
+      <div className="w-px h-6 mx-1 bg-border" />
 
       <div className="flex items-center gap-2">
-        <BookOpen size={16} style={{ color: "#1a7149" }} />
+        <BookOpen size={16} className="text-primary" />
         <div className="relative">
           <select
             value={formationId}
             onChange={(e) => setFormationId(e.target.value)}
-            className="appearance-none bg-transparent text-sm outline-none pr-6 cursor-pointer px-3 py-1.5 rounded-lg"
-            style={{ background: "#efefea", color: "#2d4a3e", fontFamily: "'DM Sans'" }}
+            className="appearance-none bg-transparent text-sm outline-none pr-6 cursor-pointer px-3 py-1.5 rounded-lg border border-border bg-secondary text-foreground"
           >
             <option value="">Toutes formations</option>
             {formations.map((f) => (
@@ -181,16 +175,15 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
         </div>
       </div>
 
-      <div className="w-px h-6 mx-1" style={{ background: "#e5eadd" }} />
+      <div className="w-px h-6 mx-1 bg-border" />
 
       <div className="flex items-center gap-2">
-        <Filter size={16} style={{ color: "#1a7149" }} />
+        <Filter size={16} className="text-primary" />
         <div className="relative">
           <select
             value={paymentStatus}
             onChange={(e) => setPaymentStatus(e.target.value)}
-            className="appearance-none bg-transparent text-sm outline-none pr-6 cursor-pointer px-3 py-1.5 rounded-lg"
-            style={{ background: "#efefea", color: "#2d4a3e", fontFamily: "'DM Sans'" }}
+            className="appearance-none bg-transparent text-sm outline-none pr-6 cursor-pointer px-3 py-1.5 rounded-lg border border-border bg-secondary text-foreground"
           >
             <option value="">Tous statuts</option>
             <option value="paid">Payé</option>

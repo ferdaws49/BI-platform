@@ -1,3 +1,18 @@
+"""
+api/forecast_routes.py — Endpoint HTTP prévision d'inscriptions
+
+Route : POST /forecast
+
+Pipeline :
+  1. Recevoir l'historique mensuel (ds, y) + nombre de mois à projeter
+  2. Si < 3 points → config.STATIC_HISTORIQUE (mode démo, affichage)
+  3. models/forecast.predict_next_months → predict only depuis .pkl (pas de fit)
+  4. services/forecast.compute_tendance → hausse/baisse/stable + insight
+  5. Renvoyer ForecastResponse
+
+Monté dans main.py via app.include_router(forecast_router).
+"""
+
 import pandas as pd
 from fastapi import APIRouter
 
@@ -11,10 +26,6 @@ router = APIRouter(tags=["Forecast Inscriptions"])
 
 @router.post("/forecast", response_model=ForecastResponse)
 def forecast_inscriptions(req: ForecastRequest):
-    """
-    Prévision du nombre d'inscriptions pour les N prochains mois.
-    Si historique vide ou < 3 points → static fallback data.
-    """
     if not req.historique or len(req.historique) < 3:
         print("[Forecast] Données insuffisantes → static fallback")
         data = STATIC_HISTORIQUE
@@ -31,6 +42,6 @@ def forecast_inscriptions(req: ForecastRequest):
         historique=[{"mois": r["ds"], "valeur": int(r["y"])} for r in data],
         previsions=previsions,
         tendance=tendance,
-        model_used=forecast_registry.model_name,
+        model_used=forecast_registry.last_model_used,
         insight=insight,
     )

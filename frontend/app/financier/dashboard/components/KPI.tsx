@@ -16,13 +16,6 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-const glassCard = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
-
 export default function KPICards({ data }: KPICardsProps) {
 
    if (!data) return null;
@@ -81,15 +74,8 @@ export default function KPICards({ data }: KPICardsProps) {
       {kpis.map((kpi, i) => (
         <div
           key={i}
-          className="relative rounded-2xl p-5 flex flex-col gap-4 overflow-hidden group hover:-translate-y-0.5 transition-all duration-300"
-          style={glassCard}
+          className="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-4 group"
         >
-          {/* Top accent bar */}
-          <div
-            className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl"
-            style={{ background: kpi.accent }}
-          />
-
           {/* Icon + badge row */}
           <div className="flex items-start justify-between">
             <div
@@ -131,22 +117,21 @@ export default function KPICards({ data }: KPICardsProps) {
           {/* Value */}
           <div>
             <p
-              className="text-2xl font-bold font-sora leading-tight"
+              className="text-2xl font-bold leading-tight"
               style={{ color: kpi.warning ? "#DC2626" : "#2d4a3e" }}
             >
               {kpi.value}
             </p>
-            <p className="text-sm mt-1" style={{ color: "#2d4a3e", opacity: 0.5 }}>
+            <p className="text-sm mt-1 text-muted-foreground">
               {kpi.title}
             </p>
           </div>
 
           {/* Sub */}
           <div
-            className="flex items-center gap-2 pt-3 border-t"
-            style={{ borderColor: "#e5eadd" }}
+            className="flex items-center gap-2 pt-3 border-t border-border"
           >
-            <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.5 }}>
+            <p className="text-xs text-muted-foreground">
               {kpi.sub}
             </p>
           </div>

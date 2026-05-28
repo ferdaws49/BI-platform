@@ -31,6 +31,7 @@ export type Session = {
   prix: number | null;    // prix spécifique session (null = fallback formation)
   prixEffectif: number;   // prix réellement appliqué (avec fallback)
   revenue: number;        // prixEffectif × apprenants.length
+  revenuAttendu?: number;
   apprenants?: Apprenant[];
 };
 
@@ -71,8 +72,12 @@ type RawSession = Omit<Session, "statut"> & {
 };
 
 export function normalizeSession(raw: RawSession): Session {
+  const revenuAttendu = raw.revenuAttendu ?? raw.revenue ?? 0;
+
   return {
     ...raw,
+    revenue: revenuAttendu,
+    revenuAttendu,
     statut: (STATUS_MAP_TO_FR[raw.statut] || raw.statut) as Session["statut"],
   };
 }

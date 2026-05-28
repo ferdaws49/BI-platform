@@ -1,98 +1,106 @@
 import numpy as np
-import pandas as pd
 import joblib
 from pathlib import Path
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from db import get_connection
+import pandas as pd
 
-MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "ca_model.pkl"
+MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "ca_model_mensuel.pkl"
 
-class CAModelRegistry:
+class CAService:
     def __init__(self):
         self.model = None
         self.scaler = None
         self.FEATURES = None
+        self.history = None 
         self._load()
-
+    
     def _load(self):
-        if not MODEL_PATH.exists():
-            print("❌ models/ca_model.pkl introuvable. Lance l'entraînement d'abord.")
-            return
-        bundle = joblib.load(MODEL_PATH)
-        self.model = bundle["model"]
-        self.scaler = bundle["scaler"]
-        self.FEATURES = bundle["features"]
-        print(f"[CAModelRegistry] ✅ Modèle CA chargé ({len(self.FEATURES)} features)")
-
-    def _enrich_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Prépare le DataFrame pour la prédiction."""
-        df = df.copy()
-        # Conversion numérique pour éviter les erreurs
-        df["ca_mensuel"] = pd.to_numeric(df["ca_mensuel"], errors="coerce").fillna(0)
-        df["annee"] = pd.to_numeric(df["annee"], errors="coerce").fillna(0).astype(int)
-        df["mois_num"] = pd.to_numeric(df["mois"], errors="coerce").fillna(0).astype(int)
-
-        # Fallbacks pour les coûts et inscrits
-        for col in ["total_cout_formateur", "total_cout_logistique", "total_inscrits"]:
-            if col not in df.columns:
-                df[col] = 0
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-        return df.reset_index(drop=True)
-
-    def _build_row_features(self, df, mois_suivant):
-        """Construit exactement les 5 features attendues par le modèle."""
-        last = df.iloc[-1]
-        
-        # Calcul du coût total
-        cout_total = float(last.get("total_cout_formateur", 0)) + float(last.get("total_cout_logistique", 0))
-        
-        return [[
-            float(last["ca_mensuel"]),          # ca_lag_1
-            float(last.get("total_inscrits", 0)), # inscrits_lag1
-            cout_total,                         # cout_total_lag1
-            np.sin(2 * np.pi * mois_suivant / 12),
-            np.cos(2 * np.pi * mois_suivant / 12)
-        ]]
-
-    def predict_next_months(self, historique: pd.DataFrame, nb_mois: int = 3) -> list:
+        if MODEL_PATH.exists():
+            bundle = joblib.load(MODEL_PATH)
+            self.model = bundle["model"]
+            self.scaler = bundle["scaler"]
+            self.FEATURES = bundle["features"]
+            history_data = bundle.get("history", None)
+            self.history = pd.DataFrame(history_data) if history_data else None
+            print("✅ Modèle chargé")
+        else:
+            print("❌ Modèle non trouvé")
+    
+    def _get_nb_sessions(self, year, month):
+        conn = get_connection()
+        query = """
+        SELECT COUNT(*) as nb
+        FROM public.sessions
+        WHERE EXTRACT(YEAR FROM date) = %s
+          AND EXTRACT(MONTH FROM date) = %s
+          AND statut IN ('Active', 'Completed');
+        """
+        df = pd.read_sql(query, conn, params=(year, month))
+        conn.close()
+        return int(df.iloc[0]['nb']) if not df.empty else 0
+    
+    def predict_month(self, year=None, month=None):
         if self.model is None:
-            raise ValueError("Modèle non chargé.")
-
-        df = self._enrich_data(historique)
+            return {"error": "Modèle non chargé"}
+        
+        if year is None or month is None:
+            next_d = datetime.now() + relativedelta(months=1)
+            year, month = next_d.year, next_d.month
+        
+        mois_str = f"{year}-{month:02d}"
+        nb_sessions = self._get_nb_sessions(year, month)
+        
+        if nb_sessions == 0:
+            return self._fallback(year, month, mois_str)
+        
+        mois_cos = np.cos(2 * np.pi * month / 12)
+        
+        vec = np.array([[nb_sessions, mois_cos]])
+        vec_s = self.scaler.transform(vec)
+        ca_pred = float(self.model.predict(vec_s)[0])
+        ca_pred = max(0, ca_pred)
+        
+        return {
+            "mois": mois_str,
+            "ca_predit": round(ca_pred, 2),
+            "marge_estimee": round(ca_pred * 0.3, 2),
+            "nb_sessions": nb_sessions,
+            "source": "planning_reel"
+        }
+    
+    def _fallback(self, year, month, mois_str):
+        # Moyenne historique du même mois
+        return {
+            "mois": mois_str,
+            "ca_predit": 12000,  # à adapter
+            "marge_estimee": 3600,
+            "nb_sessions": 0,
+            "source": "estimation_historique",
+            "warning": "Aucune session planifiée"
+        }
+    
+    def predict_period(self, nb_mois=1):
+        if nb_mois not in [1, 3, 6]:
+            return {"error": "Période: 1, 3 ou 6"}
+        
         previsions = []
+        total_ca = 0
+        
+        start = datetime.now() + relativedelta(months=1)
+        
+        for i in range(nb_mois):
+            current = start + relativedelta(months=i)
+            result = self.predict_month(current.year, current.month)
+            previsions.append(result)
+            total_ca += result.get('ca_predit', 0)
+        
+        return {
+            "periode_mois": nb_mois,
+            "ca_total": round(total_ca, 2),
+            "marge_total": round(total_ca * 0.3, 2),
+            "previsions": previsions
+        }
 
-        for _ in range(nb_mois):
-            last = df.iloc[-1]
-            
-            # Calcul de la date du mois suivant
-            mois_suivant = int(last["mois_num"]) % 12 + 1
-            annee_suivante = int(last["annee"]) + (1 if mois_suivant == 1 else 0)
-
-            # 1. Préparer les features (5 colonnes)
-            features = self._build_row_features(df, mois_suivant)
-            
-            # 2. Prédire avec le scaler et le modèle
-            X_scaled = self.scaler.transform(features)
-            ca_predit = max(0, float(self.model.predict(X_scaled)[0]))
-
-            # 3. Ajouter aux résultats
-            previsions.append({
-                "mois": f"{annee_suivante}-{mois_suivant:02d}",
-                "ca_predit": round(ca_predit, 2),
-                "marge_estimee": round(ca_predit * 0.3, 2)
-            })
-
-            # 4. Ajouter la prédiction au DF pour que le mois suivant puisse utiliser ce CA comme "Lag 1"
-            new_row = {
-                "annee": annee_suivante,
-                "mois_num": mois_suivant,
-                "ca_mensuel": ca_predit,
-                "total_inscrits": last.get("total_inscrits", 0),
-                "total_cout_formateur": last.get("total_cout_formateur", 0),
-                "total_cout_logistique": last.get("total_cout_logistique", 0)
-            }
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-
-        return previsions
-
-# Instance globale pour l'API
-ca_registry = CAModelRegistry()
+ca_service = CAService()

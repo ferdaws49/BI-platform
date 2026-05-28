@@ -51,6 +51,7 @@ export class UsersService {
       roleLabel: ROLE_LABEL[user.role] ?? user.role, // Label (ex: 'Admin') pour l'affichage
       status:   user.status,
       isActive: user.isActive,
+      profileImage: user.profileImage || null,
       creeLe:   user.createdAt
         ? new Date(user.createdAt).toLocaleDateString('fr-FR', {
             day: '2-digit', month: 'short', year: 'numeric',

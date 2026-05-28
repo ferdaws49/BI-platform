@@ -1,4 +1,4 @@
-export type AlertFilterOptions = {
+﻿export type AlertFilterOptions = {
   type: "Tous" | "Critique" | "Avertissement" | "Information";
   statut: "Tous" | "Non traité" | "Traité";
   periode:

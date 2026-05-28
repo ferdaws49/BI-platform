@@ -58,4 +58,6 @@ def load_sessions_data(filters: SessionFilter) -> pd.DataFrame:
     for col in ["nb_inscrits", "capacite"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
+
+
     return df

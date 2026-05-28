@@ -104,6 +104,7 @@ export class AuthService {
         prenom: users.prenom,
         email: users.email,
         role: users.role,
+        profileImage: users.profileImage || null,
       },
     };
   }

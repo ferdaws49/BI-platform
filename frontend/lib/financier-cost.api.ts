@@ -79,4 +79,28 @@ export const costApi = {
   getRepartition:   (f: any) => fetchCost("finance/cout/repartition",    f),
   getTrend:         (f: any) => fetchCost("finance/cout/trend",          f),
   getSessions:      (f: any) => fetchCost("finance/cout/sessions",       f),
+
+  async addExpense(payload: {
+    type: "depense_formateur" | "depense_logistique";
+    sessionId: string;
+    montant: number;
+    formateurId?: number;
+    formateurNom?: string;
+    description?: string;
+  }) {
+    const res = await fetch(`${API}/finances/expenses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || "Erreur lors de l'ajout du coût");
+    }
+    return res.json();
+  },
 };
+
+
+

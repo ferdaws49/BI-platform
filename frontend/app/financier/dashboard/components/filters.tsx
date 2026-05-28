@@ -32,14 +32,6 @@ function getPeriodDates(period: string) {
 }
 
 
-
-const glassStyle = {
-  background: "rgba(255,255,255,0.6)",
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
-  border: "1px solid rgba(229,234,221,0.8)",
-};
-
 interface FiltersBarProps {
   onFilterChange: (filters: any) => void;
   formations: { id: number; title: string }[];
@@ -83,13 +75,12 @@ const mapStatus = (s: string) => {
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 p-4 rounded-2xl"
-      style={glassStyle}
+      className="flex flex-wrap items-center gap-3 p-2 rounded-xl bg-card border border-border shadow-sm"
     >
       {/* Period selector */}
       <div className="flex items-center gap-2">
-        <CalendarDays size={16} style={{ color: "#1a7149" }} />
-        <span className="text-sm font-medium" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+        <CalendarDays size={16} className="text-primary" />
+        <span className="text-sm font-medium text-muted-foreground">
           Période :
         </span>
       </div>
@@ -102,7 +93,9 @@ const mapStatus = (s: string) => {
               handleApplyFilters(p, status, formationId);
             }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              period === p ? "bg-[#1a7149] text-white" : "bg-[#efefea] text-[#2d4a3e]"
+              period === p
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-foreground hover:bg-accent/20 hover:text-accent-foreground"
             }`}
 
           >
@@ -111,36 +104,37 @@ const mapStatus = (s: string) => {
         ))}
       </div>
 
-      <div className="w-px h-6 mx-1" style={{ background: "#e5eadd" }} />
+      <div className="w-px h-6 mx-1 bg-border" />
 
       {/* Formation selector */}
       <div className="flex items-center gap-2">
-        <BookOpen size={16} style={{ color: "#1a7149" }} />
+        <BookOpen size={16} className="text-primary" />
         <div
-          className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer"
-          style={{ background: "#efefea" }}
+          className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer bg-secondary border border-border"
         >
           <select
              onChange={(e) => {const value = e.target.value;
               setFormationId(value);
               handleApplyFilters(period, status, value);}}
-            className="appearance-none bg-transparent text-sm font-medium outline-none pr-5 cursor-pointer"
-            style={{ color: "#2d4a3e", fontFamily: "'DM Sans', sans-serif" }}
+            className="appearance-none bg-transparent text-sm font-medium outline-none pr-5 cursor-pointer text-foreground"
           >
             {formations.map((f) => (
               <option key={f.id} value={f.id}>{f.title}</option>
             ))}
           </select>
-          <ChevronDown size={14} className="absolute right-2 pointer-events-none" style={{ color: "#2d4a3e", opacity: 0.5 }} />
+          <ChevronDown
+            size={14}
+            className="absolute right-2 pointer-events-none text-muted-foreground/70"
+          />
         </div>
       </div>
 
-      <div className="w-px h-6 mx-1" style={{ background: "#e5eadd" }} />
+      <div className="w-px h-6 mx-1 bg-border" />
 
       {/* Status filter */}
       <div className="flex items-center gap-2">
-        <Filter size={16} style={{ color: "#1a7149" }} />
-        <span className="text-sm font-medium" style={{ color: "#2d4a3e", opacity: 0.7 }}>
+        <Filter size={16} className="text-primary" />
+        <span className="text-sm font-medium text-muted-foreground">
           Statut :
         </span>
       </div>
@@ -152,12 +146,11 @@ const mapStatus = (s: string) => {
               setStatus(s);
               handleApplyFilters(period, s, formationId);
             }}
-            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
-            style={
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
               status === s
-                ? { background: "#2d4a3e", color: "#fff" }
-                : { background: "#efefea", color: "#2d4a3e" }
-            }
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-foreground hover:bg-accent/20 hover:text-accent-foreground"
+            }`}
           >
             {s}
           </button>
@@ -165,9 +158,9 @@ const mapStatus = (s: string) => {
       </div>
 
       {/* Active period badge */}
-      <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ background: "rgba(26,113,73,0.1)" }}>
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#1a7149" }} />
-        <span className="text-xs font-medium" style={{ color: "#1a7149" }}>
+      <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20">
+        <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+        <span className="text-xs font-medium text-primary">
           Exercice 2025
         </span>
       </div>

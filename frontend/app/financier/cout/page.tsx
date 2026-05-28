@@ -3,14 +3,15 @@
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 
-
 import FiltersBar, { type FiltersState } from "./components/filters/FiltersBar";
 import KPISection from "./components/kpis/KPISection";
 import DetailTable from "./components/table/DetailTable";
 import DashboardLayout from "@/components/layout/financier/DashboardLayout";
+import { AddCostModal } from "./components/modals/AddCostModal"; // ✅ AJOUT
 
 import { costApi } from "@/lib/financier-cost.api";
 import { revenueApi } from "@/lib/financier-revenue.api";
+
 
 import type {
   KpiCoutsData,
@@ -25,7 +26,6 @@ import type {
   SessionCostTableRowDto,
 } from "./types";
 
-// Lazy-load charts to avoid SSR issues with Chart.js
 const ChartsSection = dynamic(
   () => import("./components/charts/ChartsSection"),
   {
@@ -35,36 +35,32 @@ const ChartsSection = dynamic(
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className={`rounded-2xl ${i <= 2 ? "lg:col-span-2" : ""}`}
-            style={{ height: 280, background: "rgba(229,234,221,0.5)" }}
+            className={`rounded-xl border border-border bg-muted animate-pulse ${i <= 2 ? "lg:col-span-2" : ""}`}
+            style={{ height: 280 }}
           />
         ))}
       </div>
     ),
-  },
+  }
 );
 
-// ─────────────────────────────────────────────────────────────
-// Default filters — "Année" sends periodPreset=year to the backend,
-// which covers all sessions for the current year without hardcoded dates.
-// ─────────────────────────────────────────────────────────────
 const DEFAULT_FILTERS: FiltersState = {
-  periode:     "Année",
-  dateDebut:   "",
-  dateFin:     "",
+  periode: "Année",
+  dateDebut: "",
+  dateFin: "",
   formateurId: "all",
   formationId: "all",
   rentabilite: "all",
   remplissage: "all",
-  niveauCout:  "all",
-  page:        1,
-  sortBy:      "cout",
-  sortOrder:   "desc",
+  niveauCout: "all",
+  page: 1,
+  sortBy: "cout",
+  sortOrder: "desc",
 };
+
 function mapFilters(f: FiltersState): Record<string, unknown> {
   const mapped: Record<string, unknown> = {};
 
-  // ── period ──
   if (f.periode === "Année") mapped.periodPreset = "year";
   if (f.periode === "Trimestre") mapped.periodPreset = "quarter";
   if (f.periode === "Mois") mapped.periodPreset = "month";
@@ -73,118 +69,132 @@ function mapFilters(f: FiltersState): Record<string, unknown> {
     if (f.dateFin && f.dateFin !== "") mapped.endDate = f.dateFin;
   }
 
-  // ── IDs ──
   if (f.formationId !== "all") mapped.formationId = Number(f.formationId);
   if (f.formateurId !== "all") mapped.formateurId = Number(f.formateurId);
 
-
-  if (f.rentabilite !== "all") {
-    mapped.rentabilite = f.rentabilite;
-  }
-
-  
-  if (f.remplissage !== "all") {
-    mapped.tauxRemplissage = f.remplissage;
-  }
-
-  // ── niveau coût ──
+  if (f.rentabilite !== "all") mapped.rentabilite = f.rentabilite;
+  if (f.remplissage !== "all") mapped.tauxRemplissage = f.remplissage;
   if (f.niveauCout !== "all") mapped.niveauCout = f.niveauCout;
 
-  // ── pagination ──
   mapped.page = Number(f.page || 1);
   mapped.limit = Number(10);
-
-  // ── SORT FIX (IMPORTANT 🔥) ──
   mapped.sortBy = "cout" as any;
   mapped.sortOrder = (f.sortOrder || "desc").toUpperCase();
 
   return mapped;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Colour palette for top-formateurs chart (cycles through 6 colours)
-// ─────────────────────────────────────────────────────────────
 const CHART_COLORS = [
-  "#1a7149",
-  "#D97706",
-  "#2d4a3e",
-  "#3b82f6",
-  "#8b5cf6",
-  "#DC2626",
+  "#1a7149", "#D97706", "#2d4a3e", "#3b82f6", "#8b5cf6", "#DC2626",
 ];
 
-// ─────────────────────────────────────────────────────────────
-// Page component
-// ─────────────────────────────────────────────────────────────
+// ✅ AJOUT — Toast de succès (même composant que dans Paiements)
+function SuccessToast({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 3000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg border"
+      style={{
+        background: "rgba(26,113,73,0.95)",
+        borderColor: "rgba(255,255,255,0.2)",
+      }}
+    >
+      <span className="text-lg">✅</span>
+      <span className="text-sm font-medium text-white">{message}</span>
+      <button
+        onClick={onClose}
+        className="ml-2 text-white/70 hover:text-white text-xs"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 export default function CoutsRentabilitePage() {
   const [filters, setFilters] = useState<FiltersState>(DEFAULT_FILTERS);
 
-  // ── UI data state ─────────────────────────────────────────
-  const [kpiData,       setKpiData]       = useState<KpiCoutsData | null>(null);
+  const [kpiData, setKpiData] = useState<KpiCoutsData | null>(null);
   const [topFormateurs, setTopFormateurs] = useState<FormateurCoutPoint[]>([]);
-  const [repartition,   setRepartition]   = useState<RepartitionDepense[]>([]);
-  const [trend,         setTrend]         = useState<TrendPoint[]>([]);
-  const [filteredRows,  setFilteredRows]  = useState<SessionCoutRow[]>([]);
-  const [pagination,    setPagination]    = useState<PaginationMeta>({
+  const [repartition, setRepartition] = useState<RepartitionDepense[]>([]);
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const [filteredRows, setFilteredRows] = useState<SessionCoutRow[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
     page: 1, limit: 10, total: 0, totalPages: 1,
   });
 
-  // ── Dropdown option lists ─────────────────────────────────
-  const [formationsList,  setFormationsList]  = useState<{ id: number; title: string }[]>([]);
-  const [formateursList,  setFormateursList]  = useState<{ id: number; nom: string }[]>([]);
+  const [formationsList, setFormationsList] = useState<{ id: number; title: string }[]>([]);
+  const [formateursList, setFormateursList] = useState<{ id: number; nom: string }[]>([]);
+  // ✅ AJOUT — sessions pour le dropdown du modal
+  const [sessionsList, setSessionsList] = useState<{ id: string; title: string }[]>([]);
 
-  // ── One-time load: populate filter dropdowns ──────────────
+  // ✅ AJOUT — état modal & toast
+  const [costModalOpen, setCostModalOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // ── Chargement initial (dropdowns) ─────────────────────────
   useEffect(() => {
     revenueApi
       .getFormationsList()
       .then((res) => setFormationsList(res || []))
       .catch(console.error);
 
-    // Use a wide fetch (topLimit 50, no period filter) so the dropdown
-    // always shows all known formateurs, not just those in the current period.
     costApi
       .getTopFormateurs({ topLimit: 50, periodPreset: "year" })
       .then((res: TopFormateurCostDto[]) => {
         setFormateursList(
-          (res || []).map((f) => ({ id: f.formateurId, nom: f.nomFormateur || "—" })),
+          (res || []).map((f) => ({ id: f.formateurId, nom: f.nomFormateur || "—" }))
         );
+      })
+      .catch(console.error);
+
+    // ✅ AJOUT — charger toutes les sessions pour le modal
+    costApi
+      .getSessions({ limit: 1000, periodPreset: "year" })
+      .then((res: any) => {
+        if (res?.items) {
+          setSessionsList(
+            res.items.map((r: SessionCostTableRowDto) => ({
+              id: String(r.sessionId),
+              title: r.session || `Session ${r.sessionId}`,
+            }))
+          );
+        }
       })
       .catch(console.error);
   }, []);
 
-  // ── Fetch all metrics whenever filters change ─────────────
-  //
-  // We map FiltersState → CostFilterDto shape once here, then pass the
-  // same mapped object to every API call so all charts/table stay in sync.
   const fetchAllMetrics = useCallback((f: FiltersState) => {
     const mapped = mapFilters(f);
-    
 
-    // KPI ───────────────────────────────────────────────────
     costApi
       .getKpi(mapped)
       .then((res: CostKpiDto) => {
         if (!res) return;
-        // chiffreAffaires = avgPrice × totalStudents (best approximation
-        // available without a dedicated CA endpoint).
         const ca =
           (res.breakEven?.avgPricePerStudent ?? 0) *
           (res.breakEven?.totalStudents ?? 0);
-
         setKpiData({
-          // Use the real coutTotal from the backend (was undefined before
-          // because CostKpiDto was missing the field in types.ts).
-          coutTotal:          res.coutTotal ?? 0,
-          coutFormateurs:     res.coutFormateurs ?? 0,
-          coutMoyenSession:   res.coutMoyenParSession ?? 0,
-          breakEvenStudents:  res.breakEven?.studentsNeeded ?? 0,
+          coutTotal: res.coutTotal ?? 0,
+          coutFormateurs: res.coutFormateurs ?? 0,
+          coutMoyenSession: res.coutMoyenParSession ?? 0,
+          breakEvenStudents: res.breakEven?.studentsNeeded ?? 0,
           prixMoyenFormation: res.breakEven?.avgPricePerStudent ?? 0,
-          chiffreAffaires:    ca > 0 ? ca : (res.breakEven?.totalCost ?? 0),
+          chiffreAffaires: ca > 0 ? ca : (res.breakEven?.totalCost ?? 0),
         });
       })
       .catch(console.error);
 
-    // Top formateurs (chart) ────────────────────────────────
     costApi
       .getTopFormateurs(mapped)
       .then((res: TopFormateurCostDto[]) => {
@@ -195,90 +205,69 @@ export default function CoutsRentabilitePage() {
             coutTotal: f.coutTotal,
             nbSessions: f.nombreSessions,
             couleur: CHART_COLORS[i % CHART_COLORS.length],
-          })),
+          }))
         );
       })
       .catch(console.error);
 
-    // Répartition (pie) ─────────────────────────────────────
     costApi
       .getRepartition(mapped)
       .then((res) => {
-        console.log("🔥 KPI RESPONSE:", res);
         if (!res?.repartition) return;
         setRepartition([
           {
-            label:  "Coût formateurs",
-            value:  Math.round(res.repartition.coutFormateursPercent),
+            label: "Coût formateurs",
+            value: Math.round(res.repartition.coutFormateursPercent),
             couleur: "#1a7149",
           },
           {
-            label:  "Coût logistique",
-            value:  Math.round(res.repartition.coutLogistiquePercent),
+            label: "Coût logistique",
+            value: Math.round(res.repartition.coutLogistiquePercent),
             couleur: "#D97706",
           },
         ]);
       })
       .catch(console.error);
 
-    // Trend (line chart) ────────────────────────────────────
     costApi
       .getTrend(mapped)
       .then((res) => {
-        console.log("🔥 KPI RESPONSE:", res);
         if (!res?.points) return;
         setTrend(
           res.points.map((p: CostTrendPointDto) => ({
-            mois:           p.mois,
-            coutTotal:      p.coutTotal,
-            coutParEtudiant: 0, // not returned by this endpoint
-          })),
+            mois: p.mois,
+            coutTotal: p.coutTotal,
+            coutParEtudiant: 0,
+          }))
         );
       })
       .catch(console.error);
 
-    // Sessions table ────────────────────────────────────────
-    //
-    // The backend paginates and sorts. We pass page/limit/sortBy/sortOrder
-    // as part of mapped so the backend does the heavy lifting. DetailTable
-    // receives only the current page's rows — it must NOT re-paginate them.
-
-
-    
     costApi
       .getSessions(mapped)
       .then((res) => {
-        console.log("🔥 KPI RESPONSE:", res);
         if (!res?.items) return;
-
-        // Reconstruct the SessionCoutRow shape from the backend DTO.
-        // capacite is estimated from tauxRemplissagePercent because the
-        // backend DTO does not return raw capaciteMax per row.
         const ESTIMATED_CAPACITY = 15;
-
         setFilteredRows(
           res.items.map((r: SessionCostTableRowDto, i: number) => {
             const inscrits = Math.round(
-              (r.tauxRemplissagePercent / 100) * ESTIMATED_CAPACITY,
+              (r.tauxRemplissagePercent / 100) * ESTIMATED_CAPACITY
             );
             return {
-              id:  r.sessionId ||                String(i),
-              sessionNom:          r.session,
-              formation:           r.formation,
-              formationId:         "",
-              formateur:           r.formateur,
-              formateurId:         "",
-              // The sessions DTO has no per-row date; we leave it blank
-              // rather than hardcoding "2025".
-              dateDebut:           "",
+              id: r.sessionId || String(i),
+              sessionNom: r.session,
+              formation: r.formation,
+              formationId: "",
+              formateur: r.formateur,
+              formateurId: "",
+              dateDebut: "",
               inscrits,
-              capacite:            ESTIMATED_CAPACITY,
+              capacite: ESTIMATED_CAPACITY,
               coutDirectFormateur: r.coutDirectFormateur,
-              fraisAnnexes:        r.fraisLogistique,
-              coutTotal:           r.coutTotal,
-              // Reconstruct CA: marge = CA − coutTotal → CA = coutTotal + marge
-              ca:                  r.coutTotal + r.marge,
-              marge:               r.marge,
+              fraisAnnexes: r.fraisLogistique,
+              coutTotal: r.coutTotal,
+              ca: r.coutTotal + r.marge,
+              marge: r.marge,
               statut:
                 r.statutRentabilite === "rentable"
                   ? "rentable"
@@ -286,71 +275,87 @@ export default function CoutsRentabilitePage() {
                   ? "seuil"
                   : "deficitaire",
             } satisfies SessionCoutRow;
-          }),
+          })
         );
-
-        // Store pagination metadata so DetailTable can show the correct
-        // page count and the page buttons can update filters.page correctly.
         setPagination({
-          page:       res.page,
-          limit:      res.limit,
-          total:      res.total,
+          page: res.page,
+          limit: res.limit,
+          total: res.total,
           totalPages: res.totalPages,
         });
       })
       .catch(console.error);
   }, []);
 
-  // Trigger on every filter change (including initial mount with DEFAULT_FILTERS)
   useEffect(() => {
-    console.log("🚀 FETCH START");
     fetchAllMetrics(filters);
   }, [filters, fetchAllMetrics]);
 
-  // ── Page-change handler (keeps other filters, bumps page only) ──
   function handlePageChange(newPage: number) {
     setFilters((prev) => ({ ...prev, page: newPage }));
   }
 
+  // ✅ AJOUT — handler d'enregistrement d'un coût
+  async function handleAddCost(dto: {
+    type: "depense_formateur" | "depense_logistique";
+    sessionId: string;
+    montant: number;
+    formateurId?: number;
+    formateurNom?: string;
+    description?: string;
+  }) {
+    try {
+    await costApi.addExpense(dto);
+    setToastMsg("Coût ajouté avec succès ✅");
+    setCostModalOpen(false);
+    fetchAllMetrics(filters); // 🔄 Rafraîchir les données
+  } catch (e: any) {
+    throw new Error(e.message || "Erreur serveur");
+    }
+  }
+
   return (
     <DashboardLayout>
-      <div
-        className="p-6 space-y-6 max-w-screen-2xl mx-auto"
-        style={{ fontFamily: "'DM Sans', sans-serif" }}
-      >
-        {/* ── Page header ────────────────────────────────── */}
+      <div className="p-4 md:p-6 space-y-6">
+        {/* ── Page header ── */}
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1
-              className="text-xl font-bold"
-              style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}
-            >
+            <h1 className="text-lg font-semibold text-foreground">
               Analyse des Coûts & Rentabilité
             </h1>
-            <p className="text-xs mt-1" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+            <p className="text-xs mt-1 text-muted-foreground">
               Vue opérationnelle · Données en temps réel API
             </p>
           </div>
         </div>
 
-        {/* ── Filters ────────────────────────────────────── */}
+        {/* ── Filters ── */}
         <FiltersBar
           filters={filters}
-          onChange={(next) => {
-            // Any filter change resets to page 1 so we don't land on a
-            // now-invalid page number after a refinement.
-            setFilters({ ...next, page: 1 });
-          }}
+          onChange={(next) => setFilters({ ...next, page: 1 })}
           formations={formationsList}
           formateurs={formateursList}
         />
 
-        {/* ── KPIs ───────────────────────────────────────── */}
+        {/* ✅ AJOUT — Barre d'action "Ajouter coût" (même style que Paiements) */}
+        <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl border border-border bg-card shadow-sm">
+          <span className="text-xs font-medium text-muted-foreground">
+            Actions rapides :
+          </span>
+          <button
+            onClick={() => setCostModalOpen(true)}
+            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-primary-foreground transition-all hover:bg-accent"
+          >
+            <span>+</span> Ajouter coût
+          </button>
+        </div>
+
+        {/* ── KPIs ── */}
         <section>
           <KPISection data={kpiData} />
         </section>
 
-        {/* ── Charts ─────────────────────────────────────── */}
+        {/* ── Charts ── */}
         <section>
           <ChartsSection
             filteredRows={filteredRows}
@@ -360,7 +365,7 @@ export default function CoutsRentabilitePage() {
           />
         </section>
 
-        {/* ── Detail table ───────────────────────────────── */}
+        {/* ── Detail table ── */}
         <section>
           <DetailTable
             rows={filteredRows}
@@ -370,10 +375,24 @@ export default function CoutsRentabilitePage() {
         </section>
 
         <footer className="text-center pb-2">
-          <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.25 }}>
+          <p className="text-xs text-muted-foreground/60">
             CentreForm BI · Coûts & Rentabilité
           </p>
         </footer>
+
+        {/* ✅ AJOUT — Toast */}
+        {toastMsg && (
+          <SuccessToast message={toastMsg} onClose={() => setToastMsg(null)} />
+        )}
+
+        {/* ✅ AJOUT — Modal */}
+        <AddCostModal
+          open={costModalOpen}
+          onClose={() => setCostModalOpen(false)}
+          onSave={handleAddCost}
+          sessions={sessionsList}
+          formateurs={formateursList}
+        />
       </div>
     </DashboardLayout>
   );

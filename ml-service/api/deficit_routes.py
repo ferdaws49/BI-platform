@@ -1,54 +1,46 @@
-# deficit_route.py (modifié)
-from fastapi import APIRouter, HTTPException, status
-from schemas.deficit_schema import PredictResponse, TrainResponse, SessionFilter
+from fastapi import APIRouter, HTTPException
+from schemas.deficit_schema import PredictResponse, TrainResponse, SessionFilter, RawSessionInput
 from services.deficit_service import load_model, model_exists, predict_sessions, run_training
 from data.postgres_loader_sessions import load_sessions_data
 
 router = APIRouter(prefix="/deficit", tags=["Session Deficit Prediction"])
 
+@router.post("/train", response_model=TrainResponse)
+def train_deficit(filters: SessionFilter):
+    """Entraîne le modèle de classification en utilisant les données de la base."""
+    df = load_sessions_data(filters)
+    
+    if df.empty:
+        raise HTTPException(400, "La base de données est vide pour ces filtres.")
+
+    # Conversion du DataFrame en liste d'objets Pydantic pour le service
+    raw_sessions = [RawSessionInput(**row) for row in df.to_dict('records')]
+
+    if len(raw_sessions) < 5:
+        raise HTTPException(400, f"Données insuffisantes ({len(raw_sessions)} sessions, min 5).")
+
+    try:
+        result = run_training(raw_sessions)
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 @router.post("/predict", response_model=PredictResponse)
-async def predict(filters: SessionFilter):
-    """Prédiction : ML Service pull les sessions filtrées depuis la base."""
+def predict_deficit(filters: SessionFilter):
+    """Prédit le risque de déficit pour les sessions sélectionnées par l'utilisateur."""
     if not model_exists():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No trained model found. Call POST /deficit/train first.",
-        )
+        raise HTTPException(503, "Le modèle n'est pas entraîné. Appelez /train d'abord.")
 
-    # 1. PULL depuis la base avec les filtres
+    # 1. On récupère les sessions à analyser depuis SQL
     df = load_sessions_data(filters)
     if df.empty:
-        raise HTTPException(400, "No sessions found for these filters.")
+        raise HTTPException(404, "Aucune session trouvée pour ces critères.")
 
-    # 2. Convertir en format interne
-    from schemas.deficit_schema import RawSessionInput
+    # 2. Conversion
     raw_sessions = [RawSessionInput(**row) for row in df.to_dict('records')]
 
-    # 3. Prédire
+    # 3. Chargement du modèle et prédiction
     model, scaler = load_model()
     predictions = predict_sessions(raw_sessions, model, scaler)
-    if not predictions:
-        raise HTTPException(
-            status_code=400,
-            detail="No valid sessions remaining after data cleaning."
-        )
 
     return PredictResponse(predictions=predictions)
-
-
-@router.post("/train", response_model=TrainResponse)
-async def train(filters: SessionFilter):
-    """Entraînement : ML Service pull les sessions filtrées depuis la base."""
-    df = load_sessions_data(filters)
-    if df.empty:
-        raise HTTPException(400, "No sessions found for these filters.")
-
-    from schemas.deficit_schema import RawSessionInput
-    raw_sessions = [RawSessionInput(**row) for row in df.to_dict('records')]
-
-    if len(raw_sessions) < 10:
-        raise HTTPException(400, f"Only {len(raw_sessions)} sessions, minimum 10.")
-
-    result = run_training(raw_sessions, min_samples=10)
-    return result

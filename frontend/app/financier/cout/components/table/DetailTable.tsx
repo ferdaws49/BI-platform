@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import {
-  glassCard, fmtCurrency, RentabiliteBadge,
+  cardClass, fmtCurrency, RentabiliteBadge,
   SearchBox, ExportBtn,
 } from "../ui";
 import type { PaginationMeta, SessionCoutRow } from "../../types";
@@ -124,7 +124,7 @@ export default function DetailTable({ rows, pagination, onPageChange }: Props) {
   const { page, totalPages, total } = pagination;
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={glassCard}>
+    <div className={`overflow-hidden ${cardClass}`}>
       {/* ── Header ─────────────────────────────────────────── */}
       <div
         className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b"

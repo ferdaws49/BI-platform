@@ -8,13 +8,6 @@ interface RecommendationsSectionProps {
   loading?: boolean;
 }
 
-const glassCard = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
-
 const ACTION_CONFIG: Record<
   RecommendationAction,
   { icon: React.ElementType; iconBg: string; iconColor: string; accent: string; actionLabel: string }
@@ -57,7 +50,7 @@ const PRIORITY_CONFIG = {
 
 function SkeletonCard() {
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-3" style={glassCard}>
+    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 shadow-sm animate-pulse">
       <div className="flex items-start justify-between">
         <div className="w-10 h-10 rounded-xl animate-pulse" style={{ background: "#e5eadd" }} />
         <div className="w-24 h-6 rounded-full animate-pulse" style={{ background: "#e5eadd" }} />
@@ -83,10 +76,10 @@ export default function RecommendationsSection({ recommendations, loading = fals
           <Zap size={18} style={{ color: "#1a7149" }} />
         </div>
         <div>
-          <h2 className="text-base font-bold font-sora" style={{ color: "#2d4a3e" }}>
+          <h2 className="text-base font-bold text-foreground">
             Recommandations
           </h2>
-          <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+          <p className="text-xs text-muted-foreground/70">
             Actions concrètes pour optimiser votre performance
           </p>
         </div>
@@ -103,8 +96,7 @@ export default function RecommendationsSection({ recommendations, loading = fals
               return (
                 <div
                   key={rec.id}
-                  className="relative rounded-2xl p-5 flex flex-col gap-3 overflow-hidden hover:-translate-y-0.5 transition-all duration-300"
-                  style={glassCard}
+                  className="relative rounded-xl border border-border bg-card p-4 flex flex-col gap-3 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                 >
                   {/* Accent bar */}
                   <div
@@ -138,10 +130,10 @@ export default function RecommendationsSection({ recommendations, loading = fals
 
                   {/* Content */}
                   <div className="flex flex-col gap-1">
-                    <h4 className="text-sm font-bold font-sora leading-snug" style={{ color: "#2d4a3e" }}>
+                    <h4 className="text-sm font-bold leading-snug text-foreground">
                       {rec.title}
                     </h4>
-                    <p className="text-xs leading-relaxed" style={{ color: "#2d4a3e", opacity: 0.55 }}>
+                    <p className="text-xs leading-relaxed text-muted-foreground/70">
                       {rec.description}
                     </p>
                   </div>
@@ -149,9 +141,8 @@ export default function RecommendationsSection({ recommendations, loading = fals
                   {/* Impact */}
                   <div
                     className="flex items-center gap-2 pt-3 mt-auto border-t"
-                    style={{ borderColor: "#e5eadd" }}
                   >
-                    <span className="text-xs font-medium" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+                    <span className="text-xs font-medium text-muted-foreground/70">
                       Impact :
                     </span>
                     <span className="text-xs font-semibold" style={{ color: cfg.iconColor }}>

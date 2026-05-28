@@ -11,6 +11,7 @@ export enum AlertPriority {
 }
 
 export interface AlertItem {
+  id: string; // stable hash (type-subtype-date)
   type: AlertType;
   priority: AlertPriority;
   title: string;
@@ -18,6 +19,8 @@ export interface AlertItem {
   action: string;
   value: number;
   createdAt: string;
+  viewed: boolean; // ← NEW
+  treated: boolean; // ← NEW
 }
 
 export interface AlertResponseDto {

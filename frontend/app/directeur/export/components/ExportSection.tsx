@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type ExportOptions = {
   format: "pdf" | "excel" | "csv";
@@ -17,34 +17,47 @@ type ExportOptions = {
 
 type ExportFormat = "pdf" | "excel" | "csv";
 
+type ExportOptionsResponse = {
+  formations?: string[];
+  formateurs?: string[];
+  periodes?: string[];
+};
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+const EXPORT_OPTIONS_ENDPOINTS = [
+  `${API}/directeur/export/options`,
+  `${API}/export/options`,
+] as const;
+const EXPORT_ENDPOINTS = [`${API}/directeur/export`, `${API}/export`] as const;
+
 const rapportsList = [
   {
     id: "strategique",
-    nom: "Rapport stratégique",
-    description: "Analyse globale de la stratégie de formation",
+    nom: "Rapport strategique",
+    description: "Analyse globale de la strategie de formation",
     icon: "📊",
   },
   {
     id: "financiere",
-    nom: "Analyse financière",
-    description: "Détails des revenus, coûts et profits",
+    nom: "Analyse financiere",
+    description: "Details des revenus, couts et profits",
     icon: "💰",
   },
   {
     id: "performance",
     nom: "Performance des formations",
-    description: "Taux de réussite, satisfaction et progression",
+    description: "Taux de reussite, satisfaction et progression",
     icon: "📈",
   },
   {
     id: "qualite",
-    nom: "Qualité pédagogique",
-    description: "Évaluation des formateurs et contenus",
+    nom: "Qualite pedagogique",
+    description: "Evaluation des formateurs et contenus",
     icon: "⭐",
   },
-];
+] as const;
 
-const formations = [
+const fallbackFormations = [
   "Tous",
   "Data Science",
   "Web Dev",
@@ -54,7 +67,8 @@ const formations = [
   "Marketing",
   "DevOps",
 ];
-const formateurs = [
+
+const fallbackFormateurs = [
   "Tous",
   "Amine",
   "Sara",
@@ -63,13 +77,38 @@ const formateurs = [
   "Ali",
   "Nadia",
 ];
-const periodes = [
+
+const fallbackPeriodes = [
   "7 derniers jours",
   "30 derniers jours",
   "3 derniers mois",
-  "Année actuelle",
-  "Toutes les données",
+  "Annee actuelle",
+  "Toutes les donnees",
 ];
+
+async function fetchFirstAvailable(
+  urls: readonly string[],
+  init?: RequestInit,
+): Promise<Response> {
+  let lastError: unknown;
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok) {
+        return response;
+      }
+
+      lastError = new Error(`HTTP ${response.status} on ${url}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Impossible de joindre le service d'export.");
+}
 
 export default function ExportSection({
   options,
@@ -81,6 +120,36 @@ export default function ExportSection({
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [formations, setFormations] = useState<string[]>(fallbackFormations);
+  const [formateurs, setFormateurs] = useState<string[]>(fallbackFormateurs);
+  const [periodes, setPeriodes] = useState<string[]>(fallbackPeriodes);
+
+  useEffect(() => {
+    const fetchOptions = async () => {
+      try {
+        const token = localStorage.getItem("access_token");
+        const response = await fetchFirstAvailable(EXPORT_OPTIONS_ENDPOINTS, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        const data: ExportOptionsResponse = await response.json();
+
+        if (data.formations?.length) setFormations(data.formations);
+        if (data.formateurs?.length) setFormateurs(data.formateurs);
+        if (data.periodes?.length) setPeriodes(data.periodes);
+
+        setOptionsError(null);
+      } catch (error) {
+        console.warn("Export options fallback enabled:", error);
+        setOptionsError(
+          "Options dynamiques indisponibles. Les valeurs par defaut sont utilisees.",
+        );
+      }
+    };
+
+    fetchOptions();
+  }, []);
 
   const handleFormatChange = (format: ExportFormat) => {
     setOptions({ ...options, format });
@@ -99,7 +168,6 @@ export default function ExportSection({
     });
   };
 
-  // ── Export réel — appelle le backend ────────────────────────────────────
   const handleExport = async () => {
     setExporting(true);
     setExportError(null);
@@ -107,19 +175,21 @@ export default function ExportSection({
 
     try {
       const token = localStorage.getItem("access_token");
-
-      // Construire la liste des rapports sélectionnés
       const selectedRapports = Object.entries(options.rapports)
-        .filter(([_, selected]) => selected)
+        .filter(([, selected]) => selected)
         .map(([id]) => id);
 
-      // POST vers le backend
-      const response = await fetch("http://localhost:5000/export", {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetchFirstAvailable(EXPORT_ENDPOINTS, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({
           format: options.format,
           periode: options.periode,
@@ -131,24 +201,15 @@ export default function ExportSection({
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Erreur serveur: ${response.status}`);
-      }
-
-      // Récupérer le fichier comme blob
       const blob = await response.blob();
-
-      // Déterminer l'extension
       const ext =
         options.format === "excel"
           ? "xlsx"
           : options.format === "pdf"
             ? "pdf"
             : "csv";
-
       const filename = `rapport_${new Date().toISOString().split("T")[0]}.${ext}`;
 
-      // Déclencher le téléchargement dans le navigateur
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -160,10 +221,12 @@ export default function ExportSection({
 
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 4000);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Export error:", error);
       setExportError(
-        error.message ?? "Une erreur est survenue lors de l'export",
+        error instanceof Error
+          ? error.message
+          : "Une erreur est survenue lors de l'export",
       );
     } finally {
       setExporting(false);
@@ -176,60 +239,63 @@ export default function ExportSection({
   const isExportDisabled = selectedRapportsCount === 0;
 
   return (
-    <main className="p-4 md:p-6 max-w-4xl mx-auto">
+    <main className="mx-auto max-w-4xl p-4 md:p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Export des Rapports
+        <h1 className="mb-2 text-2xl font-bold text-gray-900">
+          Export des rapports
         </h1>
         <p className="text-sm text-gray-600">
-          Exportez vos données analytiques en différents formats
+          Exportez vos donnees analytiques en differents formats.
         </p>
       </div>
 
-      {/* ── Success Message ── */}
-      {exportSuccess && (
+      {optionsError ? (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-800">{optionsError}</p>
+        </div>
+      ) : null}
+
+      {exportSuccess ? (
         <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
           <div className="flex items-center gap-3">
             <span className="text-xl">✅</span>
             <div>
-              <h3 className="font-semibold text-green-900">Export réussi</h3>
+              <h3 className="font-semibold text-green-900">Export reussi</h3>
               <p className="text-sm text-green-800">
-                Votre rapport a été généré et téléchargé avec succès.
+                Votre rapport a ete genere et telecharge avec succes.
               </p>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* ── Error Message ── */}
-      {exportError && (
+      {exportError ? (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
           <div className="flex items-center gap-3">
             <span className="text-xl">❌</span>
             <div>
-              <h3 className="font-semibold text-red-900">Erreur d'export</h3>
+              <h3 className="font-semibold text-red-900">Erreur d&apos;export</h3>
               <p className="text-sm text-red-800">{exportError}</p>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       <div className="space-y-6">
-        {/* ── 1. Format Selection ── */}
         <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            1. Sélectionnez le format d'export
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">
+            1. Selectionnez le format d&apos;export
           </h2>
           <div className="grid gap-3 sm:grid-cols-3">
             {[
-              { id: "pdf", label: "PDF", icon: "📄", desc: "Document formaté" },
+              { id: "pdf", label: "PDF", icon: "📄", desc: "Document formate" },
               {
                 id: "excel",
                 label: "Excel",
                 icon: "📊",
                 desc: "Feuilles de calcul",
               },
-              { id: "csv", label: "CSV", icon: "📋", desc: "Texte délimité" },
+              { id: "csv", label: "CSV", icon: "🧾", desc: "Texte delimite" },
             ].map((fmt) => (
               <button
                 key={fmt.id}
@@ -250,38 +316,35 @@ export default function ExportSection({
           </div>
         </section>
 
-        {/* ── 2. Rapports Selection ── */}
         <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            2. Sélectionnez les rapports à inclure
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">
+            2. Selectionnez les rapports a inclure
           </h2>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="mb-4 text-sm text-gray-600">
             {selectedRapportsCount} rapport
-            {selectedRapportsCount !== 1 ? "s" : ""} sélectionné
+            {selectedRapportsCount !== 1 ? "s" : ""} selectionne
             {selectedRapportsCount !== 1 ? "s" : ""}
           </p>
           <div className="space-y-3">
             {rapportsList.map((rapport) => (
               <label
                 key={rapport.id}
-                className="flex items-center gap-3 rounded-lg border border-gray-200 p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50"
               >
                 <input
                   type="checkbox"
                   checked={
-                    options.rapports[
-                      rapport.id as keyof typeof options.rapports
-                    ]
+                    options.rapports[rapport.id as keyof typeof options.rapports]
                   }
                   onChange={() => handleRapportToggle(rapport.id)}
-                  className="w-5 h-5 rounded border-gray-300 text-green-600 cursor-pointer"
+                  className="h-5 w-5 cursor-pointer rounded border-gray-300 text-green-600"
                 />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{rapport.icon}</span>
                     <h3 className="font-medium text-gray-900">{rapport.nom}</h3>
                   </div>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <p className="mt-1 text-sm text-gray-600">
                     {rapport.description}
                   </p>
                 </div>
@@ -290,15 +353,14 @@ export default function ExportSection({
           </div>
         </section>
 
-        {/* ── 3. Filter Options ── */}
         <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">
             3. Options de filtrage
           </h2>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
-                Période
+              <label className="mb-2 block text-sm font-medium text-gray-900">
+                Periode
               </label>
               <select
                 value={options.periode}
@@ -315,7 +377,7 @@ export default function ExportSection({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-900">
                 Formation
               </label>
               <select
@@ -333,7 +395,7 @@ export default function ExportSection({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-900">
                 Formateur
               </label>
               <select
@@ -353,15 +415,14 @@ export default function ExportSection({
           </div>
         </section>
 
-        {/* ── 4. Summary + Export Button ── */}
         <section className="rounded-lg border border-green-200 bg-green-50 p-6">
-          <h2 className="text-lg font-semibold text-green-900 mb-4">
-            Résumé de l'export
+          <h2 className="mb-4 text-lg font-semibold text-green-900">
+            Resume de l&apos;export
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 mb-6">
+          <div className="mb-6 grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-sm text-green-800">Format</p>
-              <p className="text-lg font-semibold text-green-900 capitalize">
+              <p className="text-lg font-semibold capitalize text-green-900">
                 {options.format === "excel"
                   ? "Excel (.xlsx)"
                   : options.format === "pdf"
@@ -377,13 +438,13 @@ export default function ExportSection({
               </p>
             </div>
             <div>
-              <p className="text-sm text-green-800">Période</p>
+              <p className="text-sm text-green-800">Periode</p>
               <p className="text-lg font-semibold text-green-900">
                 {options.periode}
               </p>
             </div>
             <div>
-              <p className="text-sm text-green-800">Filtres appliqués</p>
+              <p className="text-sm text-green-800">Filtres appliques</p>
               <p className="text-lg font-semibold text-green-900">
                 {options.formation !== "Tous" || options.formateur !== "Tous"
                   ? "Oui"
@@ -395,53 +456,41 @@ export default function ExportSection({
           <button
             onClick={handleExport}
             disabled={isExportDisabled || exporting}
-            className={`w-full py-3 px-4 rounded-lg font-semibold text-white transition-all ${
+            className={`w-full rounded-lg px-4 py-3 font-semibold text-white transition-all ${
               isExportDisabled || exporting
-                ? "bg-gray-400 cursor-not-allowed"
+                ? "cursor-not-allowed bg-gray-400"
                 : "bg-green-600 hover:bg-green-700 active:scale-95"
             }`}
           >
             {exporting ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="inline-block animate-spin">⏳</span>
-                Génération du rapport...
+                Generation du rapport...
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
-                <span>📥</span>
+                <span>⬇️</span>
                 Exporter le rapport
               </span>
             )}
           </button>
 
-          {isExportDisabled && (
-            <p className="mt-2 text-sm text-red-600 text-center">
-              ⚠️ Veuillez sélectionner au moins un rapport
+          {isExportDisabled ? (
+            <p className="mt-2 text-center text-sm text-red-600">
+              Veuillez selectionner au moins un rapport.
             </p>
-          )}
+          ) : null}
         </section>
 
-        {/* ── Info ── */}
         <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3">
-            ℹ️ Informations utiles
+          <h3 className="mb-3 text-sm font-semibold text-gray-900">
+            Informations utiles
           </h3>
           <ul className="space-y-2 text-sm text-gray-700">
-            <li>
-              • <span className="font-medium">PDF</span> : Format idéal pour
-              l'impression et le partage
-            </li>
-            <li>
-              • <span className="font-medium">Excel</span> : Pour analyser les
-              données avec formules et graphiques
-            </li>
-            <li>
-              • <span className="font-medium">CSV</span> : Compatible avec tous
-              les outils d'analyse
-            </li>
-            <li>
-              • Les données exportées reflètent vos vraies données en base
-            </li>
+            <li>PDF: format ideal pour l&apos;impression et le partage.</li>
+            <li>Excel: utile pour analyser les donnees en tableau.</li>
+            <li>CSV: compatible avec la plupart des outils d&apos;analyse.</li>
+            <li>Les donnees exportees refletent les donnees disponibles.</li>
           </ul>
         </section>
       </div>

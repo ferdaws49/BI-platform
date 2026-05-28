@@ -55,3 +55,6 @@ async def root():
 def health():
     """Sonde pour orchestration / load balancer."""
     return {"status": "ok", "model": registry.model_name}
+
+
+

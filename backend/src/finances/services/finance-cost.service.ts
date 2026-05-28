@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { DataSource, Repository } from 'typeorm';
 import {
   CostFilterDto,
   CostLevelFilter,
@@ -18,6 +18,12 @@ import {
   SessionEfficienceDto,
   TopFormateurCostDto,
 } from '../dto/cost-response.dto';
+import { CreateExpenseDto } from '../dto/create-expense.dto';
+import { Finance, FinanceType } from '../entities/finance.entity';
+import { Formateur } from 'src/formateurs/entities/formateur.entity';
+import { Session } from 'src/sessions/entities/session.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { resolveDashboardPeriod } from 'src/utils/period.utils';
 
 type Rentabilite = 'rentable' | 'seuil' | 'deficitaire';
 
@@ -45,170 +51,176 @@ interface SessionCostMetrics {
 export class FinanceCostService {
   constructor(
     private readonly dataSource: DataSource,
+     @InjectRepository(Finance)
+    private readonly financeRepo: Repository<Finance>,
+    @InjectRepository(Session)
+    private readonly sessionRepo: Repository<Session>,
+    @InjectRepository(Formateur)
+    private readonly formateurRepo: Repository<Formateur>,
   ) {}
 
-  async getKpi(filter: CostFilterDto): Promise<CostKpiDto> {
-    const metrics = await this.loadSessionMetrics(filter);
-    const rows = this.applyMetricFilters(filter, metrics);
+  // 1. CORRECTION DES KPIS (Calculer AVANT le filtre)
+private async loadSessionMetrics(filter: CostFilterDto): Promise<SessionCostMetrics[]> {
+  const { rangeStart, rangeEnd } = resolveCostPeriod(filter);
+  const sd = rangeStart.toISOString().split('T')[0];
+  const ed = rangeEnd.toISOString().split('T')[0];
+  
+  const params: any[] = [sd, ed];
+  let dynamicFilters = '';
 
-    let coutTotal = 0;
-    let coutFormateurs = 0;
-    let totalInscrits = 0;
-    let totalCa = 0;
-
-    for (const r of rows) {
-      coutTotal += r.coutTotal;
-      coutFormateurs += r.coutFormateur;
-      totalInscrits += r.inscrits;
-      totalCa += r.ca;
-    }
-
-    const n = rows.length || 1;
-    const avgPricePerStudent = totalInscrits > 0 ? totalCa / totalInscrits : 0;
-    
-    let studentsNeeded = 0;
-    if (avgPricePerStudent > 0) {
-      studentsNeeded = Math.ceil(coutTotal / avgPricePerStudent);
-    }
-
-    return {
-      coutTotal: Number(coutTotal.toFixed(2)),
-      coutFormateurs: Number(coutFormateurs.toFixed(2)),
-      coutMoyenParSession: Number((coutTotal / n).toFixed(2)),
-      breakEven: {
-        studentsNeeded: studentsNeeded,
-        avgPricePerStudent: Number(avgPricePerStudent.toFixed(2)),
-        status: this.resolveBreakEvenStatus(totalInscrits, studentsNeeded, coutTotal, avgPricePerStudent),
-        totalStudents: totalInscrits,
-        totalCost: Number(coutTotal.toFixed(2)),
-      }
-    };
+  // --- CORRECTION : Préparation des filtres ---
+  if (filter.formationId) {
+    params.push(filter.formationId);
+    dynamicFilters += ` AND df.formation_id = $${params.length}`;
   }
 
-  private async loadSessionMetrics(filter: CostFilterDto): Promise<SessionCostMetrics[]> {
-    const { rangeStart, rangeEnd } = resolveCostPeriod(filter);
-    const sd = rangeStart.toISOString().split('T')[0];
-    const ed = rangeEnd.toISOString().split('T')[0];
+  if (filter.formateurId) {
+    params.push(filter.formateurId);
+    dynamicFilters += ` AND dform.formateur_id = $${params.length}`;
+  }
 
-    const params: any[] = [sd, ed];
+  // --- CORRECTION : Requête avec jointures propres (plus de sous-requêtes lentes) ---
+  const sql = `
+    SELECT
+      ds.session_id as "sessionId",
+      COALESCE(ds.titre, ds.type_session, 'Session sans nom') as "sessionTitle",
+      ds.date as "startDate",
+      ds.capacite as "capaciteMax",
+      df.titre as "formationTitle",
+      dform.nom as "instructor",
+      dform.formateur_id as "formateurId",
+      
+      -- Calcul des coûts par session
+      SUM(CASE WHEN tf.type = 'depense_formateur' THEN ABS(f.montant) ELSE 0 END) as "coutFormateur",
+      SUM(CASE WHEN tf.type = 'depense_logistique' THEN ABS(f.montant) ELSE 0 END) as "coutLogistique",
+      
+      -- Calcul du CA par session
+      SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as "ca",
+      
+      -- Nombre d'inscrits uniques
+      COUNT(DISTINCT CASE WHEN f.sk_apprenant != -1 THEN f.sk_apprenant END) as "inscrits"
+
+    FROM dw.dim_session ds
+    LEFT JOIN dw.fact_finance f ON ds.sk_session = f.sk_session
+    LEFT JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    LEFT JOIN dw.dim_formation df ON f.sk_formation = df.sk_formation
+    LEFT JOIN dw.dim_formateur dform ON f.sk_formateur = dform.sk_formateur
+    WHERE ds.date BETWEEN $1 AND $2 
+      AND ds.session_id != '00000000-0000-0000-0000-000000000000'
+      ${dynamicFilters} -- Injection des filtres ici !
+    GROUP BY ds.session_id, ds.sk_session, ds.titre, ds.type_session, ds.date, ds.capacite, df.titre, dform.nom, dform.formateur_id
+    HAVING COUNT(f.id_fact_finance) > 0 -- On ne prend que les sessions ayant une activité
+  `;
+
+  const raws = await this.dataSource.query(sql, params);
+
+  return raws.map(row => {
+    const coutTotal = parseFloat(row.coutFormateur) + parseFloat(row.coutLogistique);
+    const ca = parseFloat(row.ca);
+    const inscrits = parseInt(row.inscrits);
+    const capacite = Math.max(1, parseInt(row.capaciteMax));
+
+    return {
+      sessionId: row.sessionId,
+      sessionTitle: row.sessionTitle,
+      formationTitle: row.formationTitle || 'N/A',
+      startDate: row.startDate,
+      instructor: row.instructor || 'N/A',
+      formateurId: parseInt(row.formateurId) || 0,
+      coutFormateur: parseFloat(row.coutFormateur),
+      coutLogistique: parseFloat(row.coutLogistique),
+      coutTotal: coutTotal,
+      capaciteMax: capacite,
+      inscrits: inscrits,
+      ca: ca,
+      marge: ca - coutTotal,
+      tauxRemplissagePercent: (inscrits / capacite) * 100,
+      coutParEtudiant: inscrits > 0 ? coutTotal / inscrits : 0,
+      rentabilite: this.resolveRentabilite(ca - coutTotal),
+      costTier: CostLevelFilter.MOYEN,
+    };
+  });
+}
+
+// 2. CORRECTION DES KPIS (Calcul basé uniquement sur les sessions valides)
+async getKpi(filter: CostFilterDto): Promise<CostKpiDto> {
+  const metrics = await this.loadSessionMetrics(filter);
+
+  // Coûts liés aux sessions (formateur + logistique variable)
+  const totalCoutSessions = metrics.reduce((sum, m) => sum + m.coutTotal, 0);
+  const totalCoutFormateur = metrics.reduce((sum, m) => sum + m.coutFormateur, 0);
+  const totalInscrits = metrics.reduce((sum, m) => sum + m.inscrits, 0);
+  const totalCa = metrics.reduce((sum, m) => sum + m.ca, 0);
+
+  // ← AJOUTER : charges fixes sans session (loyer, admin...)
+  const { currentStart, currentEnd } = resolveDashboardPeriod(filter);
+
+const chargesFixes = await this.sumFinanceInRange(
+   currentStart.toISOString().split('T')[0],
+  currentEnd.toISOString().split('T')[0],
+  'depense_logistique'
+);
+  // chargesFixes inclut logistique variable + charges fixes
+  // On soustrait la logistique variable déjà dans metrics
+  const logistiqueVariable = metrics.reduce((sum, m) => sum + (m.coutTotal - m.coutFormateur), 0);
+  const chargesFixesSeulement = chargesFixes - logistiqueVariable;
+
+  // Coût total réel = sessions + charges fixes
+  const totalCout = totalCoutSessions + chargesFixesSeulement;
+
+  const avgPricePerStudent = totalInscrits > 0 ? totalCa / totalInscrits : 0;
+    const coutVariableTotal = totalCoutFormateur + logistiqueVariable;
+  const coutVariableParEtudiant = totalInscrits > 0 
+    ? coutVariableTotal / totalInscrits 
+    : 0;
+
+  // Contribution marginale = ce que rapporte 1 étudiant après coûts variables
+  const contributionMarginale = avgPricePerStudent - coutVariableParEtudiant;
+
+  // Break-even = charges fixes / contribution marginale par étudiant
+  const studentsNeeded = contributionMarginale > 0
+    ? Math.ceil(chargesFixesSeulement / contributionMarginale)
+    : 0;
+
+  return {
+    coutTotal: Number(totalCout.toFixed(2)),
+    coutFormateurs: Number(totalCoutFormateur.toFixed(2)),
+    coutMoyenParSession: metrics.length > 0 
+      ? Number((totalCout / metrics.length).toFixed(2)) 
+      : 0,
+    breakEven: {
+      studentsNeeded,
+      avgPricePerStudent: Number(avgPricePerStudent.toFixed(2)),
+      status: this.resolveBreakEvenStatus(
+        totalInscrits, studentsNeeded, totalCout, avgPricePerStudent
+      ),
+      totalStudents: totalInscrits,
+      totalCost: Number(totalCout.toFixed(2)),
+    }
+  };
+}
+
+private async sumFinanceInRange(start: string, end: string, type: string, formationId?: number): Promise<number> {
+    const params: any[] = [start, end, type];
     let formationFilter = '';
-    let formateurFilter = '';
 
-    if (filter.formationId) {
-      params.push(filter.formationId);
-      formationFilter = `AND df.formation_id = $${params.length}`;
-    }
-    if (filter.formateurId) {
-      params.push(filter.formateurId);
-      formateurFilter = `AND dfo.formateur_id = $${params.length}`;
+    if (formationId) {
+      params.push(formationId);
+      formationFilter = `AND fo.formation_id = $${params.length}`;
     }
 
-    const raws = await this.dataSource.query(`
-      WITH session_inscrits AS (
-        SELECT 
-          f.sk_session,
-          COUNT(DISTINCT f.sk_apprenant) as inscrits
-        FROM dw.fact_finance f
-        JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-        WHERE t.date_key BETWEEN $1 AND $2
-          AND f.sk_apprenant != -1
-        GROUP BY f.sk_session
-      ),
-      session_ca AS (
-        SELECT 
-          f.sk_session,
-          COALESCE(SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END), 0) as ca
-        FROM dw.fact_finance f
-        JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-        JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-        WHERE t.date_key BETWEEN $1 AND $2
-        GROUP BY f.sk_session
-      ),
-      session_couts AS (
-        SELECT 
-          f.sk_session,
-          COALESCE(SUM(CASE WHEN tf.type = 'depense_formateur' THEN -f.montant ELSE 0 END), 0) as cout_formateur,
-          COALESCE(SUM(CASE WHEN tf.type = 'depense_logistique' THEN -f.montant ELSE 0 END), 0) as cout_logistique
-        FROM dw.fact_finance f
-        JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-        JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-        WHERE t.date_key BETWEEN $1 AND $2
-        GROUP BY f.sk_session
-      ),
-      session_formation AS (
-        -- Récupère UNE formation par session via fact_finance
-        SELECT DISTINCT ON (f.sk_session)
-          f.sk_session,
-          df.titre as formation_title,
-          df.formation_id
-        FROM dw.fact_finance f
-        JOIN dw.dim_formation df ON f.sk_formation = df.sk_formation
-        ORDER BY f.sk_session, f.id_fact_finance
-      ),
-      session_formateur AS (
-        -- Récupère UN formateur par session via fact_finance
-        SELECT DISTINCT ON (f.sk_session)
-          f.sk_session,
-          dfo.nom as formateur_nom,
-          dfo.formateur_id
-        FROM dw.fact_finance f
-        JOIN dw.dim_formateur dfo ON f.sk_formateur = dfo.sk_formateur
-        ORDER BY f.sk_session, f.id_fact_finance
-      )
-      SELECT 
-        ds.session_id as "sessionId",
-        COALESCE(ds.titre, ds.type_session, 'Session sans nom') as "sessionTitle",
-        COALESCE(sf.formation_title, 'Formation non liée') as "formationTitle",
-        ds.date as "startDate",
-        COALESCE(sfo.formateur_nom, 'Sans formateur') as "instructor",
-        COALESCE(sfo.formateur_id, 0) as "formateurId",
-        COALESCE(sc.cout_formateur, 0) as "coutFormateur",
-        COALESCE(sc.cout_logistique, 0) as "coutLogistique",
-        ds.capacite as "capaciteMax",
-        COALESCE(si.inscrits, 0) as "inscrits",
-        COALESCE(sca.ca, 0) as "ca"
-      FROM dw.dim_session ds
-      LEFT JOIN session_inscrits si ON si.sk_session = ds.sk_session
-      LEFT JOIN session_ca sca ON sca.sk_session = ds.sk_session
-      LEFT JOIN session_couts sc ON sc.sk_session = ds.sk_session
-      LEFT JOIN session_formation sf ON sf.sk_session = ds.sk_session
-      LEFT JOIN session_formateur sfo ON sfo.sk_session = ds.sk_session
-      WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
-        AND ds.date BETWEEN $1 AND $2
+    const res = await this.dataSource.query(`
+      SELECT COALESCE(SUM(ABS(f.montant)), 0) as total
+      FROM dw.fact_finance f
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+      WHERE t.date_key BETWEEN $1 AND $2
+        AND tf.type = $3
         ${formationFilter}
-        ${formateurFilter}
     `, params);
 
-    return raws.map(row => {
-      const cFormateur = parseFloat(row.coutFormateur || 0);
-      const cLogistique = parseFloat(row.coutLogistique || 0);
-      const caTotal = parseFloat(row.ca || 0);
-      const nbInscrits = parseInt(row.inscrits || 0);
-      const capacite = parseInt(row.capaciteMax || 1);
-      
-      const coutTotal = cFormateur + cLogistique;
-      const marge = caTotal - coutTotal;
-
-      return {
-        sessionId: String(row.sessionId),
-        sessionTitle: row.sessionTitle || '—',
-        formationTitle: row.formationTitle || '—',
-        startDate: row.startDate,
-        instructor: row.instructor || 'Sans formateur',
-        formateurId: parseInt(row.formateurId) || 0,
-        coutFormateur: cFormateur,
-        coutLogistique: cLogistique,
-        coutTotal: coutTotal,
-        capaciteMax: capacite,
-        inscrits: nbInscrits,
-        ca: caTotal,
-        marge: marge,
-        tauxRemplissagePercent: (nbInscrits / Math.max(1, capacite)) * 100,
-        coutParEtudiant: nbInscrits > 0 ? coutTotal / nbInscrits : 0,
-        rentabilite: this.resolveRentabilite(marge),
-        costTier: this.resolveCostTier(coutTotal),
-      };
-    });
+    return parseFloat(res[0]?.total) || 0;
   }
 
   private resolveRentabilite(marge: number): Rentabilite {
@@ -224,42 +236,32 @@ export class FinanceCostService {
   }
 
   async getTopFormateurs(filter: CostFilterDto): Promise<TopFormateurCostDto[]> {
-    const allMetrics = await this.loadSessionMetrics(filter);
-    const rows = this.applyMetricFilters(filter, allMetrics);
-    const limit = filter.topLimit ?? 10;
+  const allMetrics = await this.loadSessionMetrics(filter);
+  // ON NE FILTRE PAS ICI pour avoir le vrai coût total du formateur
+  
+  const map = new Map<number, { nom: string; cout: number; sessions: Set<string> }>();
 
-    const map = new Map<number, { nom: string; cout: number; sessions: Set<string> }>();
+  for (const r of allMetrics) {
+    const fid = r.formateurId;
+    if (!fid || fid === 0) continue;
 
-    for (const r of rows) {
-      const fid = r.formateurId;
-      if (!fid || fid === 0) continue;
-
-      const cur = map.get(fid) ?? { 
-        nom: r.instructor?.trim() || 'Formateur Inconnu', 
-        cout: 0, 
-        sessions: new Set<string>() 
-      };
-
-      cur.cout += r.coutTotal;
-      cur.sessions.add(String(r.sessionId));
-      map.set(fid, cur);
-    }
-
-    const list: TopFormateurCostDto[] = Array.from(map.entries()).map(([formateurId, v]) => {
-      const nbSessions = v.sessions.size;
-      return {
-        formateurId,
-        nomFormateur: v.nom,
-        coutTotal: Number(v.cout.toFixed(2)),
-        nombreSessions: nbSessions,
-        coutMoyenParSession: nbSessions > 0 ? Number((v.cout / nbSessions).toFixed(2)) : 0,
-      };
-    });
-
-    return list
-      .sort((a, b) => b.coutTotal - a.coutTotal)
-      .slice(0, limit);
+    const cur = map.get(fid) ?? { nom: r.instructor, cout: 0, sessions: new Set() };
+    cur.cout += r.coutTotal;
+    cur.sessions.add(String(r.sessionId));
+    map.set(fid, cur);
   }
+
+  return Array.from(map.entries())
+    .map(([formateurId, v]) => ({
+      formateurId,
+      nomFormateur: v.nom,
+      coutTotal: Number(v.cout.toFixed(2)),
+      nombreSessions: v.sessions.size,
+      coutMoyenParSession: v.sessions.size > 0 ? Number((v.cout / v.sessions.size).toFixed(2)) : 0,
+    }))
+    .sort((a, b) => b.coutTotal - a.coutTotal)
+    .slice(0, filter.topLimit ?? 10);
+}
 
   async getRepartition(filter: CostFilterDto): Promise<CostRepartitionResponseDto> {
     const allMetrics = await this.loadSessionMetrics(filter);
@@ -337,15 +339,27 @@ export class FinanceCostService {
   }
 
   async getEfficience(filter: CostFilterDto): Promise<SessionEfficienceDto[]> {
-    const rows = this.applyMetricFilters(filter, await this.loadSessionMetrics(filter));
-    return rows.map((r) => ({
+  // 1. On récupère les sessions filtrées
+  const rows = this.applyMetricFilters(filter, await this.loadSessionMetrics(filter));
+  
+  // 2. On re-sécurise le calcul ligne par ligne pour le Front-End
+  return rows.map((r) => {
+    const nbInscrits = r.inscrits || 0;
+    const coutTotal = r.coutTotal || 0;
+    
+    // Recalcul strict du coût par étudiant
+    const coutParEtudiantExact = nbInscrits > 0 ? (coutTotal / nbInscrits) : 0;
+
+    return {
       sessionId: String(r.sessionId),
       formation: r.formationTitle,
-      coutTotal: Number(r.coutTotal.toFixed(2)),
-      coutParEtudiant: Number(r.coutParEtudiant.toFixed(2)),
-      nombreInscrits: r.inscrits,
-    }));
-  }
+      coutTotal: Number(coutTotal.toFixed(2)),
+      // On s'assure d'envoyer la bonne valeur brute arrondie au Front-End
+      coutParEtudiant: Number(coutParEtudiantExact.toFixed(2)),
+      nombreInscrits: nbInscrits,
+    };
+  });
+}
 
   async getSessionsTable(filter: CostFilterDto): Promise<SessionCostTableResponseDto> {
     const rows = this.applyMetricFilters(filter, await this.loadSessionMetrics(filter));
@@ -469,7 +483,86 @@ export class FinanceCostService {
     if (total <= p66) return CostLevelFilter.MOYEN;
     return CostLevelFilter.ELEVE;
   }
+
+  async createExpense(dto: CreateExpenseDto): Promise<Finance> {
+    // 1️⃣ Vérifier que la session existe (avec sa formation et son formateur assigné)
+    const session = await this.sessionRepo.findOne({
+      where: { id: dto.sessionId },
+      relations: ['formation', 'formateur'],
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Session "${dto.sessionId}" non trouvée.`);
+    }
+
+    // 2️⃣ Préparer l'entité Finance
+    const finance = this.financeRepo.create({
+      montant: dto.montant,
+      type: dto.type,
+      sessionId: dto.sessionId,
+      session,
+    });
+
+    // 3️⃣ Logique selon le type
+    if (dto.type === FinanceType.DEPENSE_FORMATEUR) {
+      // --- Recherche du formateur ---
+      let formateur: Formateur | null = null;
+
+      if (dto.formateurId) {
+        formateur = await this.formateurRepo.findOne({
+          where: { id: dto.formateurId },
+        });
+      } else if (dto.formateurNom) {
+        // Recherche insensible à la casse (exemple simple)
+        formateur = await this.formateurRepo
+          .createQueryBuilder('f')
+          .where('LOWER(f.nom) = LOWER(:nom)', { nom: dto.formateurNom })
+          .getOne();
+      }
+
+      if (!formateur) {
+        throw new NotFoundException(
+          `Formateur "${dto.formateurNom || dto.formateurId}" non trouvé.`,
+        );
+      }
+
+      // --- Vérification métier : ce formateur enseigne-t-il cette formation ? ---
+      // Méthode A : le formateur est celui officiellement assigné à la session
+      if (session.formateurId !== formateur.id) {
+        throw new BadRequestException(
+          `Le formateur ${formateur.nom} n'est pas assigné à cette session / formation.`,
+        );
+      }
+
+      // (Optionnel) Méthode B : si tu as une relation ManyToMany Formation <-> Formateur
+      // const formation = await this.formationRepo.findOne({
+      //   where: { id: session.formationId },
+      //   relations: ['formateurs'],
+      // });
+      // const enseigne = formation.formateurs.some(f => f.id === formateur.id);
+      // if (!enseigne) throw new BadRequestException('...');
+
+      finance.formateur = formateur;
+      finance.formateurId = formateur.id;
+      finance.description = `Rémunération formateur : ${formateur.nom}`;
+    }
+
+    else if (dto.type === FinanceType.DEPENSE_LOGISTIQUE) {
+      if (!dto.description || dto.description.trim().length === 0) {
+        throw new BadRequestException(
+          'La description est obligatoire pour un coût logistique.',
+        );
+      }
+      finance.description = dto.description.trim();
+    }
+
+    // 4️⃣ Sauvegarde
+    return this.financeRepo.save(finance);
+  }
+
 }
+
+
 
 function percentile(sorted: number[], p: number): number {
   if (!sorted.length) return 0;
@@ -480,3 +573,5 @@ function percentile(sorted: number[], p: number): number {
   const w = idx - lo;
   return (sorted[lo] ?? 0) * (1 - w) + (sorted[hi] ?? 0) * w;
 }
+
+

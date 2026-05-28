@@ -3,20 +3,12 @@
 import React from "react";
 import type { RentabiliteStatut } from "../types";
 
-// ── Design tokens ──────────────────────────────────────────
-export const glassCard: React.CSSProperties = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
+/** Conteneur card aligné sur le design system global */
+export const cardClass =
+  "rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-shadow";
 
-export const glassPanel: React.CSSProperties = {
-  background: "rgba(255,255,255,0.45)",
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
-  border: "1px solid rgba(229,234,221,0.7)",
-};
+export const glassCard: React.CSSProperties = {};
+export const glassPanel: React.CSSProperties = {};
 
 export function fmtCurrency(v: number) {
   return new Intl.NumberFormat("fr-TN", {
@@ -78,11 +70,7 @@ export function KPICard({
   icon?: React.ReactNode;
 }) {
   return (
-    <div
-      className="relative rounded-2xl p-5 flex flex-col gap-3 hover:-translate-y-0.5 transition-all duration-300"
-      style={glassCard}
-    >
-      <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: accentColor }} />
+    <div className={`relative p-4 flex flex-col gap-3 ${cardClass}`}>
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           {icon && (
@@ -93,17 +81,17 @@ export function KPICard({
               {icon}
             </div>
           )}
-          <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.5 }}>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
         </div>
         {badge}
       </div>
-      <p className="text-2xl font-bold" style={{ color: valueColor || "#2d4a3e", fontFamily: "'Sora', sans-serif" }}>
+      <p className={`text-2xl font-bold ${valueColor ? "" : "text-foreground"}`} style={valueColor ? { color: valueColor } : undefined}>
         {value}
       </p>
       {sub && (
-        <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.45, borderTop: "1px solid #e5eadd", paddingTop: 8 }}>
+        <p className="text-xs text-muted-foreground border-t border-border pt-2">
           {sub}
         </p>
       )}
@@ -115,10 +103,8 @@ export function KPICard({
 export function SectionTitle({ title, sub }: { title: string; sub?: string }) {
   return (
     <div className="mb-4">
-      <h3 className="text-base font-bold" style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}>
-        {title}
-      </h3>
-      {sub && <p className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.45 }}>{sub}</p>}
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      {sub && <p className="text-xs mt-0.5 text-muted-foreground">{sub}</p>}
     </div>
   );
 }
@@ -129,7 +115,7 @@ export function ProgressBar({
 }: { value: number; max: number; color?: string; height?: number }) {
   const pct = Math.min(100, Math.round((value / max) * 100));
   return (
-    <div className="w-full rounded-full overflow-hidden" style={{ height, background: "#e5eadd" }}>
+    <div className="w-full rounded-full overflow-hidden bg-border" style={{ height }}>
       <div
         className="rounded-full h-full transition-all duration-500"
         style={{ width: `${pct}%`, background: color }}
@@ -148,20 +134,16 @@ export function FilterSelect({
   options: { label: string; value: string }[];
 }) {
   return (
-    <div
-      className="flex items-center gap-2 px-3 py-2 rounded-xl border relative"
-      style={{ background: "#efefea", borderColor: "#e5eadd" }}
-    >
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-secondary relative">
       {label && (
-        <span className="text-xs font-medium flex-shrink-0" style={{ color: "#2d4a3e", opacity: 0.6 }}>
+        <span className="text-xs font-medium flex-shrink-0 text-muted-foreground">
           {label}
         </span>
       )}
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="appearance-none bg-transparent text-sm outline-none pr-5 cursor-pointer"
-        style={{ color: "#2d4a3e", fontFamily: "'DM Sans', sans-serif" }}
+        className="appearance-none bg-transparent text-sm outline-none pr-5 cursor-pointer text-foreground"
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -181,10 +163,7 @@ export function SearchBox({
   value, onChange, placeholder = "Rechercher...",
 }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
-    <div
-      className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-      style={{ background: "#efefea", borderColor: "#e5eadd" }}
-    >
+    <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-secondary">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
         <circle cx="6.5" cy="6.5" r="5" stroke="#2d4a3e" strokeOpacity="0.4" strokeWidth="1.5" />
         <path d="M10.5 10.5L14 14" stroke="#2d4a3e" strokeOpacity="0.4" strokeWidth="1.5" strokeLinecap="round" />
@@ -193,8 +172,7 @@ export function SearchBox({
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="bg-transparent text-sm outline-none w-44"
-        style={{ color: "#2d4a3e", fontFamily: "'DM Sans', sans-serif" }}
+        className="bg-transparent text-sm outline-none w-44 text-foreground"
       />
     </div>
   );
@@ -237,8 +215,7 @@ export function ExportBtn({ data }: Props) {
   return (
     <button
       onClick={handleExport}
-      className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all hover:shadow-sm"
-      style={{ background: "#efefea", borderColor: "#e5eadd", color: "#2d4a3e" }}
+      className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-border bg-secondary text-foreground transition-all hover:bg-accent/20"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

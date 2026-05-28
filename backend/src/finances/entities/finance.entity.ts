@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Session } from '../../sessions/entities/session.entity';
 import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
+import { Formateur } from 'src/formateurs/entities/formateur.entity';
 
 export enum FinanceType {
   PAIEMENT = 'paiement',
@@ -59,4 +60,12 @@ export class Finance {
 
   @Column({ nullable: true })
   apprenantId: number | null;
+
+   // ✅ AJOUT : lien vers le formateur (uniquement pour DEPENSE_FORMATEUR)
+  @ManyToOne(() => Formateur, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'formateurId' })
+  formateur: Formateur | null;
+
+  @Column({ nullable: true })
+  formateurId: number | null;
 }

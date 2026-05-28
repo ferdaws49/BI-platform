@@ -1,7 +1,7 @@
 "use client";
 
 import { SlidersHorizontal } from "lucide-react";
-import { FilterSelect, glassPanel } from "../ui";
+import { FilterSelect } from "../ui";
 import type { PeriodeFilter, RemplissageFilter, NiveauCout } from "../../types";
 
 export interface FiltersState {
@@ -35,15 +35,12 @@ export default function FiltersBar({ filters, onChange, formations, formateurs }
   const showDates = filters.periode === "Personnalisé";
 
   return (
-    <div className="rounded-2xl p-4" style={glassPanel}>
+    <div className="rounded-xl border border-border bg-card p-2 shadow-sm space-y-3">
       {/* Row 1 — période + dates + formateur + formation */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Icône filtre */}
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: "rgba(26,113,73,0.1)" }}
-        >
-          <SlidersHorizontal size={15} color="#1a7149" />
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/10">
+          <SlidersHorizontal size={15} className="text-primary" />
         </div>
 
         {/* Période pills */}
@@ -52,12 +49,11 @@ export default function FiltersBar({ filters, onChange, formations, formateurs }
             <button
               key={p}
               onClick={() => set("periode", p)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
-              style={
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 ${
                 filters.periode === p
-                  ? { background: "#1a7149", color: "#fff" }
-                  : { background: "#efefea", color: "#2d4a3e" }
-              }
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-foreground hover:bg-accent/20"
+              }`}
             >
               {p}
             </button>
@@ -67,37 +63,29 @@ export default function FiltersBar({ filters, onChange, formations, formateurs }
         {/* Custom date range */}
         {showDates && (
           <>
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border"
-              style={{ background: "#efefea", borderColor: "#e5eadd" }}
-            >
-              <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.5 }}>Du</span>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-secondary">
+              <span className="text-xs text-muted-foreground">Du</span>
               <input
                 type="date"
                 value={filters.dateDebut}
                 onChange={e => set("dateDebut", e.target.value)}
-                className="bg-transparent text-xs outline-none"
-                style={{ color: "#2d4a3e", fontFamily: "'DM Sans', sans-serif" }}
+                className="bg-transparent text-xs outline-none text-foreground"
               />
             </div>
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl border"
-              style={{ background: "#efefea", borderColor: "#e5eadd" }}
-            >
-              <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.5 }}>Au</span>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-secondary">
+              <span className="text-xs text-muted-foreground">Au</span>
               <input
                 type="date"
                 value={filters.dateFin}
                 onChange={e => set("dateFin", e.target.value)}
-                className="bg-transparent text-xs outline-none"
-                style={{ color: "#2d4a3e", fontFamily: "'DM Sans', sans-serif" }}
+                className="bg-transparent text-xs outline-none text-foreground"
               />
             </div>
           </>
         )}
 
         {/* Séparateur */}
-        <div className="w-px h-5 mx-1" style={{ background: "#e5eadd" }} />
+        <div className="w-px h-5 mx-1 bg-border" />
 
         <FilterSelect
           label="Formateur :"
@@ -121,8 +109,8 @@ export default function FiltersBar({ filters, onChange, formations, formateurs }
       </div>
 
       {/* Row 2 — filtres analytiques */}
-      <div className="flex flex-wrap items-center gap-2 mt-3 pt-3" style={{ borderTop: "1px solid #e5eadd" }}>
-        <span className="text-xs font-medium" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border">
+        <span className="text-xs font-medium text-muted-foreground">
           Filtres analytiques :
         </span>
 
@@ -172,8 +160,7 @@ export default function FiltersBar({ filters, onChange, formations, formateurs }
               page: 1, sortOrder: "desc", sortBy: "cout"
             })
           }
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all hover:bg-white"
-          style={{ borderColor: "#e5eadd", color: "#2d4a3e", opacity: 0.6 }}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground transition-all hover:bg-accent/20"
         >
           ↺ Réinitialiser
         </button>

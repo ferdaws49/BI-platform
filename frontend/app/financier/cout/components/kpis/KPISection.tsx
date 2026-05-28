@@ -1,7 +1,7 @@
 "use client";
 
 import { TrendingDown, DollarSign, Users, BarChart2, Target } from "lucide-react";
-import { KPICard, fmtCurrency, glassCard } from "../ui";
+import { KPICard, fmtCurrency, cardClass } from "../ui";
 import type { KpiCoutsData } from "../../types";
 
 interface Props {
@@ -13,7 +13,7 @@ export default function KPISection({ data }: Props) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 animate-pulse">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-32 rounded-2xl bg-white/50 border border-gray-100" />
+          <div key={i} className="h-32 rounded-xl border border-border bg-muted" />
         ))}
       </div>
     );
@@ -72,16 +72,7 @@ export default function KPISection({ data }: Props) {
       
 
       {/* Break-even — carte spéciale */}
-      <div
-        className="relative rounded-2xl p-5 flex flex-col gap-3 hover:-translate-y-0.5 transition-all duration-300"
-        style={glassCard}
-      >
-        {/* Accent bar */}
-        <div
-          className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl"
-          style={{ background: breakEvenEasy ? "#1a7149" : "#DC2626" }}
-        />
-
+      <div className={`relative p-4 flex flex-col gap-3 ${cardClass}`}>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2">
             <div
@@ -90,10 +81,7 @@ export default function KPISection({ data }: Props) {
             >
               <Target size={16} color={breakEvenEasy ? "#1a7149" : "#DC2626"} />
             </div>
-            <p
-              className="text-xs font-medium uppercase tracking-wide"
-              style={{ color: "#2d4a3e", opacity: 0.5 }}
-            >
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Break-even Point
             </p>
           </div>
@@ -108,27 +96,25 @@ export default function KPISection({ data }: Props) {
           </span>
         </div>
 
-        {/* Main value */}
         <div className="flex items-baseline gap-2">
           <p
             className="text-3xl font-bold"
-            style={{ color: breakEvenEasy ? "#1a7149" : "#DC2626", fontFamily: "'Sora', sans-serif" }}
+            style={{ color: breakEvenEasy ? "#1a7149" : "#DC2626" }}
           >
             {data.breakEvenStudents}
           </p>
-          <p className="text-sm" style={{ color: "#2d4a3e", opacity: 0.6 }}>
+          <p className="text-sm text-muted-foreground">
             étudiants min.
           </p>
         </div>
 
-        {/* Progress toward typical capacity (15) */}
         <div>
-          <div className="flex justify-between text-xs mb-1.5" style={{ color: "#2d4a3e", opacity: 0.5 }}>
+          <div className="flex justify-between text-xs mb-1.5 text-muted-foreground">
             <span>0</span>
             <span>Seuil : {data.breakEvenStudents}</span>
             <span>15 (capacité)</span>
           </div>
-          <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "#e5eadd" }}>
+          <div className="w-full h-2 rounded-full overflow-hidden bg-border">
             <div
               className="h-2 rounded-full transition-all duration-500"
               style={{
@@ -139,7 +125,7 @@ export default function KPISection({ data }: Props) {
           </div>
         </div>
 
-        <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.45, borderTop: "1px solid #e5eadd", paddingTop: 8 }}>
+        <p className="text-xs text-muted-foreground border-t border-border pt-2">
           Seuil moyen pour couvrir le coût · Prix moyen : {fmtCurrency(data.prixMoyenFormation)}
         </p>
       </div>
