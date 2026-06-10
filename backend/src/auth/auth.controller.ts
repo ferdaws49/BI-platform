@@ -3,7 +3,6 @@ import { Controller, Post,
     Param, UseGuards,
      HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { AuthGuard } from './guards/auth.guard';
 import { CurrentUser } from 'src/users/decorators/current-user.decorator';
 import type { JWTPayloadType } from "../utils/types";
 import { UsersService } from 'src/users/users.service';
@@ -52,7 +51,6 @@ export class AuthController {
 
   //Get: ~/api/users/current-user
   @Get("current-user")
-  @UseGuards(AuthGuard)// awel mayji e request bech yodkhol UseGuard   
   public getCurrentUser(@CurrentUser() payload: JWTPayloadType){
     return this.usersService.getCurrentUser(payload.id);
     //fi getCurrentUser yestha9 el id ,

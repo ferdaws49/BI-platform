@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { Formation, FormationStatus } from './entities/formation.entity';
 import { CreateFormationDto } from './dto/create-formation.dto';
 import { UpdateFormationDto } from './dto/update-formation.dto';
-import { Session, SessionStatut } from '../sessions/entities/session.entity';
+import { Session, SessionStatut, SessionType } from '../sessions/entities/session.entity';
 import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
 import { Satisfaction } from 'src/satisfaction/entities/satisfaction.entity';
 
@@ -35,21 +35,118 @@ export class FormationsService {
     private readonly sessionRepo: Repository<Session>,
     @InjectRepository(Apprenant)
     private readonly apprenantRepo: Repository<Apprenant>,
-    
+    @InjectRepository(Satisfaction)
+    private readonly satisfactionRepo: Repository<Satisfaction>,
   ) {}
+
+  private getPeriodInterval(periode?: string): { start: Date; end: Date } | null {
+    if (!periode || periode === 'Tous') return null;
+    const now   = new Date();
+    const start = new Date();
+    const end   = new Date();
+
+    switch (periode) {
+      case 'Ce mois':
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        break;
+      case 'Trimestre':
+        start.setMonth(now.getMonth() - 3);
+        break;
+      case 'Semestre':
+        start.setMonth(now.getMonth() - 6);
+        break;
+      case 'Année':
+        start.setFullYear(now.getFullYear());
+        start.setMonth(0, 1);
+        break;
+      default:
+        return null;
+    }
+    return { start, end };
+  }
 
   // ── GET /responsable/formations ───────────────────────────────────────────
   async findAll(filters?: any): Promise<FormationStats[]> {
-    const formations = await this.formationRepo.find({
+    const { periode, formation: formationFilter, formateur: formateurFilter, type: typeFilter, statut: statutFilter } = filters || {};
+
+    let formations = await this.formationRepo.find({
       relations: [
         'sessions',
         'sessions.apprenants',
+        'sessions.formateur',
       ],
     });
+
+    // 1. Filtrer les formations par titre ou statut
+    if (formationFilter && formationFilter !== 'Tous') {
+      formations = formations.filter(f => f.titre === formationFilter);
+    }
+
+    if (statutFilter && statutFilter !== 'Tous') {
+      const dbStatut = statutFilter === 'Actif' ? 'active' : statutFilter === 'Terminé' ? 'completed' : statutFilter.toLowerCase();
+      formations = formations.filter(f => f.statut === dbStatut);
+    }
+
+    // 2. Déterminer si des filtres sur les sessions sont actifs
+    const interval = this.getPeriodInterval(periode);
+    const hasActiveSessionFilter = (periode && periode !== 'Tous') || 
+                                   (formateurFilter && formateurFilter !== 'Tous') || 
+                                   (typeFilter && typeFilter !== 'Tous');
+
+    const filteredFormations: Formation[] = [];
+    const sessionsMap = new Map<number, any[]>();
+
+    for (const f of formations) {
+      let sessions = f.sessions ?? [];
+
+      if (interval) {
+        const startStr = interval.start.toISOString().split('T')[0];
+        const endStr = interval.end.toISOString().split('T')[0];
+        sessions = sessions.filter(s => s.date >= startStr && s.date <= endStr);
+      }
+
+      if (formateurFilter && formateurFilter !== 'Tous') {
+        const nameToMatch = formateurFilter.toLowerCase().trim();
+        sessions = sessions.filter(s => {
+          const fullName = s.formateur ? `${s.formateur.prenom} ${s.formateur.nom}`.toLowerCase().trim() : '';
+          return fullName === nameToMatch;
+        });
+      }
+
+      if (typeFilter && typeFilter !== 'Tous') {
+        const mappedType = typeFilter === 'En ligne' ? 'en_ligne' : typeFilter === 'Présentiel' ? 'présentiel' : typeFilter.toLowerCase();
+        sessions = sessions.filter(s => s.type === mappedType);
+      }
+
+      // Si un filtre de session est actif et qu'aucune session ne correspond, on exclut cette formation
+      if (hasActiveSessionFilter && sessions.length === 0) {
+        continue;
+      }
+
+      filteredFormations.push(f);
+      sessionsMap.set(f.id, sessions);
+    }
+
+    const results = await Promise.all(
+      filteredFormations.map(async (f) => {
+        const satResult = await this.satisfactionRepo
+          .createQueryBuilder('s')
+          .select('AVG(s.note)', 'avg')
+          .where('s.formationId = :fid', { fid: f.id })
+          .getRawOne();
+        const raw = parseFloat(satResult?.avg ?? '0');
+        const satisfaction = isNaN(raw) ? 0 : Math.round(raw * 10) / 10;
+
+        const fWithFilteredSessions = {
+          ...f,
+          sessions: sessionsMap.get(f.id) || [],
+        };
+        return this.computeStats(fWithFilteredSessions as any, satisfaction);
+      })
+    );
     
-    // TODO: Appliquer les filtres ici si nécessaire
-    
-    return formations.map((f) => this.computeStats(f));
+    return results;
   }
 
   // ── POST ──────────────────────────────────────────────────────────────────
@@ -314,7 +411,7 @@ public async findAllAvailableFormations(userId: number, page = 1, limit = 9) {
 
   // ─── Calcul des métriques depuis session_apprenants ──────────────────────
   // ─── Calcul des métriques ─────────────────────────────────────────────────
-  private computeStats(f: Formation): FormationStats {
+  private computeStats(f: Formation, satisfaction = 0): FormationStats {
     const sessions = f.sessions ?? [];
     const nbSessionsTotal = sessions.length;
 
@@ -363,15 +460,6 @@ public async findAllAvailableFormations(userId: number, page = 1, limit = 9) {
     const tauxAbandon =
       nbSessionsTotal > 0
         ? Math.round((nbSessionsAbandon / nbSessionsTotal) * 1000) / 10
-        : 0;
-
-    const notes = sessions
-      .map((s) => (s as any).satisfaction)
-      .filter((n): n is number => typeof n === 'number' && !isNaN(n));
-
-    const satisfaction =
-      notes.length > 0
-        ? Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) / 10
         : 0;
 
     return {

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseIntPipe, Query } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -12,8 +12,8 @@ export class FormationsController {
   constructor(private readonly formationsService: FormationsService) {}
 
   @Get()
-  findAll() {
-    return this.formationsService.findAll();
+  findAll(@Query() query: any) {
+    return this.formationsService.findAll(query);
   }
 
   @Post()

@@ -1,12 +1,36 @@
 "use client";
 
 import { useMemo, useState, Dispatch } from "react";
-import { Edit, Trash2, Monitor, Wifi, Calendar } from "lucide-react";
+import {
+  Edit,
+  Trash2,
+  Monitor,
+  Wifi,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Formation, ResourcesAction, ResourcesState } from "../state";
 import { Card, Badge } from "./ui";
 import { ConfirmDialog, EmptyState } from "./shared";
 
-// ─── Badges ───────────────────────────────────────────────────────────────────
+const PER_PAGE = 8;
+
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  const pages: (number | "...")[] = [];
+  let prev: number | null = null;
+  for (let i = 1; i <= total; i++) {
+    const inRange =
+      i === 1 || i === total || (i >= current - 1 && i <= current + 1);
+    if (inRange) {
+      if (prev !== null && i - prev > 1) pages.push("...");
+      pages.push(i);
+      prev = i;
+    }
+  }
+  return pages;
+}
+
 function TypeBadge({ type }: { type?: Formation["niveauType"] }) {
   if (type === "en_ligne") {
     return (
@@ -37,7 +61,6 @@ function StatutBadge({ statut }: { statut?: Formation["statut"] }) {
   );
 }
 
-// ─── Composant principal ───────────────────────────────────────────────────────
 export function FormationsTab({
   state,
   dispatch,
@@ -50,9 +73,10 @@ export function FormationsTab({
   onDelete: (id: string) => void;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const filteredData = useMemo(() => {
-    return state.formations.filter((f) => {
+    const result = state.formations.filter((f) => {
       const matchSearch = (f.titre || "")
         .toLowerCase()
         .includes(state.search.toLowerCase());
@@ -64,7 +88,17 @@ export function FormationsTab({
         f.statut === state.filters.formations.statut;
       return matchSearch && matchCategory && matchStatut;
     });
+    // Reset page si filtre change et page dépasse
+    return result;
   }, [state.formations, state.search, state.filters.formations]);
+
+  // Reset page quand filtre/search change
+  useMemo(() => {
+    setPage(1);
+  }, [state.search, state.filters.formations]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / PER_PAGE));
+  const paginated = filteredData.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   if (filteredData.length === 0) {
     return (
@@ -97,7 +131,6 @@ export function FormationsTab({
                 <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
                   Prix
                 </th>
-                {/* ✅ Colonne Sessions — nbSessions vient du backend */}
                 <th className="px-6 py-4 font-semibold text-muted-foreground uppercase text-xs">
                   Sessions
                 </th>
@@ -110,12 +143,11 @@ export function FormationsTab({
               </tr>
             </thead>
             <tbody>
-              {filteredData.map((f) => (
+              {paginated.map((f) => (
                 <tr
                   key={f.id}
                   className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
                 >
-                  {/* Intitulé + description courte */}
                   <td className="px-6 py-5 max-w-[220px]">
                     <p className="font-medium text-foreground truncate">
                       {f.titre}
@@ -126,8 +158,6 @@ export function FormationsTab({
                       </p>
                     )}
                   </td>
-
-                  {/* Catégorie */}
                   <td className="px-6 py-5">
                     <Badge
                       variant="secondary"
@@ -136,13 +166,9 @@ export function FormationsTab({
                       {f.categorie}
                     </Badge>
                   </td>
-
-                  {/* Type présentiel / en ligne */}
                   <td className="px-6 py-5">
                     <TypeBadge type={f.niveauType} />
                   </td>
-
-                  {/* Durée — calculée depuis les sessions */}
                   <td className="px-6 py-5 text-muted-foreground font-medium whitespace-nowrap">
                     {f.dureeHeures ? (
                       (() => {
@@ -154,13 +180,9 @@ export function FormationsTab({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-
-                  {/* Prix — anciennement "Coût/session" */}
                   <td className="px-6 py-5 font-bold text-foreground whitespace-nowrap">
                     {(f.prix ?? 0).toLocaleString("fr-DZ")} DA
                   </td>
-
-                  {/* Sessions — renvoyé par le backend via sessions.length */}
                   <td className="px-6 py-5">
                     {f.nbSessions !== undefined && f.nbSessions !== null ? (
                       <span className="inline-flex items-center gap-1.5">
@@ -176,13 +198,9 @@ export function FormationsTab({
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-
-                  {/* Statut */}
                   <td className="px-6 py-5">
                     <StatutBadge statut={f.statut} />
                   </td>
-
-                  {/* Actions */}
                   <td className="px-6 py-5 text-right whitespace-nowrap">
                     <button
                       onClick={() => onEdit(f)}
@@ -204,6 +222,59 @@ export function FormationsTab({
             </tbody>
           </table>
         </div>
+
+        {/* ── Pagination ── */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-border">
+            <span className="text-xs text-muted-foreground">
+              {filteredData.length} formation
+              {filteredData.length > 1 ? "s" : ""} — page {page} sur{" "}
+              {totalPages}
+            </span>
+            <div className="flex gap-1 items-center">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-border
+                           text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              {getPageNumbers(page, totalPages).map((p, i) =>
+                p === "..." ? (
+                  <span
+                    key={`dot-${i}`}
+                    className="w-8 h-8 flex items-center justify-center text-xs text-muted-foreground"
+                  >
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p as number)}
+                    className={`w-8 h-8 text-xs rounded-lg border transition font-semibold ${
+                      page === p
+                        ? "bg-primary border-primary text-primary-foreground"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-border
+                           text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
 
       <ConfirmDialog

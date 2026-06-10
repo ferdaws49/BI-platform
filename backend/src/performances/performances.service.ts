@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { MoreThan, Repository } from "typeorm";
 import { Performance } from "./entities/performance.entity";
 
 
@@ -105,5 +105,20 @@ export class PerformanceService {
     })),
   };
   }
+
+
+   async getMesNotes(userId: number) {
+    return this.performanceRepository
+      .createQueryBuilder('p')
+      .innerJoin('p.apprenant', 'a')           // JOIN apprenant
+      .where('a.userId = :userId', { userId }) // WHERE apprenant.userId = 614
+      .leftJoinAndSelect('p.formation', 'f')   // relations
+      .leftJoinAndSelect('p.session', 's')
+      .orderBy('p.date', 'DESC')
+      .take(10)
+      .getMany();
+  }
+
+
 
 }

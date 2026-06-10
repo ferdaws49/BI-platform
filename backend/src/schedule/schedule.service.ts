@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In } from 'typeorm';
+import { Repository, Between, In, MoreThanOrEqual } from 'typeorm';
 import { Session, SessionStatut, SessionType } from 'src/sessions/entities/session.entity';
 import { FilterPeriod, FilterScheduleDto } from './dtos/schedule-filter.dto';
+import { Presence } from 'src/sessions/entities/presence.entity';
 @Injectable()
 export class SchedulesService {
   constructor(
-    @InjectRepository(Session) private readonly sessionsRepo: Repository<Session>
+    @InjectRepository(Session) private readonly sessionsRepo: Repository<Session>,
+    @InjectRepository(Presence) private readonly presenceRepo: Repository<Presence>
   ) {}
 
   /** khdmet
@@ -162,4 +164,19 @@ async getOnlineSessionLink(sessionId: string, userId: number) {
     endTime: session.heureFin,
   };
 }
+
+async getMesAbsences(userId: number) {
+    return this.presenceRepo
+      .createQueryBuilder('pr')
+      .innerJoin('pr.apprenant', 'a')          // JOIN apprenant
+      .where('a.userId = :userId', { userId })  // WHERE apprenant.userId = 614
+      .andWhere('pr.estPresent = false')         // seulement les absences
+      .leftJoinAndSelect('pr.session', 's')      // relation session
+      .orderBy('pr.dateMarquage', 'DESC')
+      .take(10)
+      .getMany();
+  }
+
+
+
 }

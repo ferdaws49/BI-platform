@@ -82,4 +82,6 @@ export class SessionsController {
   ) {
     return this.sessionsService.upsertPresences(id, dto);
   }
+
+  
 }

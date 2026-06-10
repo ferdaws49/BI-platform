@@ -1,5 +1,7 @@
 // import/import.service.ts
 
+// import/import.service.ts
+
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -33,7 +35,6 @@ export class ImportService {
   async getEntities(): Promise<EntitiesResponseDto> {
     const schemas = await getGeneratedSchemas(this.dataSource);
 
-    // ✅ Raw SQL pur — contourne complètement le bug TypeORM QB avec getRawMany()
     const stats: Array<{
       type: string;
       totalImports: string;
@@ -152,7 +153,8 @@ export class ImportService {
   ): Promise<{ imported: number; errors: number }> {
     const entityMetadata = this.dataSource.entityMetadatas.find(
       (meta) =>
-        meta.name.toLowerCase() === entityType.replace(/s$/, '').toLowerCase() ||
+        meta.name.toLowerCase() ===
+          entityType.replace(/s$/, '').toLowerCase() ||
         meta.tableName === entityType,
     );
 
@@ -163,23 +165,37 @@ export class ImportService {
     }
 
     const entityConfig = ENTITY_METADATA_CONFIG[entityType];
-    const uniqueKey = entityConfig?.uniqueKey || 'id';
+    const uniqueKey = entityConfig?.uniqueKey || 'email';
 
     const validDatabaseColumns = new Set(
       entityMetadata.columns.map((c) => c.propertyName),
     );
 
-    const tableName = entityMetadata.tableName;
-    const hasConflictConstraint = this.hasUsableConflictConstraint(
-      entityMetadata,
-      uniqueKey,
+    // ✅ FIX 1 — exclude toutes les primary keys auto-générées du INSERT
+    const primaryKeyNames = new Set(
+      entityMetadata.primaryColumns.map((c) => c.propertyName),
     );
+
+    // ✅ FIX 2 — si uniqueKey est une PK, on ne l'utilise pas pour le conflict check
+    const isPrimaryKey = entityMetadata.primaryColumns.some(
+      (c) => c.propertyName === uniqueKey,
+    );
+    const effectiveUniqueKey = isPrimaryKey ? null : uniqueKey;
+
+    const hasConflictConstraint = effectiveUniqueKey
+      ? this.hasUsableConflictConstraint(entityMetadata, effectiveUniqueKey)
+      : false;
+
+    const tableName = entityMetadata.tableName;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     let imported = 0;
     let errors = 0;
+
+    // ✅ FIX 3 — tracker les doublons intra-fichier (même batch)
+    const seenUniqueValues = new Set<any>();
 
     try {
       for (const row of rows) {
@@ -188,8 +204,33 @@ export class ImportService {
         try {
           await queryRunner.query(`SAVEPOINT ${savepointName}`);
 
+          // ✅ FIX 3 — vérifier doublon dans le même fichier avant d'aller en DB
+          if (effectiveUniqueKey) {
+            const uniqueVal = row[effectiveUniqueKey];
+            if (seenUniqueValues.has(uniqueVal)) {
+              if (strategy === 'ignore') {
+                await queryRunner.query(`RELEASE SAVEPOINT ${savepointName}`);
+                errors++;
+                this.logger.warn(
+                  `Ligne ignorée — doublon intra-fichier sur "${effectiveUniqueKey}": ${uniqueVal}`,
+                );
+                continue;
+              }
+              if (strategy === 'error') {
+                throw new Error(
+                  `Doublon intra-fichier sur "${effectiveUniqueKey}": ${uniqueVal}`,
+                );
+              }
+            }
+            seenUniqueValues.add(uniqueVal);
+          }
+
+          // ✅ FIX 1 — on exclut les PKs auto-générées
           const columns = Object.keys(row).filter(
-            (key) => validDatabaseColumns.has(key) && !key.startsWith('_'),
+            (key) =>
+              validDatabaseColumns.has(key) &&
+              !key.startsWith('_') &&
+              !primaryKeyNames.has(key),
           );
 
           const values = await Promise.all(
@@ -203,13 +244,22 @@ export class ImportService {
           );
 
           const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-          const columnList = columns.map((c) => this.escapeIdentifier(c)).join(', ');
+          const columnList = columns
+            .map((c) => this.escapeIdentifier(c))
+            .join(', ');
           const escapedTableName = this.escapeIdentifier(tableName);
-          const escapedUniqueKey = this.escapeIdentifier(uniqueKey);
-          const uniqueValue = row[uniqueKey];
+
+          // ✅ FIX 2 — uniqueValue et escapedUniqueKey basés sur effectiveUniqueKey
+          const uniqueValue = effectiveUniqueKey
+            ? row[effectiveUniqueKey]
+            : null;
+          const escapedUniqueKey = effectiveUniqueKey
+            ? this.escapeIdentifier(effectiveUniqueKey)
+            : null;
 
           if (
             !hasConflictConstraint &&
+            effectiveUniqueKey &&
             uniqueValue !== undefined &&
             uniqueValue !== null &&
             strategy !== 'error'
@@ -222,11 +272,14 @@ export class ImportService {
             if (existing.length > 0) {
               if (strategy === 'ignore') {
                 await queryRunner.query(`RELEASE SAVEPOINT ${savepointName}`);
+                errors++;
                 continue;
               }
 
               if (strategy === 'update') {
-                const updateColumns = columns.filter((c) => c !== uniqueKey);
+                const updateColumns = columns.filter(
+                  (c) => c !== effectiveUniqueKey,
+                );
                 if (updateColumns.length > 0) {
                   const updateSet = updateColumns
                     .map((c, i) => `${this.escapeIdentifier(c)} = $${i + 1}`)
@@ -249,11 +302,23 @@ export class ImportService {
           }
 
           let query = `INSERT INTO ${escapedTableName} (${columnList}) VALUES (${placeholders})`;
-          if (hasConflictConstraint && strategy === 'ignore') {
+
+          if (
+            hasConflictConstraint &&
+            escapedUniqueKey &&
+            strategy === 'ignore'
+          ) {
             query += ` ON CONFLICT (${escapedUniqueKey}) DO NOTHING`;
-          } else if (hasConflictConstraint && strategy === 'update') {
+          } else if (
+            hasConflictConstraint &&
+            escapedUniqueKey &&
+            strategy === 'update'
+          ) {
             const updateSet = columns
-              .map((c) => `${this.escapeIdentifier(c)} = EXCLUDED.${this.escapeIdentifier(c)}`)
+              .map(
+                (c) =>
+                  `${this.escapeIdentifier(c)} = EXCLUDED.${this.escapeIdentifier(c)}`,
+              )
               .join(', ');
             query += ` ON CONFLICT (${escapedUniqueKey}) DO UPDATE SET ${updateSet}`;
           }
@@ -289,13 +354,12 @@ export class ImportService {
     entityMetadata: DataSource['entityMetadatas'][number],
     uniqueKey: string,
   ): boolean {
-    const primaryColumn = entityMetadata.primaryColumns.some(
-      (column) => column.propertyName === uniqueKey || column.databaseName === uniqueKey,
+    // ✅ FIX 2 — une PK n'est jamais un bon conflict key pour nos inserts
+    const isPrimary = entityMetadata.primaryColumns.some(
+      (column) =>
+        column.propertyName === uniqueKey || column.databaseName === uniqueKey,
     );
-
-    if (primaryColumn) {
-      return true;
-    }
+    if (isPrimary) return false;
 
     return entityMetadata.uniques.some(
       (unique) =>

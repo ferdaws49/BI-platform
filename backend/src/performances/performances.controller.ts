@@ -1,6 +1,6 @@
 // src/results/results.controller.ts
 
-import { Controller, Get, Param, ParseIntPipe, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, ParseIntPipe, Query, Req, UseGuards } from "@nestjs/common";
 import { CurrentUser } from "src/users/decorators/current-user.decorator";
 import { PerformanceService } from "./performances.service";
 import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
@@ -12,7 +12,9 @@ import { RolesGuard } from "src/auth/guards/roles.guard";
 @Controller('results')
 
 export class PerformanceController {
-  constructor(private readonly performanceService: PerformanceService) {}
+  constructor(
+    private readonly performanceService: PerformanceService,
+  ) {}
 
   // GET: ~/results/student 
   @Get('summary')
@@ -28,6 +30,11 @@ export class PerformanceController {
     @CurrentUser() user: any
   ) {
     return this.performanceService.getResultsByFormation(user.userId, formationId);
+  }
+
+  @Get('mes-notes')
+  async getMesNotes(@Req() req) {
+    return this.performanceService.getMesNotes(req.user.userId);
   }
 
   

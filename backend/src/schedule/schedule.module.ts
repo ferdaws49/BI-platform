@@ -5,10 +5,11 @@ import { SchedulesController } from './schedule.controller';
 import { SchedulesService } from './schedule.service';
 import {ApprenantModule} from "../apprenants/apprenants.module";
 import { Session } from 'src/sessions/entities/session.entity';
+import { Presence } from 'src/sessions/entities/presence.entity';
 @Module({
   imports: [
     // On enregistre les deux entités pour que TypeORM crée les tables
-    TypeOrmModule.forFeature([Session]),
+    TypeOrmModule.forFeature([Session, Presence]),
 
     ApprenantModule, 
   ],

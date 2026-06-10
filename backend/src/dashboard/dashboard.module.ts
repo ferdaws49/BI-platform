@@ -26,9 +26,10 @@ import { ApprenantDashboardController } from './apprenant-dashboard.controller';
 // ✅ NOUVEAU: Session requis par DirecteurDashboardService
 import { Inscription } from '../inscriptions/entities/inscriptions.entity';
 import { DirecteurReportsService } from './services/directeur.reports.service';
+import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
-  imports: [
+  imports: [AuthModule,
     TypeOrmModule.forFeature([
       Apprenant,
       Formation,

@@ -1,6 +1,12 @@
 "use client";
 
-import { Pencil, Trash2, KeyRound, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  KeyRound,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { UserAvatar, RoleBadge, Toggle } from "./UsersBadges";
 
 // ─────────────────────────────────────────────────────────────
@@ -12,9 +18,9 @@ import { UserAvatar, RoleBadge, Toggle } from "./UsersBadges";
 export interface User {
   id: number;
   nom: string;
-  prenom: string; 
+  prenom: string;
   email: string;
-  role: string;      // ID (ex: 'admin')
+  role: string; // ID (ex: 'admin')
   roleLabel: string; // Label (ex: 'Admin')
   isActive: boolean;
   creeLe: string;
@@ -24,20 +30,36 @@ export interface User {
 // TYPES DES PROPS
 // ─────────────────────────────────────────────────────────────
 interface UsersTableProps {
-  users: User[];            // liste paginée à afficher
-  page: number;             // page courante
-  totalPages: number;       // nombre total de pages
+  users: User[]; // liste paginée à afficher
+  page: number; // page courante
+  totalPages: number; // nombre total de pages
   onPageChange: (p: number) => void;
-  onToggleActive: (id: number) => void;   // ← renommé (était onToggleStatut)
+  onToggleActive: (id: number) => void; // ← renommé (était onToggleStatut)
   onEdit: (user: User) => void;
   onDelete: (user: User) => void;
-  onResetPassword: (user: User) => void;  // ← nouveau : réinitialisation mdp
+  onResetPassword: (user: User) => void; // ← nouveau : réinitialisation mdp
 }
 
 // ─────────────────────────────────────────────────────────────
 // COMPOSANT : tableau principal des utilisateurs
 // Affiche : avatar, nom, email, rôle, toggle isActive, date, actions
 // ─────────────────────────────────────────────────────────────
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  const delta = 1;
+  const pages: (number | "...")[] = [];
+  let prev: number | null = null;
+
+  for (let i = 1; i <= total; i++) {
+    const inRange =
+      i === 1 || i === total || (i >= current - delta && i <= current + delta);
+    if (inRange) {
+      if (prev !== null && i - prev > 1) pages.push("...");
+      pages.push(i);
+      prev = i;
+    }
+  }
+  return pages;
+}
 export default function UsersTable({
   users,
   page,
@@ -50,10 +72,8 @@ export default function UsersTable({
 }: UsersTableProps) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-
       {/* ── Tableau ───────────────────────────────────────── */}
       <table className="w-full text-sm">
-
         {/* En-têtes des colonnes */}
         <thead>
           <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide font-semibold">
@@ -70,7 +90,10 @@ export default function UsersTable({
           {/* Message si aucun résultat */}
           {users.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-5 py-12 text-center text-sm text-gray-400">
+              <td
+                colSpan={6}
+                className="px-5 py-12 text-center text-sm text-gray-400"
+              >
                 Aucun utilisateur trouvé
               </td>
             </tr>
@@ -85,9 +108,13 @@ export default function UsersTable({
               {/* Colonne : avatar + nom */}
               <td className="px-5 py-3">
                 <div className="flex items-center gap-3">
-                  <UserAvatar name={`${u.prenom || ""} ${u.nom || ""}`.trim()} />
+                  <UserAvatar
+                    name={`${u.prenom || ""} ${u.nom || ""}`.trim()}
+                  />
                   <span className="font-medium text-gray-800">
-                    {u.prenom || u.nom ? `${u.prenom || ""} ${u.nom || ""}`.trim() : "Utilisateur sans nom"}
+                    {u.prenom || u.nom
+                      ? `${u.prenom || ""} ${u.nom || ""}`.trim()
+                      : "Utilisateur sans nom"}
                   </span>
                 </div>
               </td>
@@ -107,11 +134,15 @@ export default function UsersTable({
                 <div className="flex items-center gap-2">
                   {/* Toggle appelle PATCH /admin/users/:id/toggle-active */}
                   <Toggle
-                    checked={u.isActive}                  /* ← était u.statut === "actif" */
-                    onChange={() => onToggleActive(u.id)} /* ← était onToggleStatut */
+                    checked={u.isActive} /* ← était u.statut === "actif" */
+                    onChange={() =>
+                      onToggleActive(u.id)
+                    } /* ← était onToggleStatut */
                   />
                   {/* Label textuel à côté du toggle */}
-                  <span className={`text-xs font-medium ${u.isActive ? "text-emerald-600" : "text-gray-400"}`}>
+                  <span
+                    className={`text-xs font-medium ${u.isActive ? "text-emerald-600" : "text-gray-400"}`}
+                  >
                     {u.isActive ? "Actif" : "Inactif"}
                   </span>
                 </div>
@@ -123,7 +154,6 @@ export default function UsersTable({
               {/* Colonne : boutons modifier + reset mdp + supprimer */}
               <td className="px-5 py-3">
                 <div className="flex items-center gap-1">
-
                   {/* Bouton modifier → ouvre le modal en mode édition */}
                   <button
                     onClick={() => onEdit(u)}
@@ -150,7 +180,6 @@ export default function UsersTable({
                   >
                     <Trash2 size={13} />
                   </button>
-
                 </div>
               </td>
             </tr>
@@ -158,50 +187,56 @@ export default function UsersTable({
         </tbody>
       </table>
 
-      {/* ── Pagination (affichée seulement s'il y a plusieurs pages) ── */}
+      {/* ── Pagination ── */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50">
-
-          {/* Indicateur de page courante */}
           <span className="text-xs text-gray-400">
             Page {page} sur {totalPages}
           </span>
 
-          {/* Boutons de navigation */}
-          <div className="flex gap-1">
+          <div className="flex gap-1 items-center flex-wrap">
             {/* Précédent */}
             <button
               onClick={() => onPageChange(Math.max(1, page - 1))}
               disabled={page === 1}
               className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200
-                         text-gray-400 hover:bg-emerald-50 hover:text-emerald-700
-                         disabled:opacity-40 disabled:cursor-not-allowed transition"
+                   text-gray-400 hover:bg-emerald-50 hover:text-emerald-700
+                   disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               <ChevronLeft size={13} />
             </button>
 
-            {/* Numéros de pages */}
-            {[...Array(totalPages)].map((_, i) => (
-              <button
-                key={i}
-                onClick={() => onPageChange(i + 1)}
-                className={`w-7 h-7 text-xs rounded-lg border transition font-medium ${
-                  page === i + 1
-                    ? "bg-emerald-600 border-emerald-600 text-white"
-                    : "border-gray-200 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
+            {/* Numéros intelligents */}
+            {getPageNumbers(page, totalPages).map((p, i) =>
+              p === "..." ? (
+                <span
+                  key={`dot-${i}`}
+                  className="w-7 h-7 flex items-center justify-center text-xs text-gray-400"
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => onPageChange(p as number)}
+                  className={`w-7 h-7 text-xs rounded-lg border transition font-medium ${
+                    page === p
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : "border-gray-200 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"
+                  }`}
+                >
+                  {p}
+                </button>
+              ),
+            )}
 
             {/* Suivant */}
             <button
               onClick={() => onPageChange(Math.min(totalPages, page + 1))}
               disabled={page === totalPages}
               className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200
-                         text-gray-400 hover:bg-emerald-50 hover:text-emerald-700
-                         disabled:opacity-40 disabled:cursor-not-allowed transition"
+                   text-gray-400 hover:bg-emerald-50 hover:text-emerald-700
+                   disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               <ChevronRight size={13} />
             </button>

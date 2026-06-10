@@ -1,6 +1,5 @@
 import { Controller, Get, UseGuards, Req } from '@nestjs/common';
 import { ApprennatDashboardService } from './services/apprenant-dashboard.service';
-import { AuthGuard } from 'src/auth/guards/auth.guard';
 import { CurrentUser } from 'src/users/decorators/current-user.decorator';
 import type { JWTPayloadType } from 'src/utils/types';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';

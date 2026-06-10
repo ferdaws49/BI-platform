@@ -17,12 +17,15 @@ import {
   SessionsPerformanceResponseDto,
 } from 'src/dashboard/dto/financier-dashboard-response.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/roles.decorator';
 
 
 @ApiTags('Dashboard')
 @ApiBearerAuth()
 @Controller('financier/dashboard')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("resp_financier")
 export class FinancierDashboardController {
   constructor(private readonly financierdashboardService: FinancierDashboardService) {}
 

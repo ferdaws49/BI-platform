@@ -246,9 +246,24 @@ export default function ProfilePage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-gray-500 uppercase">Nouveau mot de passe (laisser vide pour garder l'actuel)</label>
-              <input 
-                type="password" 
+              <label className="text-xs font-bold text-gray-500 uppercase">
+                Numéro de téléphone
+              </label>
+              <input
+                type="tel"
+                value={formData.phone || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
+                className="w-full px-5 py-3 rounded-xl bg-gray-50 border-2 border-transparent focus:bg-white focus:border-brand-dark outline-none text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-500 uppercase">
+                Nouveau mot de passe (laisser vide pour garder l'actuel)
+              </label>
+              <input
+                type="password"
                 placeholder="••••••••"
                 value={formData.password || ''} 
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
@@ -256,12 +271,16 @@ export default function ProfilePage() {
               />
             </div>
             <div className="pt-4 flex justify-end">
-              <button 
+              <button
                 onClick={handleSave}
                 disabled={saving}
                 className="bg-[#1b5333] text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-[#154128] transition-all shadow-lg disabled:opacity-60"
               >
-                {saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                {saving ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  <Save size={18} />
+                )}
                 Enregistrer les modifications
               </button>
             </div>

@@ -2,9 +2,13 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Save, Lock, Bell, User, Palette, Camera, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useDirecteurContext } from "../DirecteurContext";
-
-const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+import {
+  uploadProfileImage,
+  deleteProfileImage,
+  getProfileImageUrl,
+} from "@/lib/profile.api";
 
 // ─── API helpers ────────────────────────────────────────────────────────────
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
@@ -71,6 +75,7 @@ export default function SettingsPage() {
 
   // ── Image state ──
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [imageVersion, setImageVersion] = useState(Date.now());
   const [imgUploading, setImgUploading] = useState(false);
   const [imgError, setImgError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -124,7 +129,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const token = localStorage.getItem("access_token");
     if (!token) return;
-    fetch(`${BACKEND}/profile/me`, {
+    fetch(`${API_BASE}/profile/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
@@ -134,49 +139,35 @@ export default function SettingsPage() {
 
   // ── Image upload handler ──
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImgUploading(true);
-    setImgError(null);
-    try {
-      const token = localStorage.getItem("access_token");
-      const fd = new FormData();
-      fd.append("user-image", file);
-      const res = await fetch(`${BACKEND}/profile/upload-image`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-      if (!res.ok) throw new Error("Erreur upload");
-      const data = await res.json();
-      setProfileImage(data?.profileImage ?? null);
-      // Refresh profile from /profile/me to get latest image
-      const token2 = localStorage.getItem("access_token");
-      const me = await fetch(`${BACKEND}/profile/me`, { headers: { Authorization: `Bearer ${token2}` } }).then(r => r.json());
-      setProfileImage(me?.profileImage ?? null);
-    } catch (err: any) {
-      setImgError("Erreur lors de l'envoi de la photo");
-    } finally {
-      setImgUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    if (e.target.files && e.target.files[0]) {
+      setImgUploading(true);
+      setImgError(null);
+      try {
+        await uploadProfileImage(e.target.files[0]);
+        setImageVersion(Date.now());
+        const data = await apiFetch("/profile/me");
+        setProfileImage(data?.profileImage ?? null);
+        toast.success("Photo de profil mise à jour !");
+      } catch (err: any) {
+        const message = err?.message || "Erreur lors de l'upload de la photo";
+        setImgError(message);
+        toast.error(message);
+      } finally {
+        setImgUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
     }
   };
 
   // ── Image delete handler ──
   const handleDeleteImage = async () => {
-    if (!window.confirm("Voulez-vous vraiment supprimer votre photo de profil ?")) return;
     setImgUploading(true);
-    setImgError(null);
     try {
-      const token = localStorage.getItem("access_token");
-      const res = await fetch(`${BACKEND}/profile/images/remove-profile-image`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Erreur suppression");
+      await deleteProfileImage();
       setProfileImage(null);
+      toast.success("Photo supprimée !");
     } catch (err: any) {
-      setImgError("Erreur lors de la suppression de la photo");
+      toast.error(err.message || "Erreur lors de la suppression");
     } finally {
       setImgUploading(false);
     }
@@ -310,13 +301,16 @@ export default function SettingsPage() {
               <div className="relative group">
                 {profileImage ? (
                   <img
-                    src={`${BACKEND}/profile/images/${profileImage}?t=${Date.now()}`}
+                    key={`${profileImage}-${imageVersion}`}
+                    src={getProfileImageUrl(profileImage, imageVersion)}
                     alt="Photo de profil"
                     className="w-24 h-24 rounded-full object-cover border-4 border-emerald-100 shadow-md"
                   />
                 ) : (
                   <div className="w-24 h-24 rounded-full bg-emerald-600 text-white flex items-center justify-center text-3xl font-bold border-4 border-emerald-100 shadow-md">
-                    {profile?.firstName?.charAt(0)?.toUpperCase() ?? <User className="h-10 w-10" />}
+                    {profile?.firstName?.charAt(0)?.toUpperCase() ?? (
+                      <User className="h-10 w-10" />
+                    )}
                   </div>
                 )}
                 {/* Bouton upload */}
@@ -347,8 +341,12 @@ export default function SettingsPage() {
                   </button>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-3">Cliquez sur l&apos;icône appareil photo pour changer votre photo</p>
-              {imgError && <p className="text-xs text-red-500 mt-1">{imgError}</p>}
+              <p className="text-xs text-gray-500 mt-3">
+                Cliquez sur l&apos;icône appareil photo pour changer votre photo
+              </p>
+              {imgError && (
+                <p className="text-xs text-red-500 mt-1">{imgError}</p>
+              )}
             </div>
 
             {profileLoading ? (
@@ -382,7 +380,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       name="firstName"
-                      value={profile.firstName}
+                      value={profile.firstName ?? ""}
                       onChange={handleProfileChange}
                       className={inputCls}
                     />
@@ -396,7 +394,7 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       name="lastName"
-                      value={profile.lastName}
+                      value={profile.lastName ?? ""}
                       onChange={handleProfileChange}
                       className={inputCls}
                     />
@@ -413,7 +411,7 @@ export default function SettingsPage() {
                     <input
                       type="email"
                       name="email"
-                      value={profile.email}
+                      value={profile.email ?? ""}
                       onChange={handleProfileChange}
                       className={inputCls}
                     />
@@ -427,7 +425,7 @@ export default function SettingsPage() {
                     <input
                       type="tel"
                       name="phone"
-                      value={profile.phone}
+                      value={profile.phone ?? ""}
                       onChange={handleProfileChange}
                       className={inputCls}
                     />

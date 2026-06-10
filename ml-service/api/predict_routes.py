@@ -6,13 +6,13 @@ Route : POST /predict
 Pipeline :
   1. Valider la requête (schemas/risk.PredictRequest)
   2. Construire la matrice de features dans l'ordre FEATURE_NAMES
-  3. Appeler models/registry.predict → probabilités
-  4. Enrichir avec services/risk (niveau + facteurs texte)
-  5. Renvoyer PredictResponse
-
-Monté dans main.py via app.include_router(predict_router).
+  3. Convertir None → NaN pour l'imputer sklearn
+  4. Appeler models/registry.predict → probabilités
+  5. Enrichir avec services/risk (niveau + facteurs texte)
+  6. Renvoyer PredictResponse
 """
 
+import math
 from fastapi import APIRouter, HTTPException
 
 from config import FEATURE_NAMES, FEATURE_WEIGHTS
@@ -23,19 +23,27 @@ from services.risk import score_to_level, build_factors
 router = APIRouter(tags=["Risk Prediction"])
 
 
+def _to_float(val: float | None) -> float:
+    """Convertit Optional[float] en float (None → NaN pour numpy/sklearn)."""
+    if val is None:
+        return float("nan")
+    return float(val)
+
+
 @router.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
     if not req.apprenants:
         raise HTTPException(status_code=400, detail="Liste d'apprenants vide")
 
     # Ordre des colonnes = ordre d'entraînement dans train_risk.FEATURES
+    # None → NaN pour que SimpleImputer (mean training) les remplace
     feature_matrix = [
         [
             f.taux_presence,
             float(f.absences_consecutives),
-            f.moyenne_notes,
-            f.tendance_notes,
-            f.moyenne_satisfaction,
+            _to_float(f.moyenne_notes),
+            _to_float(f.tendance_notes),
+            _to_float(f.moyenne_satisfaction),
             float(f.jours_retard_paiement),
         ]
         for f in req.apprenants

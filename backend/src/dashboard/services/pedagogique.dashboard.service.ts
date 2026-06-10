@@ -106,14 +106,54 @@ export class PedagogiqueDashboardService {
   }
 
   async getKpis(filters: FilterDto) {
-    const performances = await this.buildPerformanceQuery(filters).getMany();
+    const qb = this.performanceRepo
+      .createQueryBuilder('perf')
+      .leftJoin('perf.formation', 'formation')
+      .leftJoin('perf.session', 'session')
+      .leftJoin('session.formation', 'sessFormation');
 
-    const total   = performances.length;
-    const reussis = performances.filter((p) => p.estReussi).length;
-    const tauxReussiteGlobal = total > 0 ? Math.round((reussis / total) * 100) : 0;
-
-    // ✅ abandon = inscrits sans performance
     const interval = this.getPeriodInterval(filters.periode);
+    if (interval) {
+      qb.andWhere('perf.date BETWEEN :start AND :end', {
+        start: interval.start.toISOString().split('T')[0],
+        end:   interval.end.toISOString().split('T')[0],
+      });
+    }
+
+    if (filters.formation && filters.formation !== 'Tous') {
+      qb.andWhere('(formation.titre = :f OR sessFormation.titre = :f)', { f: filters.formation });
+    }
+
+    const dbStatut = this.mapStatut(filters.statut);
+    if (dbStatut) {
+      qb.andWhere('(formation.statut = :s OR sessFormation.statut = :s)', { s: dbStatut });
+    }
+
+    if (filters.type && filters.type !== 'Tous') {
+      qb.andWhere('(formation.type = :t OR session.type = :t)', { t: filters.type });
+    }
+
+    if (filters.formateur && filters.formateur !== 'Tous') {
+      qb.leftJoin('session.formateur', 'fmt')
+        .andWhere("LOWER(TRIM(CONCAT(fmt.prenom, ' ', fmt.nom))) = LOWER(TRIM(:fn))", {
+          fn: filters.formateur,
+        });
+    }
+
+    const statsResult = await qb
+      .select('COUNT(perf.id)', 'total')
+      .addSelect('SUM(CASE WHEN perf.estReussi = true THEN 1 ELSE 0 END)', 'reussis')
+      .addSelect('SUM(CASE WHEN perf.note IS NOT NULL THEN 1 ELSE 0 END)', 'avecNote')
+      .addSelect('COUNT(DISTINCT perf.apprenantId)', 'evalues')
+      .getRawOne<{ total: string; reussis: string; avecNote: string; evalues: string }>();
+
+    const total = parseInt(statsResult?.total ?? '0', 10);
+    const reussis = parseInt(statsResult?.reussis ?? '0', 10);
+    const avecNote = parseInt(statsResult?.avecNote ?? '0', 10);
+    const evalues = parseInt(statsResult?.evalues ?? '0', 10);
+
+    const tauxReussiteGlobal = total > 0 ? Math.round((reussis / total) * 100) : 0;
+    const tauxCompletion = total > 0 ? Math.round((avecNote / total) * 100) : 0;
 
     const sessionQb = this.sessionRepo
       .createQueryBuilder('s')
@@ -145,13 +185,8 @@ export class PedagogiqueDashboardService {
       .getRawOne();
     const totalInscrits = parseInt(inscritsResult?.count ?? '0', 10);
 
-    const evalues = new Set(
-      performances.map((p) => p.apprenant?.id).filter((id): id is number => id != null),
-    ).size;
-
     const tauxAbandon = computeAbandonRate(totalInscrits, evalues);
 
-    // Satisfaction
     const satQb = this.satisfactionRepo
       .createQueryBuilder('s')
       .leftJoin('s.formation', 'formation')
@@ -162,10 +197,6 @@ export class PedagogiqueDashboardService {
     const satResult = await satQb.getRawOne();
     const satisfactionMoyenne = parseFloat(satResult?.avg ?? '0');
 
-    const avecNote     = performances.filter((p) => p.note !== null).length;
-    const tauxCompletion = total > 0 ? Math.round((avecNote / total) * 100) : 0;
-
-    // Formations actives
     let formationsActives = 0;
     try {
       const activeQb = this.formationRepo
@@ -211,7 +242,7 @@ export class PedagogiqueDashboardService {
       evolutionReussite:    2,
       tauxAbandon,
       evolutionAbandon:     0,
-      satisfactionMoyenne,
+      satisfactionMoyenne: Math.round(satisfactionMoyenne * 10) / 10,
       evolutionSatisfaction: 0.1,
       formationsActives,
       nouvellesFormations,
@@ -219,29 +250,67 @@ export class PedagogiqueDashboardService {
     };
   }
 
-  // باقي الـ methods ما تبدّلوش ↓
-
   async getFormateursPerformances(filters: FilterDto) {
-    const formateurs = await this.formateurRepo.find();
-    const result: any[] = [];
+    const qb = this.performanceRepo
+      .createQueryBuilder('perf')
+      .leftJoinAndSelect('perf.session', 'session')
+      .leftJoinAndSelect('session.formateur', 'formateur')
+      .leftJoinAndSelect('session.formation', 'sessFormation')
+      .leftJoinAndSelect('perf.formation', 'formation');
 
-    for (const formateur of formateurs) {
+    const interval = this.getPeriodInterval(filters.periode);
+    if (interval) {
+      qb.andWhere('perf.date BETWEEN :start AND :end', {
+        start: interval.start.toISOString().split('T')[0],
+        end:   interval.end.toISOString().split('T')[0],
+      });
+    }
+
+    if (filters.formation && filters.formation !== 'Tous') {
+      qb.andWhere('(formation.titre = :f OR sessFormation.titre = :f)', { f: filters.formation });
+    }
+
+    const dbStatut = this.mapStatut(filters.statut);
+    if (dbStatut) {
+      qb.andWhere('(formation.statut = :s OR sessFormation.statut = :s)', { s: dbStatut });
+    }
+
+    if (filters.type && filters.type !== 'Tous') {
+      qb.andWhere('(formation.type = :t OR session.type = :t)', { t: filters.type });
+    }
+
+    const performances = await qb.getMany();
+    const formateursMap = new Map<number, { formateur: Formateur; perfs: Performance[] }>();
+
+    for (const perf of performances) {
+      const formateur = perf.session?.formateur;
+      if (!formateur) continue;
+
       const fullName = `${formateur.prenom} ${formateur.nom}`;
       if (filters.formateur && filters.formateur !== 'Tous' && filters.formateur !== fullName) continue;
 
-      const performances = await this.buildPerformanceQuery(filters).getMany();
-      if (performances.length === 0) continue;
+      let entry = formateursMap.get(formateur.id);
+      if (!entry) {
+        entry = { formateur, perfs: [] };
+        formateursMap.set(formateur.id, entry);
+      }
+      entry.perfs.push(perf);
+    }
 
-      const total   = performances.length;
-      const reussis = performances.filter((p) => p.estReussi).length;
-      const tauxReussite = total > 0 ? Math.round((reussis / total) * 100) : 0;
-      const satisfaction = total > 0
-        ? Math.round((performances.reduce((sum, p) => sum + Number(p.note), 0) / total / 4) * 10) / 10
-        : 0;
+    const result: any[] = [];
+    for (const [_, entry] of formateursMap.entries()) {
+      const formateur = entry.formateur;
+      const perfs = entry.perfs;
+      const total = perfs.length;
+      if (total === 0) continue;
+
+      const reussis = perfs.filter((p) => p.estReussi).length;
+      const tauxReussite = Math.round((reussis / total) * 100);
+      const satisfaction = Math.round((perfs.reduce((sum, p) => sum + Number(p.note), 0) / total / 4) * 10) / 10;
       const scoreEfficacite = Math.round(tauxReussite * 0.6 + satisfaction * 20 * 0.4);
 
       result.push({
-        nom: fullName,
+        nom: `${formateur.prenom} ${formateur.nom}`,
         initiales: `${formateur.prenom[0]}${formateur.nom[0]}`.toUpperCase(),
         specialite: formateur.specialite ?? 'N/A',
         sessions: total,
@@ -255,28 +324,69 @@ export class PedagogiqueDashboardService {
   }
 
   async getFormationsTauxReussite(filters: FilterDto) {
-    const formations = await this.formationRepo.find();
+    const qb = this.performanceRepo
+      .createQueryBuilder('perf')
+      .leftJoinAndSelect('perf.formation', 'directFormation')
+      .leftJoinAndSelect('perf.session', 'session')
+      .leftJoinAndSelect('session.formation', 'sessFormation')
+      .leftJoinAndSelect('session.formateur', 'formateur');
+
+    const interval = this.getPeriodInterval(filters.periode);
+    if (interval) {
+      qb.andWhere('perf.date BETWEEN :start AND :end', {
+        start: interval.start.toISOString().split('T')[0],
+        end:   interval.end.toISOString().split('T')[0],
+      });
+    }
+
+    if (filters.formation && filters.formation !== 'Tous') {
+      qb.andWhere('(directFormation.titre = :f OR sessFormation.titre = :f)', { f: filters.formation });
+    }
+
+    const dbStatut = this.mapStatut(filters.statut);
+    if (dbStatut) {
+      qb.andWhere('(directFormation.statut = :s OR sessFormation.statut = :s)', { s: dbStatut });
+    }
+
+    if (filters.type && filters.type !== 'Tous') {
+      qb.andWhere('(directFormation.type = :t OR session.type = :t)', { t: filters.type });
+    }
+
+    if (filters.formateur && filters.formateur !== 'Tous') {
+      qb.andWhere("LOWER(TRIM(CONCAT(formateur.prenom, ' ', formateur.nom))) = LOWER(TRIM(:fn))", {
+        fn: filters.formateur,
+      });
+    }
+
+    const performances = await qb.getMany();
+    const formationsMap = new Map<number, { formation: Formation; perfs: Performance[]; formateurName: string }>();
+
+    for (const perf of performances) {
+      const formation = perf.formation || perf.session?.formation;
+      if (!formation) continue;
+
+      let entry = formationsMap.get(formation.id);
+      if (!entry) {
+        const formateur = perf.session?.formateur;
+        const formateurName = formateur ? `${formateur.prenom} ${formateur.nom}` : 'N/A';
+        entry = { formation, perfs: [], formateurName };
+        formationsMap.set(formation.id, entry);
+      }
+      entry.perfs.push(perf);
+    }
+
     const result: any[] = [];
+    for (const [_, entry] of formationsMap.entries()) {
+      const formation = entry.formation;
+      const perfs = entry.perfs;
+      const total = perfs.length;
+      if (total === 0) continue;
 
-    for (const formation of formations) {
-      if (filters.formation && filters.formation !== 'Tous' && formation.titre !== filters.formation) continue;
-
-      const performances = await this.performanceRepo
-        .createQueryBuilder('perf')
-        .leftJoin('perf.session', 'session')
-        .leftJoin('session.formation', 'sessFormation')
-        .leftJoin('perf.formation', 'directFormation')
-        .where('(directFormation.id = :id OR sessFormation.id = :id)', { id: formation.id })
-        .getMany();
-
-      if (performances.length === 0) continue;
-
-      const total   = performances.length;
-      const reussis = performances.filter((p) => p.estReussi).length;
+      const reussis = perfs.filter((p) => p.estReussi).length;
 
       result.push({
         formation:     formation.titre,
-        formateur:     'N/A',
+        formateur:     entry.formateurName,
         inscrits:      total,
         tauxReussite:  Math.round((reussis / total) * 100),
         tauxAbandon:   0,
@@ -290,7 +400,44 @@ export class PedagogiqueDashboardService {
   }
 
   async getApprenantsARisque(filters: FilterDto) {
-    const performances = await this.buildPerformanceQuery(filters).getMany();
+    const qb = this.performanceRepo
+      .createQueryBuilder('perf')
+      .leftJoinAndSelect('perf.formation', 'formation')
+      .leftJoinAndSelect('perf.session', 'session')
+      .leftJoinAndSelect('session.formation', 'sessFormation')
+      .leftJoinAndSelect('perf.apprenant', 'apprenant')
+      .leftJoinAndSelect('apprenant.user', 'user')
+      .where('perf.note < 10');
+
+    const interval = this.getPeriodInterval(filters.periode);
+    if (interval) {
+      qb.andWhere('perf.date BETWEEN :start AND :end', {
+        start: interval.start.toISOString().split('T')[0],
+        end:   interval.end.toISOString().split('T')[0],
+      });
+    }
+
+    if (filters.formation && filters.formation !== 'Tous') {
+      qb.andWhere('(formation.titre = :f OR sessFormation.titre = :f)', { f: filters.formation });
+    }
+
+    const dbStatut = this.mapStatut(filters.statut);
+    if (dbStatut) {
+      qb.andWhere('(formation.statut = :s OR sessFormation.statut = :s)', { s: dbStatut });
+    }
+
+    if (filters.type && filters.type !== 'Tous') {
+      qb.andWhere('(formation.type = :t OR session.type = :t)', { t: filters.type });
+    }
+
+    if (filters.formateur && filters.formateur !== 'Tous') {
+      qb.leftJoin('session.formateur', 'fmt')
+        .andWhere("LOWER(TRIM(CONCAT(fmt.prenom, ' ', fmt.nom))) = LOWER(TRIM(:fn))", {
+          fn: filters.formateur,
+        });
+    }
+
+    const performances = await qb.getMany();
     const map = new Map<number, { apprenant: any; formations: string[]; worstNote: number }>();
 
     for (const perf of performances) {

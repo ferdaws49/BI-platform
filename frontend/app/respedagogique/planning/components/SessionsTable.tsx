@@ -11,6 +11,7 @@ interface SessionsTableProps {
   onEdit: (session: Session) => void;
   onAnnuler: (id: string) => void;
   onSupprimer: (id: string) => void;
+
   onAssignFormateur: (session: Session) => void;
   onVoirParticipants: (session: Session) => void;
   onPresence: (session: Session) => void;
@@ -255,10 +256,16 @@ export default function SessionsTable({
 
                 {/* Type */}
                 <td className="px-4 py-3.5">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                    session.type === "en_ligne" ? "bg-purple-100 text-purple-700" : "bg-orange-100 text-orange-700"
-                  }`}>
-                    {session.type === "en_ligne" ? "🌐 En ligne" : "🏫 Présentiel"}
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      session.type === "en_ligne"
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-orange-100 text-orange-700"
+                    }`}
+                  >
+                    {session.type === "en_ligne"
+                      ? "🌐 En ligne"
+                      : "🏫 Présentiel"}
                   </span>
                 </td>
 
@@ -268,15 +275,20 @@ export default function SessionsTable({
                     onClick={() => onVoirParticipants(session)}
                     className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-full px-2.5 py-1 transition-colors border border-transparent hover:border-indigo-200"
                   >
-                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                      session.capacite && (session.apprenants?.length ?? 0) >= session.capacite
-                        ? "bg-red-100 text-red-600"
-                        : "bg-slate-200 text-slate-600"
-                    }`}>
+                    <span
+                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        session.capacite &&
+                        (session.apprenants?.length ?? 0) >= session.capacite
+                          ? "bg-red-100 text-red-600"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
                       {session.apprenants?.length ?? 0}
                     </span>
                     {session.capacite ? (
-                      <span className="text-[10px] text-slate-400">/ {session.capacite}</span>
+                      <span className="text-[10px] text-slate-400">
+                        / {session.capacite}
+                      </span>
                     ) : (
                       <span className="text-[10px] text-slate-400">voir</span>
                     )}
@@ -285,7 +297,14 @@ export default function SessionsTable({
 
                 {/* Revenu attendu */}
                 <td className="px-4 py-3.5 font-semibold text-slate-700">
-                  {(session.revenuAttendu ?? session.revenue ?? 0).toLocaleString("fr-TN")} <span className="text-[10px] font-normal text-slate-400">DT</span>
+                  {(
+                    session.revenuAttendu ??
+                    session.revenue ??
+                    0
+                  ).toLocaleString("fr-TN")}{" "}
+                  <span className="text-[10px] font-normal text-slate-400">
+                    DT
+                  </span>
                 </td>
 
                 {/* Statut */}

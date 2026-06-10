@@ -1,18 +1,55 @@
-const API_URL = 'http://localhost:5000/profile';
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+const API_URL = `${BACKEND_URL}/profile`;
 
 const getHeaders = () => ({
-  'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+  Authorization: `Bearer ${localStorage.getItem("access_token")}`,
 });
+
+export function getProfileImageUrl(imagePath: string, version = Date.now()) {
+  const trimmed = imagePath?.toString().trim();
+  if (!trimmed) return "";
+
+  const normalized = trimmed.replace(/\\/g, "/");
+  let url = normalized;
+
+  if (/^https?:\/\//i.test(normalized)) {
+    url = normalized;
+  } else if (/^\/\//.test(normalized)) {
+    const protocol =
+      typeof window !== "undefined" ? window.location.protocol : "https:";
+    url = `${protocol}${normalized}`;
+  } else if (normalized.startsWith(BACKEND_URL)) {
+    url = normalized;
+  } else if (
+    normalized.startsWith("/profile/images/") ||
+    normalized.startsWith("/images/")
+  ) {
+    url = `${BACKEND_URL}${normalized}`;
+  } else if (
+    normalized.startsWith("profile/images/") ||
+    normalized.startsWith("images/")
+  ) {
+    url = `${BACKEND_URL}/${normalized}`;
+  } else {
+    url = `${BACKEND_URL}/profile/images/${normalized}`;
+  }
+
+  return `${url}${url.includes("?") ? "&" : "?"}t=${version}`;
+}
 
 export async function getProfile() {
   const res = await fetch(`${API_URL}/me`, { headers: getHeaders() });
   return res.json();
 }
 
-export async function updateProfile(data: { username?: string; phone?: string; password?: string }) {
+export async function updateProfile(data: {
+  username?: string;
+  phone?: string;
+  password?: string;
+}) {
   const res = await fetch(`${API_URL}`, {
-    method: 'PUT',
-    headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { ...getHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
@@ -25,7 +62,7 @@ export async function updateProfile(data: { username?: string; phone?: string; p
 
 export async function uploadProfileImage(file: File) {
   const formData = new FormData();
-  formData.append('user-image', file);
+  formData.append("user-image", file);
 
   const res = await fetch(`${API_URL}/upload-image`, {
     method: 'POST',

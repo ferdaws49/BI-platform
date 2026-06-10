@@ -1,7 +1,9 @@
-'use client'
+'use client';
+
 import { useEffect, useState } from 'react';
-import { Bell, Search, Loader2 } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
 import { getProfile } from '@/lib/profile.api';
+import NotificationBadge from './NotificationBadge';
 
 interface NavbarProps {
   showSearch?: boolean;
@@ -16,7 +18,7 @@ export default function Navbar({ showSearch = true, showNotifications = true }: 
     async function loadUser() {
       try {
         const data = await getProfile();
-        console.log("Navbar user:", data); // Debug
+        console.log("Navbar user:", data);
         setUser(data);
       } catch (error) {
         console.error("Erreur chargement navbar", error);
@@ -61,13 +63,8 @@ export default function Navbar({ showSearch = true, showNotifications = true }: 
 
       {/* Notifications et Profil */}
       <div className="flex items-center gap-6">
-        {/* ✅ Icône notification - conditionnée par showNotifications */}
-        {showNotifications && (
-          <button className="relative text-gray-400 hover:text-[#1b5333] transition-colors">
-            <Bell size={22} />
-            <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-          </button>
-        )}
+        {/* ✅ NotificationBadge dynamique */}
+        {showNotifications && <NotificationBadge />}
         
         <div className="flex items-center gap-3 pl-6 border-l border-gray-100">
           {!loading && user ? (

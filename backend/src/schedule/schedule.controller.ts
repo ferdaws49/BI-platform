@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, UseGuards, ParseIntPipe, Request } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards, ParseIntPipe, Request, Req } from '@nestjs/common';
 import { SchedulesService } from './schedule.service';
 import { CurrentUser } from 'src/users/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -34,5 +34,11 @@ export class SchedulesController {
     @Param('id', ParseIntPipe) formationId: number
 ) {
     return this.schedulesService.getScheduleByFormation(user.userId, formationId);
+  }
+
+
+  @Get('mes-absences')
+  async getMesAbsences(@Req() req) {
+    return this.schedulesService.getMesAbsences(req.user.userId);
   }
 }

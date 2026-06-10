@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Save, Lock, Bell, User, Palette } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Save, Lock, Bell, User, Palette, Camera, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useRespedContext } from "../RespedContext";
+import {
+  uploadProfileImage,
+  deleteProfileImage,
+  getProfileImageUrl,
+} from "@/lib/profile.api";
 
 // ─── API helpers ────────────────────────────────────────────────────────────
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
@@ -68,6 +74,12 @@ export default function RespedSettingsPage() {
   const [notifSaved, setNotifSaved] = useState(false);
   const [prefSaved, setPrefSaved] = useState(false);
 
+  // ── Image state ──
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [imageVersion, setImageVersion] = useState(Date.now());
+  const [imgLoading, setImgLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // ── Form state ──
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -99,7 +111,9 @@ export default function RespedSettingsPage() {
     }
 
     const savedRefresh = localStorage.getItem("dataRefresh-resped") ?? "5min";
-    const savedNotifs = localStorage.getItem(`notifications_settings_${currentUserId}`);
+    const savedNotifs = localStorage.getItem(
+      `notifications_settings_${currentUserId}`,
+    );
 
     setDataRefresh(savedRefresh);
     if (savedNotifs) {
@@ -109,6 +123,15 @@ export default function RespedSettingsPage() {
         console.error("Error parsing resped notifications", e);
       }
     }
+  }, []);
+
+  // ── Load profile image ──
+  useEffect(() => {
+    apiFetch("/profile/me")
+      .then((data) => {
+        setProfileImage(data?.profileImage ?? null);
+      })
+      .catch(() => {});
   }, []);
 
   // ── Load profile from API ──
@@ -193,7 +216,10 @@ export default function RespedSettingsPage() {
   };
 
   const handleSaveNotifs = () => {
-    localStorage.setItem(`notifications_settings_${userId}`, JSON.stringify(notifs));
+    localStorage.setItem(
+      `notifications_settings_${userId}`,
+      JSON.stringify(notifs),
+    );
     setNotifSaved(true);
     setTimeout(() => setNotifSaved(false), 2000);
   };
@@ -202,6 +228,39 @@ export default function RespedSettingsPage() {
     localStorage.setItem("dataRefresh-resped", dataRefresh);
     setPrefSaved(true);
     setTimeout(() => setPrefSaved(false), 2000);
+  };
+
+  // ── Image upload handler ──
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setImgLoading(true);
+      try {
+        await uploadProfileImage(e.target.files[0]);
+        setImageVersion(Date.now());
+        const data = await apiFetch("/profile/me");
+        setProfileImage(data?.profileImage ?? null);
+        toast.success("Photo de profil mise à jour !");
+      } catch (err: any) {
+        toast.error(err.message || "Erreur lors de l'upload de la photo");
+      } finally {
+        setImgLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  // ── Image delete handler ──
+  const handleDeleteImage = async () => {
+    setImgLoading(true);
+    try {
+      await deleteProfileImage();
+      setProfileImage(null);
+      toast.success("Photo supprimée !");
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de la suppression");
+    } finally {
+      setImgLoading(false);
+    }
   };
 
   // ── CSS classes ──
@@ -255,6 +314,56 @@ export default function RespedSettingsPage() {
             <h2 className={`text-lg font-semibold mb-6 ${textPrimary}`}>
               {t.profile.title}
             </h2>
+
+            {/* ── Photo de profil ── */}
+            <div className="flex flex-col items-center mb-8">
+              <div className="relative group">
+                {profileImage ? (
+                  <img
+                    key={`${profileImage}-${imageVersion}`}
+                    src={getProfileImageUrl(profileImage, imageVersion)}
+                    alt="Photo de profil"
+                    className="w-32 h-32 rounded-full object-cover border-4 border-emerald-100 shadow-md"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-full bg-emerald-600 text-white flex items-center justify-center text-4xl font-bold border-4 border-emerald-100 shadow-md">
+                    {profile?.firstName?.charAt(0)?.toUpperCase() ?? (
+                      <User className="h-10 w-10" />
+                    )}
+                  </div>
+                )}
+                {/* Bouton upload */}
+                <label className="absolute bottom-0 right-0 p-2 bg-white border border-gray-200 rounded-full shadow cursor-pointer hover:bg-gray-50 transition-colors">
+                  {imgLoading ? (
+                    <div className="h-5 w-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Camera className="h-5 w-5 text-gray-600" />
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={imgLoading}
+                  />
+                </label>
+                {/* Bouton suppression */}
+                {profileImage && (
+                  <button
+                    onClick={handleDeleteImage}
+                    disabled={imgLoading}
+                    className="absolute bottom-0 left-0 p-2 bg-white border border-gray-200 rounded-full shadow cursor-pointer hover:bg-red-50 text-red-500 transition-colors"
+                    title="Supprimer la photo"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-3">
+                Cliquez sur l'icône caméra pour changer votre photo
+              </p>
+            </div>
 
             {profileLoading ? (
               <div className="flex items-center justify-center py-12">
@@ -338,8 +447,6 @@ export default function RespedSettingsPage() {
                     />
                   </div>
                 </div>
-
-
 
                 <div className="flex items-center gap-3">
                   <button
