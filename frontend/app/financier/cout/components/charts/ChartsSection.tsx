@@ -10,7 +10,7 @@ import {
   Tooltip, Legend, Filler,
   TooltipItem,
 } from "chart.js";
-import { glassCard, SectionTitle, fmtCurrency } from "../ui";
+import { cardClass, SectionTitle, fmtCurrency } from "../ui";
 
 import type { SessionCoutRow } from "../../types";
 
@@ -351,7 +351,7 @@ export default function ChartsSection({
     <div className="space-y-4">
       {/* Row 1 : Bar formateurs + Pie répartition */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 rounded-2xl p-5" style={glassCard}>
+        <div className={`lg:col-span-2 p-4 ${cardClass}`}>
           <SectionTitle
             title="Formateurs les plus coûteux"
             sub="Coût total par formateur sur la période"
@@ -359,7 +359,7 @@ export default function ChartsSection({
           <FormateursCoutChart formateursCoutData={formateursCoutData} />
         </div>
 
-        <div className="rounded-2xl p-5" style={glassCard}>
+        <div className={`p-4 ${cardClass}`}>
           <SectionTitle
             title="Répartition des dépenses"
             sub="Formateurs vs Logistique"
@@ -370,7 +370,7 @@ export default function ChartsSection({
 
       {/* Row 2 : Combo efficience + Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 rounded-2xl p-5" style={glassCard}>
+        <div className={`lg:col-span-2 p-4 ${cardClass}`}>
           <SectionTitle
             title="Analyse d'Efficience par Session"
             sub="Barres = Coût total · Ligne rouge = Coût par étudiant (axe droit)"
@@ -378,7 +378,7 @@ export default function ChartsSection({
           <EfficienceComboChart rows={filteredRows.slice(0, 8)} />
         </div>
 
-        <div className="rounded-2xl p-5" style={glassCard}>
+        <div className={`p-4 ${cardClass}`}>
           <SectionTitle
             title="Trend des Coûts"
             sub="Évolution mensuelle du coût total"

@@ -79,7 +79,7 @@ export class FinanceRevenueService {
     }
 
     const res = await this.dataSource.query(`
-      SELECT COALESCE(SUM(f.montant), 0) as total
+      SELECT COALESCE(SUM(ABS(f.montant)), 0) as total
       FROM dw.fact_finance f
       JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
       JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
@@ -92,29 +92,92 @@ export class FinanceRevenueService {
     return parseFloat(res[0]?.total) || 0;
   }
 
-  private async sumFactureTotal(start: string, end: string, formationId?: number): Promise<number> {
-    const params: any[] = [start, end];
-    let formationFilter = '';
-
-    if (formationId) {
-      params.push(formationId);
-      formationFilter = `AND fo.formation_id = $${params.length}`;
-    }
-
-    const res = await this.dataSource.query(`
-      SELECT COALESCE(SUM(f.montant), 0) as total
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
-      WHERE t.date_key BETWEEN $1 AND $2
-        AND tf.type IN ('paiement', 'impaye')
-        ${formationFilter}
-    `, params);
-
-    return parseFloat(res[0]?.total) || 0;
+  // Calcul du montant TOTAL ATTENDU (Le potentiel)
+// Basé sur : Prix de la session * Nombre d'inscrits
+private async getMontantAttendu(start: string, end: string, formationId?: number): Promise<number> {
+  const params: any[] = [start, end];
+  let formationFilter = '';
+  if (formationId) {
+    params.push(formationId);
+    formationFilter = `AND ds.sk_formation = (SELECT sk_formation FROM dw.dim_formation WHERE formation_id = $3)`;
   }
 
+  const res = await this.dataSource.query(`
+    SELECT SUM(ds.prix_session * sub.nb_inscrits) as total
+    FROM dw.dim_session ds
+    JOIN (
+      SELECT sk_session, COUNT(DISTINCT sk_apprenant) as nb_inscrits
+      FROM dw.fact_finance
+      WHERE sk_apprenant != -1
+      GROUP BY sk_session
+    ) sub ON ds.sk_session = sub.sk_session
+    WHERE ds.date BETWEEN $1 AND $2
+    ${formationFilter}
+  `, params);
+
+  return parseFloat(res[0]?.total) || 0;
+}
+
+// Calcul du montant RÉELLEMENT PAYÉ (L'encaissé pour ces sessions)
+// 1. Calculer TOUT ce qui aurait dû être payé (Le CA Théorique)
+private async getCaAttenduTotal(start: string, end: string, formationId?: number): Promise<number> {
+  const params: any[] = [start, end];
+  let formationFilter = '';
+
+  if (formationId) {
+    params.push(formationId);
+    formationFilter = `AND ds.sk_formation = (SELECT sk_formation FROM dw.dim_formation WHERE formation_id = $3)`;
+  }
+
+  const res = await this.dataSource.query(`
+    SELECT COALESCE(SUM(ds.prix_session * sub.count_apprenants), 0) as total
+    FROM dw.dim_session ds
+    INNER JOIN (
+      -- On compte combien d'élèves sont inscrits à CHAQUE session
+      SELECT sk_session, COUNT(DISTINCT sk_apprenant) as count_apprenants
+      FROM dw.fact_finance
+      WHERE sk_apprenant != -1
+      GROUP BY sk_session
+    ) sub ON ds.sk_session = sub.sk_session
+    -- IMPORTANT : On filtre sur la date de la SESSION
+    WHERE ds.date BETWEEN $1 AND $2
+    ${formationFilter}
+  `, params);
+
+  return parseFloat(res[0]?.total) || 0;
+}
+
+// 2. Calculer ce qui a été RÉELLEMENT encaissé pour ces sessions
+private async sumFactureTotal(
+  start: string, 
+  end: string, 
+  formationId?: number
+): Promise<number> {
+  const params: any[] = [start, end];
+  let formationFilter = '';
+
+  if (formationId) {
+    params.push(formationId);
+    formationFilter = `AND fo.formation_id = $${params.length}`;
+  }
+
+  // CA Facturé = paiements + impayés (ce qui était dû par les apprenants)
+  // On exclut sk_apprenant = -1 (charges fixes sans apprenant)
+  const res = await this.dataSource.query(`
+    SELECT COALESCE(SUM(ABS(f.montant)), 0) as total
+    FROM dw.fact_finance f
+    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+    LEFT JOIN dw.dim_apprenant da ON f.sk_apprenant = da.sk_apprenant
+    WHERE t.date_key BETWEEN $1 AND $2
+      AND tf.type IN ('paiement', 'impaye')
+      AND da.apprenant_id != -1
+    ${formationFilter}
+  `, params);
+
+  return parseFloat(res[0]?.total) || 0;
+}
     // ========== FACTURATION (CA attendu) ==========
 
   private async sumFactureInRange(start: string, end: string, formationId?: number): Promise<number> {
@@ -123,56 +186,49 @@ export class FinanceRevenueService {
 
   if (formationId) {
     params.push(formationId);
-    formationFilter = `
-      AND EXISTS (
-        SELECT 1 FROM dw.fact_finance f2 
-        JOIN dw.dim_formation df ON f2.sk_formation = df.sk_formation
-        WHERE f2.sk_session = ds.sk_session 
-          AND df.formation_id = $${params.length}
-      )`;
+    formationFilter = `AND ds.sk_formation = (SELECT sk_formation FROM dw.dim_formation WHERE formation_id = $3)`;
   }
 
   const res = await this.dataSource.query(`
-    SELECT COALESCE(SUM(COALESCE(ds.prix_session, 0) * inscrits.count), 0) as total
+    SELECT COALESCE(SUM(ds.prix_session * sub.count_apprenants), 0) as total
     FROM dw.dim_session ds
-    JOIN LATERAL (
-      SELECT COUNT(DISTINCT f.sk_apprenant) as count
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps dt ON f.sk_temps = dt.sk_temps
-      WHERE f.sk_session = ds.sk_session
-        AND dt.date_key BETWEEN $1 AND $2
-        AND f.sk_apprenant <> -1
-    ) inscrits ON true
-    WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
-      ${formationFilter}
+    INNER JOIN (
+      -- On compte combien d'élèves sont inscrits à CHAQUE session
+      SELECT sk_session, COUNT(DISTINCT sk_apprenant) as count_apprenants
+      FROM dw.fact_finance
+      WHERE sk_apprenant != -1
+      GROUP BY sk_session
+    ) sub ON ds.sk_session = sub.sk_session
+    -- IMPORTANT : On filtre sur la date de la SESSION
+    WHERE ds.date BETWEEN $1 AND $2
+    ${formationFilter}
   `, params);
 
   return parseFloat(res[0]?.total) || 0;
 }
 
   private async countInscriptionsInRange(start: string, end: string, formationId?: number): Promise<number> {
-    const params: any[] = [start, end];
-    let formationFilter = '';
+  const params: any[] = [start, end];
+  let formationFilter = '';
+  if (formationId) {
+    params.push(formationId);
+    formationFilter = `AND fo.formation_id = $3`;
+  }
 
-    if (formationId) {
-      params.push(formationId);
-      formationFilter = `AND df.formation_id = $${params.length}`;
-    }
-
-    const res = await this.dataSource.query(`
-      SELECT COUNT(DISTINCT f.sk_apprenant) as count
+  const res = await this.dataSource.query(`
+    SELECT COUNT(*) as count
+    FROM (
+      SELECT DISTINCT f.sk_apprenant, f.sk_session
       FROM dw.fact_finance f
       JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      LEFT JOIN dw.dim_formation df ON f.sk_formation = df.sk_formation
+      JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
       WHERE t.date_key BETWEEN $1 AND $2
-        AND tf.type = 'paiement'
         AND f.sk_apprenant <> -1
         ${formationFilter}
-    `, params);
-
-    return parseInt(res[0]?.count) || 0;
-  }
+    ) sub
+  `, params);
+  return parseInt(res[0]?.count) || 0;
+}
 
   private async getTopFormationByRevenue(start: string, end: string): Promise<{ id: number; titre: string; total: number } | null> {
     const res = await this.dataSource.query(`
@@ -753,43 +809,56 @@ export class FinanceRevenueService {
 }
 
   async getPaymentManagementBar(filter: RevenueFilterDto): Promise<PaymentManagementBarDto> {
+  // On récupère les dates (un an glissant si vide)
   const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
-  const months = this.enumerateMonths(currentStart, currentEnd);
+  const formationId = filter.formationId ? Number(filter.formationId) : null;
 
-  // CA ENCAISSE (facile : c'est dans fact_finance)
-  const enc = await this.dataSource.query(`
-    SELECT t.annee || '-' || LPAD(t.mois::text, 2, '0') as month,
-           COALESCE(SUM(f.montant), 0) as total
-    FROM dw.fact_finance f
-    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-    WHERE tf.type = 'paiement'
-      AND t.date_key BETWEEN $1 AND $2
-    GROUP BY t.annee, t.mois
-    ORDER BY t.annee, t.mois
-  `, [currentStart, currentEnd]);
+  const rows = await this.dataSource.query(`
+    SELECT 
+      fo.titre as "formationLabel",
+      
+      -- BARRE A : CA FACTURÉ (Basé sur la date de SESSION)
+      (
+        SELECT COALESCE(SUM(ds.prix_session * sub.nb), 0)
+        FROM dw.dim_session ds
+        INNER JOIN (
+          -- On compte les inscrits uniques pour cette formation
+          SELECT f_sub.sk_session, COUNT(DISTINCT f_sub.sk_apprenant) as nb
+          FROM dw.fact_finance f_sub
+          WHERE f_sub.sk_formation = fo.sk_formation
+            AND f_sub.sk_apprenant != -1
+          GROUP BY f_sub.sk_session
+        ) sub ON ds.sk_session = sub.sk_session
+        WHERE ds.date BETWEEN $1 AND $2
+      ) as "caFacture",
 
-  // CA FACTURE (par mois : chaque inscription = 1 × prix_session)
-  const fact = await this.dataSource.query(`
-    SELECT t.annee || '-' || LPAD(t.mois::text, 2, '0') as month,
-           COALESCE(SUM(ds.prix_session), 0) as total
-    FROM dw.fact_finance f
-    JOIN dw.dim_session ds ON f.sk_session = ds.sk_session
-    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-    WHERE t.date_key BETWEEN $1 AND $2
-      AND f.sk_apprenant != -1
-    GROUP BY t.annee, t.mois
-    ORDER BY t.annee, t.mois
-  `, [currentStart, currentEnd]);
+      -- BARRE B : CA ENCAISSÉ (Basé sur la date de PAIEMENT)
+      (
+        SELECT COALESCE(SUM(f_pay.montant), 0)
+        FROM dw.fact_finance f_pay
+        JOIN dw.dim_type_finance tf ON f_pay.sk_type_finance = tf.sk_type_finance
+        JOIN dw.dim_temps t ON f_pay.sk_temps = t.sk_temps
+        WHERE f_pay.sk_formation = fo.sk_formation
+          AND tf.type = 'paiement'
+          AND t.date_key BETWEEN $1 AND $2
+      ) as "caEncaisse"
+
+    FROM dw.dim_formation fo
+    WHERE fo.formation_id != -1
+    ${formationId ? `AND fo.formation_id = $3` : ''}
+    ORDER BY "caFacture" DESC
+    LIMIT 8
+  `, formationId ? [currentStart, currentEnd, formationId] : [currentStart, currentEnd]);
 
   return {
-    rows: months.map((m) => ({
-      month: m,
-      caEncaisse: parseFloat(enc.find((e: any) => e.month === m)?.total || 0),
-      caFacture: parseFloat(fact.find((f: any) => f.month === m)?.total || 0),
+    rows: rows.map(r => ({
+      month: r.formationLabel, // On affiche le titre de la formation en bas
+      caFacture: Number(parseFloat(r.caFacture).toFixed(2)),
+      caEncaisse: Number(parseFloat(r.caEncaisse).toFixed(2)),
     }))
   };
 }
+
   async getPaymentManagementTable(filter: RevenueFilterDto): Promise<PaymentManagementTableResponseDto> {
   const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
 
@@ -857,20 +926,30 @@ export class FinanceRevenueService {
   }
 
   private resolveDashboardPeriod(filter: RevenueFilterDto) {
-    const currentStart = filter.startDate || `${new Date().getFullYear()}-01-01`;
-    const currentEnd = filter.endDate || this.fmt(new Date());
+  const now = new Date();
+  
+  // Date de fin : aujourd'hui (ou celle du filtre)
+  const currentEnd = filter.endDate || this.fmt(now);
 
-    const start = new Date(currentStart);
-    const end = new Date(currentEnd);
-    const diff = end.getTime() - start.getTime();
-
-    return {
-      currentStart,
-      currentEnd,
-      previousStart: this.fmt(new Date(start.getTime() - diff)),
-      previousEnd: this.fmt(new Date(end.getTime() - diff)),
-    };
+  // Date de début : il y a un an (ou celle du filtre)
+  let currentStart = filter.startDate;
+  if (!currentStart) {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(now.getFullYear() - 1);
+    currentStart = this.fmt(oneYearAgo);
   }
+
+  const start = new Date(currentStart);
+  const end = new Date(currentEnd);
+  const diff = end.getTime() - start.getTime();
+
+  return {
+    currentStart,
+    currentEnd,
+    previousStart: this.fmt(new Date(start.getTime() - diff)),
+    previousEnd: this.fmt(new Date(end.getTime() - diff)),
+  };
+}
 
   private fmt(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

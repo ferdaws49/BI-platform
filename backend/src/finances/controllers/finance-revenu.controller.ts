@@ -2,7 +2,6 @@ import { Controller, Get, Query, Res, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProduces, ApiTags } from "@nestjs/swagger";
 import { BubbleChartPointDto, CategoryRevenueShareDto, KpiCardsDto, RevenueEvolutionMultiLineDto, SessionRevenueTableResponseDto } from "../dto/revenue-response.dto";
 import { FormationRevenueItemDto } from "src/dashboard/dto/financier-dashboard-response.dto";
-import { AuthGuard } from "src/auth/guards/auth.guard";
 import { FinanceRevenueService } from "../services/finance-revenu.service";
 import { RevenueFilterDto } from "../dto/revenue-filter.dto";
 import type { Response } from 'express';

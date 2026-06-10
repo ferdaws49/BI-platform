@@ -15,13 +15,6 @@ interface PerformanceTableProps {
 type SortKey = keyof Pick<SessionRow, "caEncaisse" | "cout" | "margeNette" | "roi">;
 type SortDir = "asc" | "desc" | null;
 
-const glassCard = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-}
-
 function StatusPill({ status }: { status: PaymentStatus }) {
   const map: Record<PaymentStatus, { label: string, bg: string; color: string; dot: string }> = {
     Paye: {label: "Payé " , bg: "rgba(26,113,73,0.1)", color: "#1a7149", dot: "#1a7149" },
@@ -100,34 +93,31 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={glassCard}>
+    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
       {/* Header */}
       <div
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 border-b"
-        style={{ borderColor: "#e5eadd" }}
       >
         <div>
-          <h3 className="text-base font-bold font-sora" style={{ color: "#2d4a3e" }}>
+          <h3 className="text-base font-bold text-foreground">
             Performance des Sessions
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+          <p className="text-xs mt-0.5 text-muted-foreground">
             {filtered.length} session{filtered.length > 1 ? "s" : ""} trouvée{filtered.length > 1 ? "s" : ""}
           </p>
         </div>
 
         {/* Search */}
         <div
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-          style={{ background: "#efefea", borderColor: "#e5eadd" }}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-secondary"
         >
-          <Search size={15} style={{ color: "#2d4a3e", opacity: 0.4 }} />
+          <Search size={15} className="text-muted-foreground/70" />
           <input
             type="text"
             placeholder="Rechercher une session..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="bg-transparent text-sm outline-none w-44"
-            style={{ color: "#2d4a3e", fontFamily: "'DM Sans', sans-serif" }}
+            className="bg-transparent text-sm outline-none w-44 text-foreground"
           />
         </div>
       </div>
@@ -136,7 +126,7 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "rgba(229,234,221,0.3)" }}>
+            <tr className="bg-muted">
               {[
                 { label: "Session", key: null },
                 { label: "Inscrits", key: null },
@@ -148,8 +138,7 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
               ].map((col, i) => (
                 <th
                   key={i}
-                  className={`text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide ${col.key ? "cursor-pointer select-none" : ""}`}
-                  style={{ color: "#2d4a3e", opacity: 0.55 }}
+                  className={`text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground ${col.key ? "cursor-pointer select-none" : ""}`}
                   onClick={() => col.key && handleSort(col.key)}
                 >
                   <span className="flex items-center gap-1.5">
@@ -160,10 +149,10 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y" style={{ borderColor: "#e5eadd" }}>
+          <tbody className="divide-y divide-border">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-10 text-sm" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+                <td colSpan={7} className="text-center py-10 text-sm text-muted-foreground">
                   Aucune session trouvée
                 </td>
               </tr>
@@ -171,7 +160,7 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
               paged.map((row) => (
                 <tr
                   key={row.sessionId}
-                  className="hover:bg-white/50 transition-colors duration-150"
+                  className="hover:bg-accent/20 transition-colors"
                 >
                   <td className="px-5 py-4">
                     <p className="font-semibold" style={{ color: "#2d4a3e" }}>{row.session}</p>

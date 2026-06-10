@@ -1,4 +1,4 @@
- import { Controller, Get, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+ import { Body, Controller, Get, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -18,6 +18,8 @@ import {
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
+import { CreateExpenseDto } from '../dto/create-expense.dto';
+import { Finance } from '../entities/finance.entity';
 
 
 
@@ -72,6 +74,11 @@ export class FinanceCostController {
   @ApiOkResponse({ type: [SessionEfficienceDto] })
   getEfficience(@Query() filter: CostFilterDto): Promise<SessionEfficienceDto[]> {
     return this.financeCostService.getEfficience(filter);
+  }
+
+  @Post('expenses')
+  async addExpense(@Body() dto: CreateExpenseDto): Promise<Finance> {
+    return this.financeCostService.createExpense(dto);
   }
 }
 

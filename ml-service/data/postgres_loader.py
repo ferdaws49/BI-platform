@@ -1,5 +1,9 @@
+import pandas as pd
+from db import get_connection
+from schemas.ca_schema import CAFilter
+
 """
-data/postgres_loader.py — Connexion PostgreSQL (Supabase) → DataFrames ML
+    data/postgres_loader.py — Connexion PostgreSQL (Supabase) → DataFrames ML
 
 Variables .env nécessaires :
   DATABASE_URL=postgresql://user:password@host:5432/dbname
@@ -12,6 +16,24 @@ Fonctions exportées :
   load_ca_dw()             → CA depuis DW binomtik (si disponible)
   load_sessions_data()     → features par session + label est_deficitaire
   load_last_months(n)      → derniers N mois CA
+     À décommenter quand la DB est prête (scripts d'entraînement uniquement, pas FastAPI).
+
+    Variables .env nécessaires :
+    DATABASE_URL=postgresql://user:password@host:5432/dbname
+
+    Dépendances à ajouter dans requirements.txt :
+    sqlalchemy, psycopg2-binary, python-dotenv
+
+    Fonctions exportées :
+    load_risk_data()         → training/train_risk.py       (6 features + label abandon)
+    load_inscriptions_data() → training/train_forecast.py   (inscriptions/mois)
+    load_ca_data()           → training/train_ca.py         (CA mensuel depuis finances)
+    load_sessions_data()     → training/train_deficit.py    (features par session)
+    load_last_months(n)      → optionnel (rafraîchir last_data CA sans ré-entraîner)
+
+    Tables NestJS / TypeORM :
+    users, apprenants, sessions, sessions_apprenants,
+    presences, performance, satisfaction, finances
 """
 
 import os
@@ -32,6 +54,72 @@ def get_engine():
             "Ex: DATABASE_URL=postgresql://user:pass@host:5432/dbname"
         )
     return create_engine(DATABASE_URL)
+
+import numpy as np
+import pandas as pd
+from db import get_connection
+
+def load_data():
+    conn = get_connection()
+    
+    query = """
+    SELECT 
+        EXTRACT(YEAR FROM s.date) as annee,
+        EXTRACT(MONTH FROM s.date) as mois,
+        COUNT(*) as nb_sessions,
+        SUM(COALESCE(fin.montant, 0)) as ca_mensuel
+    FROM public.sessions s
+    LEFT JOIN (
+        SELECT "sessionId", SUM(montant) as montant
+        FROM public.finances
+        WHERE type = 'paiement'
+        GROUP BY "sessionId"
+    ) fin ON fin."sessionId" = s.id
+    WHERE s.statut = 'Completed'
+    GROUP BY EXTRACT(YEAR FROM s.date), EXTRACT(MONTH FROM s.date)
+    ORDER BY annee, mois;
+    """
+    
+    df = pd.read_sql(query, conn)
+    conn.close()
+    
+    for col in ['nb_sessions', 'ca_mensuel']:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    df['mois_cos'] = np.cos(2 * np.pi * df['mois'] / 12)
+    
+    
+    return df
+
+def get_features(df):
+    return ['nb_sessions', 'mois_cos']
+
+def get_features(df):
+    """
+    Retourne les features disponibles dans le DataFrame.
+    """
+    # Vérifie quelles colonnes existent réellement
+    available = list(df.columns)
+    
+    features = []
+    
+    # Priorité 1 : nb_sessions (si disponible)
+    if 'nb_sessions' in available:
+        features.append('nb_sessions')
+    
+    # Priorité 2 : revenu_potentiel_total (si disponible)
+    elif 'revenu_potentiel_total' in available:
+        features.append('revenu_potentiel_total')
+    elif 'est_ete' in df.columns:
+        features.append('est_ete')
+    if 'prop_it' in df.columns and len(df) >= 10:
+        features.append('prop_it')
+        
+    
+    # Saisonnalité (toujours présente car créée dans load_data)
+    features.append('mois_cos')
+    
+    return features
 
 
 # ─── Risk — 6 features SANS label (label probabiliste dans train_risk.py) ────

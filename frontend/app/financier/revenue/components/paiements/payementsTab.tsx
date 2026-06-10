@@ -12,7 +12,7 @@ import {
   LinearScale,
 } from "chart.js";
 import {
-  glassCard,
+  cardClass,
   fmtCurrency,
   KPICard,
   SectionTitle,
@@ -469,8 +469,8 @@ export function PaiementModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-lg rounded-2xl p-6 shadow-xl" style={{ background: "#f8faf6", border: "1px solid #e5eadd" }}>
-        <h2 className="mb-4 text-xl font-bold" style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}>
+      <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">
           {isEditing ? "Modifier le paiement" : "Ajouter un paiement"}
         </h2>
 
@@ -980,13 +980,13 @@ export default function PaiementsTab({
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
-              className="h-28 rounded-2xl"
+              className="h-28 rounded-xl border border-border bg-muted animate-pulse"
               style={{ background: "rgba(229,234,221,0.5)" }}
             />
           ))}
         </div>
         <div
-          className="h-64 rounded-2xl"
+          className="h-64 rounded-xl border border-border bg-muted animate-pulse"
           style={{ background: "rgba(229,234,221,0.5)" }}
         />
       </div>
@@ -1000,8 +1000,7 @@ export default function PaiementsTab({
 
       {/* ── Filtres locaux ── */}
       <div
-        className="flex flex-wrap items-center gap-2 p-4 rounded-2xl"
-        style={glassCard}
+        className="flex flex-wrap items-center gap-2 p-2 rounded-xl border border-border bg-card shadow-sm"
       >
         <FilterSelect
           value={filterFormation}
@@ -1084,7 +1083,7 @@ export default function PaiementsTab({
             valueColor="#DC2626"
           />
           <KPICard
-            label="Taux de Recouvrement"
+            label="Taux de Paiement"
             value={`${Math.round(tauxPaiement)}%`}
             accentColor="#3b82f6"
             sub={`${fmtCurrency(totalEncaisse)} / ${fmtCurrency(totalFacture)}`}
@@ -1097,7 +1096,7 @@ export default function PaiementsTab({
           />
         </div>
 
-        <div className="rounded-2xl p-5" style={glassCard}>
+        <div className={`p-4 ${cardClass}`}>
           <SectionTitle
             title="Répartition statuts"
             sub="% par type de paiement"
@@ -1111,7 +1110,7 @@ export default function PaiementsTab({
       </div>
 
       {/* ── Graphique de recouvrement ── */}
-      <div className="rounded-2xl p-5" style={glassCard}>
+      <div className={`p-4 ${cardClass}`}>
         <SectionTitle
           title="Graphique de Recouvrement"
           sub="Revenu Facturé vs Argent Encaissé — par formation"
@@ -1120,7 +1119,7 @@ export default function PaiementsTab({
       </div>
 
       {/* ── Tableau ── */}
-      <div className="rounded-2xl overflow-hidden" style={glassCard}>
+      <div className={`overflow-hidden ${cardClass}`}>
         <div
           className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b"
           style={{ borderColor: "#e5eadd" }}

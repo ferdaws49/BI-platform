@@ -23,14 +23,12 @@ function TabSkeleton() {
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className="h-28 rounded-2xl"
-            style={{ background: "rgba(229,234,221,0.5)" }}
+            className="h-28 rounded-xl border border-border bg-muted animate-pulse"
           />
         ))}
       </div>
       <div
-        className="h-64 rounded-2xl"
-        style={{ background: "rgba(229,234,221,0.5)" }}
+        className="h-64 rounded-xl border border-border bg-muted animate-pulse"
       />
     </div>
   );
@@ -73,32 +71,20 @@ export default function RevenusPage() {
 
   return (
     <DashboardLayout>
-      <div
-        className="p-6 space-y-6 max-w-screen-2xl mx-auto"
-        style={{ fontFamily: "'DM Sans', sans-serif" }}
-      >
-        {/* Page header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
+      <div className="p-4 md:p-6 space-y-6">
+        {/* Page header + filtres (même niveau que /cout) */}
+        <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1
-              className="text-xl font-bold"
-              style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}
-            >
+            <h1 className="text-lg font-semibold text-foreground">
               Revenus & Facturation
             </h1>
-            <p
-              className="text-xs mt-1"
-              style={{ color: "#2d4a3e", opacity: 0.45 }}
-            >
+            <p className="text-xs mt-1 text-muted-foreground">
               Pilotage financier complet · Exercice {currentYear}
             </p>
           </div>
-
-          {/* Barre de filtres globale — partagée par tous les onglets */}
-          <RevenueFiltersBar onChange={setFilters}
-          formations={formations}
-          />
         </div>
+
+        <RevenueFiltersBar onChange={setFilters} formations={formations} />
 
         {/* Tabs navigation */}
         <div className="flex gap-2 flex-wrap">
@@ -106,16 +92,11 @@ export default function RevenusPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200"
-              style={
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                 activeTab === tab.id
-                  ? { background: "#2d4a3e", color: "#fff" }
-                  : {
-                      background: "rgba(255,255,255,0.65)",
-                      color: "#2d4a3e",
-                      border: "1px solid rgba(229,234,221,0.9)",
-                    }
-              }
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-card text-foreground border border-border hover:bg-accent/20"
+              }`}
             >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
@@ -131,10 +112,7 @@ export default function RevenusPage() {
 
         {/* Footer */}
         <footer className="text-center pb-2">
-          <p
-            className="text-xs"
-            style={{ color: "#2d4a3e", opacity: 0.25 }}
-          >
+          <p className="text-xs text-muted-foreground/60">
             CentreForm BI · Revenus & Facturation · Exercice {currentYear}
           </p>
         </footer>

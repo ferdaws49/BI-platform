@@ -119,6 +119,8 @@ export class Session {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  
+
  @OneToMany(() => Finance, (finance) => finance.session)
   finances: Finance[];
 

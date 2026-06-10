@@ -21,13 +21,6 @@ Chart.register(
   Tooltip, Legend, Filler
 );
 
-const glassCard = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
-
 const HORIZONS: { label: string; value: ForecastHorizon }[] = [
   { label: "1 Mois", value: 1 },
   { label: "3 Mois", value: 3 },
@@ -40,7 +33,7 @@ interface ForecastChartProps {
 
 function SkeletonChart() {
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-4" style={glassCard}>
+    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-4 shadow-sm animate-pulse">
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-2">
           <div className="w-48 h-5 rounded-lg animate-pulse" style={{ background: "#e5eadd" }} />
@@ -186,33 +179,31 @@ export default function ForecastChart({ loading = false }: ForecastChartProps) {
   if (loading) return <SkeletonChart />;
 
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-4" style={glassCard}>
+    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-4 shadow-sm hover:shadow-md transition-shadow">
       {/* Header row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-base font-bold font-sora" style={{ color: "#2d4a3e" }}>
+          <h3 className="text-base font-bold text-foreground">
             Prévision du Chiffre d'Affaires
           </h3>
-          <p className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+          <p className="text-xs mt-0.5 text-muted-foreground">
             CA historique vs modèle prédictif IA
           </p>
         </div>
 
         {/* Horizon toggle */}
         <div
-          className="flex items-center gap-1 p-1 rounded-xl"
-          style={{ background: "#efefea" }}
+          className="flex items-center gap-1 p-1 rounded-xl bg-secondary border border-border"
         >
           {HORIZONS.map((h) => (
             <button
               key={h.value}
               onClick={() => setHorizon(h.value)}
-              className="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
-              style={
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                 horizon === h.value
-                  ? { background: "#1a7149", color: "#fff", boxShadow: "0 1px 4px rgba(26,113,73,0.25)" }
-                  : { color: "#2d4a3e", opacity: 0.6 }
-              }
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-foreground/60 hover:bg-accent/20 hover:text-accent-foreground"
+              }`}
             >
               {h.label}
             </button>

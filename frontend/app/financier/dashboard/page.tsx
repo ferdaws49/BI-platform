@@ -85,7 +85,7 @@ export default function FinancialDashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-6 max-w-screen-2xl mx-auto">
+      <div className="p-4 md:p-6 space-y-6">
         {/* Filters */}
         <FiltersBar onFilterChange={(newFilters) =>
          setFilters((prev) => ({ ...prev,

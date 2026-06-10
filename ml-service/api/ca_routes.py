@@ -1,117 +1,94 @@
-"""
-api/ca_routes.py — Endpoints pour la prévision du chiffre d'affaires (CA)
+from fastapi import APIRouter, HTTPException
+from schemas.ca_schema import (
+    CAFilter, 
+    CAHistoriqueResponse, 
+    CAPredictResponse, 
+    CAHistoriquePoint, 
+    CAMoisPrevu
+)
+from services.ca_service import ca_service
+from data.postgres_loader import load_data
 
-Routes exposées :
-    - GET /predict-ca         : retourne 3 mois de prévision CA (par défaut)
-    - GET /predict-ca/backtest: backtest simple sur les 3 derniers mois
+router = APIRouter(prefix="/ca", tags=["CA Forecast"])
 
-Utilise : `services/ca_service.CAModelRegistry` et `schemas/ca_schema`.
-"""
-
-import numpy as np
-import pandas as pd
-from fastapi import APIRouter
-from schemas.ca_schema import CAForecastResponse, CAMoisPrevu, PredictInput, HistoriqueItem
-from services.ca_service import ca_registry
-
-router = APIRouter(tags=["CA Forecast"])
-
-
-@router.post("/predict-ca", response_model=CAForecastResponse)
-def predict_ca(data: PredictInput):
-    df = pd.DataFrame([item.dict() for item in data.historique])
-    nb_mois = data.periode if data.periode in [3, 6, 12] else 6
-
-    previsions = ca_registry.predict_next_months(df, nb_mois=nb_mois)
-    ca_values = [p["ca_predit"] for p in previsions]
-
-    if ca_values[-1] > ca_values[0] * 1.05:
-        tendance = "hausse"
-    elif ca_values[-1] < ca_values[0] * 0.95:
-        tendance = "baisse"
-    else:
-        tendance = "stable"
-
-    return CAForecastResponse(
-        previsions=[CAMoisPrevu(**p) for p in previsions],
-        unite="DT",
-        model_used="LinearRegression",
-        tendance=tendance,
+@router.get("/historique", response_model=CAHistoriqueResponse)
+def get_historique(
+    date_from: str = None,
+    date_to: str = None,
+    formation_id: int = None,
+    formateur_id: int = None,
+    session_type: str = None,
+):
+    """Récupère l'historique réel pour affichage sur le dashboard."""
+    filters = CAFilter(
+        date_from=date_from,
+        date_to=date_to,
+        formation_id=formation_id,
+        formateur_id=formateur_id,
+        session_type=session_type
     )
 
-@router.get("/predict-ca/backtest")
-def backtest_ca():
-    if ca_registry.last_data is None:
-        return {"error": "Données d'entraînement indisponibles. Réentraînez le modèle."}
-    df       = ca_registry.last_data.copy()
-    df_train = df.iloc[:-3].copy()
-    df_test  = df.iloc[-3:].copy()
+    df = load_data(filters)
+    if df.empty:
+        raise HTTPException(400, "Aucune donnée trouvée pour ces filtres.")
 
-    vraies_valeurs = df_test["ca_mensuel"].tolist()
-    mois_test = [
-        f"{int(row['annee'])}-{int(row['mois_num']):02d}"
-        for _, row in df_test.iterrows()
-    ]
+    # Transformation du DataFrame en points d'historique
+    historique = []
+    for _, row in df.iterrows():
+        # Calcul de la marge réelle
+        marge = row["ca_mensuel"] - row["total_cout_formateur"] - row["total_cout_logistique"]
+        
+        historique.append(CAHistoriquePoint(
+            mois=f"{int(row['annee'])}-{int(row['mois']):02d}",
+            annee=int(row["annee"]),
+            mois_num=int(row["mois"]),
+            ca=round(float(row["ca_mensuel"]), 2),
+            marge=round(float(marge), 2),
+            nb_sessions=int(row["nb_sessions"]),
+            total_inscrits=int(row["total_inscrits"])
+        ))
 
-    predictions = []
-    df_iter = df_train.copy()
+    return CAHistoriqueResponse(
+        historique=historique,
+        total_mois=len(historique),
+        ca_moyen=round(df["ca_mensuel"].mean(), 2),
+        filtres=filters
+    )
 
-    for _ in range(3):
-        last           = df_iter.iloc[-1]
-        mois_suivant   = int(last["mois_num"]) % 12 + 1
-        annee_suivante = int(last["annee"]) + (1 if mois_suivant == 1 else 0)
-        trimestre      = ((mois_suivant - 1) // 3) + 1
-
-        features  = ca_registry._build_row_features(df_iter, mois_suivant, annee_suivante, trimestre)
-        ca_predit = float(ca_registry.model.predict(ca_registry.scaler.transform(features))[0])
-        predictions.append(ca_predit)
-
-        new_row = last.copy()
-        new_row["annee"]      = annee_suivante
-        new_row["mois_num"]   = mois_suivant
-        new_row["trimestre"]  = trimestre
-        new_row["ca_mensuel"] = ca_predit
-        new_row["marge_lag1"] = ca_predit - (
-            last["total_cout_formateur"] + last["total_cout_logistique"]
-        )
-        df_iter = pd.concat([df_iter, pd.DataFrame([new_row])], ignore_index=True)
-
-    erreurs_pct = [
-        abs(predictions[i] - vraies_valeurs[i]) / max(1, vraies_valeurs[i]) * 100
-        for i in range(3)
-    ]
-    mae  = round(sum(abs(predictions[i] - vraies_valeurs[i]) for i in range(3)) / 3, 2)
-    mape = round(sum(erreurs_pct) / 3, 2)
-
-    comparaison = []
-    for i in range(3):
-        ecart = predictions[i] - vraies_valeurs[i]
-        comparaison.append({
-            "mois":      mois_test[i],
-            "ca_reel":   round(vraies_valeurs[i], 2),
-            "ca_predit": round(predictions[i], 2),
-            "ecart":     round(ecart, 2),
-            "ecart_pct": f"{round(erreurs_pct[i], 1)}%",
-            "evaluation": (
-                "✅ Excellent"  if erreurs_pct[i] < 5  else
-                "🟡 Acceptable" if erreurs_pct[i] < 15 else
-                "🔴 Mauvais"
-            ),
-        })
-
-    return {
-        "comparaison": comparaison,
-        "metriques": {
-            "MAE":     f"{mae} DT",
-            "MAPE":    f"{mape}%",
-            "qualite": (
-                "✅ Excellent — erreur < 5%"  if mape < 5  else
-                "🟡 Acceptable — erreur < 15%" if mape < 15 else
-                "🔴 Mauvais — erreur > 15%"
-            ),
-        },
-        "interpretation": {
-            "MAE":  "Erreur moyenne en DT (plus c'est bas, mieux c'est)",
-            "MAPE": "Erreur moyenne en % (idéal < 10%)",
-        },
-    }
+@router.post("/predict", response_model=CAPredictResponse)
+def predict_ca(filters: CAFilter):
+    """
+    Génère les prévisions CA sur 1, 3 ou 6 mois.
+    
+    Le modèle utilise les sessions planifiées dans la base pour prédire.
+    """
+    # Validation période
+    if filters.periode not in [1, 3, 6]:
+        raise HTTPException(400, "La période doit être 1, 3 ou 6 mois.")
+    
+    # Appel du service (va chercher les sessions planifiées automatiquement)
+    result = ca_service.predict_period(nb_mois=filters.periode)
+    
+    if "error" in result:
+        raise HTTPException(500, result["error"])
+    
+    # Tendance : compare le 1er mois prédit vs le dernier mois réel historique
+    tendance = "stable"
+    if ca_service.history is not None and len(ca_service.history) > 0:
+        dernier_ca_reel = float(ca_service.history.iloc[-1]["ca_mensuel"])
+        premier_ca_predit = result["previsions"][0]["ca_predit"] if result["previsions"] else 0
+        
+        if premier_ca_predit > dernier_ca_reel * 1.05:
+            tendance = "hausse"
+        elif premier_ca_predit < dernier_ca_reel * 0.95:
+            tendance = "baisse"
+        else:
+            tendance = "stable"
+    
+    return CAPredictResponse(
+        previsions=[CAMoisPrevu(**p) for p in result["previsions"]],
+        periode=filters.periode,
+        ca_total=result.get("ca_total"),
+        marge_total=result.get("marge_total"),
+        tendance=tendance
+    )

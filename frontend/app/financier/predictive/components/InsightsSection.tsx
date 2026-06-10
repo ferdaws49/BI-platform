@@ -8,13 +8,6 @@ interface InsightsSectionProps {
   loading?: boolean;
 }
 
-const glassCard = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
-
 const TYPE_CONFIG: Record<InsightType, { icon: React.ElementType; iconBg: string; iconColor: string; accent: string }> = {
   trend: { icon: TrendingUp, iconBg: "rgba(26,113,73,0.1)", iconColor: "#1a7149", accent: "#1a7149" },
   risk: { icon: AlertTriangle, iconBg: "rgba(220,38,38,0.1)", iconColor: "#DC2626", accent: "#DC2626" },
@@ -29,7 +22,7 @@ function DirectionIcon({ direction }: { direction?: Insight["direction"] }) {
 
 function SkeletonInsight() {
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-3" style={glassCard}>
+    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 shadow-sm animate-pulse">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl animate-pulse" style={{ background: "#e5eadd" }} />
         <div className="w-32 h-5 rounded-lg animate-pulse" style={{ background: "#e5eadd" }} />
@@ -52,10 +45,10 @@ export default function InsightsSection({ insights, loading = false }: InsightsS
           <Lightbulb size={18} style={{ color: "#1a7149" }} />
         </div>
         <div>
-          <h2 className="text-base font-bold font-sora" style={{ color: "#2d4a3e" }}>
+          <h2 className="text-base font-bold text-foreground">
             Insights IA
           </h2>
-          <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+          <p className="text-xs text-muted-foreground/70">
             Observations clés générées automatiquement
           </p>
         </div>
@@ -71,8 +64,7 @@ export default function InsightsSection({ insights, loading = false }: InsightsS
               return (
                 <div
                   key={insight.id}
-                  className="relative rounded-2xl p-5 flex flex-col gap-3 overflow-hidden hover:-translate-y-0.5 transition-all duration-300"
-                  style={glassCard}
+                  className="relative rounded-xl border border-border bg-card p-4 flex flex-col gap-3 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                 >
                   {/* Accent bar */}
                   <div
@@ -101,10 +93,10 @@ export default function InsightsSection({ insights, loading = false }: InsightsS
 
                   {/* Content */}
                   <div className="flex flex-col gap-1">
-                    <h4 className="text-sm font-bold font-sora" style={{ color: "#2d4a3e" }}>
+                    <h4 className="text-sm font-bold text-foreground">
                       {insight.title}
                     </h4>
-                    <p className="text-xs leading-relaxed" style={{ color: "#2d4a3e", opacity: 0.55 }}>
+                    <p className="text-xs leading-relaxed text-muted-foreground/70">
                       {insight.description}
                     </p>
                   </div>

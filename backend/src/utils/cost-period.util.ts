@@ -56,6 +56,6 @@ export function resolveCostPeriod(filter: CostFilterDto): {
   const rangeEnd = filter.endDate ? new Date(filter.endDate) : now;
   const rangeStart = filter.startDate
     ? new Date(filter.startDate)
-    : new Date(now.getFullYear(), 0, 1);
+    :  new Date(Date.UTC(2025, 4, 25)); // défaut à 2025 pour éviter de remonter trop loin dans le passé
   return { rangeStart, rangeEnd };
 }

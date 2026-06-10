@@ -24,7 +24,7 @@ export function resolveDashboardPeriod(filter: { startDate?: string; endDate?: s
   const currentEnd = filter.endDate ? new Date(filter.endDate)
   : new Date(`${year}-12-31T23:59:59.999Z`);
   const currentStart = filter.startDate ? new Date(filter.startDate)
-    : new Date(`${year}-01-01T00:00:00.000Z`);
+    : new Date('2025-05-25');
   
   if (isNaN(currentStart.getTime()) || isNaN(currentEnd.getTime())) {
     console.error("❌ Invalid dates:", {

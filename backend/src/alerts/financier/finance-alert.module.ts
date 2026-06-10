@@ -10,9 +10,11 @@ import { Formation } from 'src/formations/entities/formation.entity';
 import { Apprenant } from 'src/apprenants/entities/apprenant.entity';
 import { Finance } from 'src/finances/entities/finance.entity';
 import { DwModule } from 'src/dw/dw.module';
+import { FinancesModule } from 'src/finances/finances.module';
+import { Formateur } from 'src/formateurs/entities/formateur.entity';
 
 @Module({
-  imports: [DwModule, TypeOrmModule.forFeature([Session, User, Formation, Apprenant, Finance])],  
+  imports: [DwModule, TypeOrmModule.forFeature([Session, User, Formation, Apprenant, Finance, Formateur]), FinancesModule],  
   providers: [FinanceAlertService, FinanceCostService,
     FinanceRevenueService,],
   controllers: [FinanceAlertController],

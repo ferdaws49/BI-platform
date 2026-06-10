@@ -1,839 +1,396 @@
-#pip install psycopg2-binary
-#python generate_seed.py dans \backend\seed
-"""
-Script de génération de données de test réalistes pour une plateforme BI de centre de formation tunisien.
-- 3+ ans de données
-- 300+ sessions, 20 formations, 10+ formateurs, 100+ apprenants, 5000+ entrées finance
-- Données cohérentes avec hiérarchie stricte
-- Bruit intégré pour le bon fonctionnement du module ML
-"""
-
 import random
 import uuid
-import json
-import hashlib
-from datetime import datetime, timedelta, date, time
-from decimal import Decimal
+import os
+import sys
+from datetime import datetime, timedelta, time
 
-random.seed(42)
-
-# ─────────────────────────────────────────────
-# DONNÉES TUNISIENNES RÉALISTES
-# ─────────────────────────────────────────────
-
-NOMS_TUNISIENS = [
-    "Ben Ali", "Trabelsi", "Chaabane", "Mansouri", "Hamdi", "Jebali", "Marzougui",
-    "Saidi", "Ferchichi", "Belhaj", "Agrebi", "Boughattas", "Zouari", "Khlifi",
-    "Chtourou", "Guesmi", "Mejri", "Abidi", "Tlili", "Dridi", "Jouini", "Hammami",
-    "Nasr", "Riahi", "Gharbi", "Ayari", "Hasnaoui", "Selmi", "Karray", "Baraket",
-    "Oueslati", "Cherif", "Ammar", "Baccar", "Boujemaa", "Dhouib", "Elloumi",
-    "Fehri", "Ghorbel", "Haddad", "Jabeur", "Kaabar", "Laabidi", "Marzouki",
-    "Nefzi", "Omrani", "Rekik", "Sfar", "Touati", "Weslati"
-]
-
-PRENOMS_MASCULINS = [
-    "Mohamed", "Ahmed", "Ali", "Omar", "Youssef", "Karim", "Mehdi", "Amine",
-    "Bilel", "Chokri", "Dali", "Fares", "Ghassen", "Hamza", "Islem", "Jawher",
-    "Khalil", "Lotfi", "Maher", "Nizar", "Oussama", "Rami", "Seifeddine", "Tarek",
-    "Walid", "Zied", "Adel", "Bassem", "Chiheb", "Dhia", "Elyes", "Fethi",
-    "Hatem", "Imed", "Jaber", "Khaled", "Lazhar", "Mondher", "Naoufel", "Rafik",
-    "Sami", "Taoufik", "Wissem", "Yassine", "Sofien", "Hichem", "Moez"
-]
-
-PRENOMS_FEMININS = [
-    "Amira", "Boutheina", "Chaima", "Dorra", "Emna", "Fatma", "Ghada", "Hajer",
-    "Ines", "Jihen", "Khouloud", "Lamia", "Mariem", "Nadia", "Olfa", "Rania",
-    "Sana", "Takoua", "Wafa", "Yasmine", "Zeineb", "Amel", "Besma", "Cyrine",
-    "Dalila", "Eya", "Faten", "Hela", "Ibtissem", "Kawther", "Leila", "Manel",
-    "Najla", "Rim", "Sarra", "Thouraya", "Wided", "Yosra", "Sirine", "Hanène"
-]
-
-PRENOMS_TUNISIENS = PRENOMS_MASCULINS + PRENOMS_FEMININS
-
-VILLES_TUNISIENNES = ["Tunis", "Sfax", "Sousse", "Monastir", "Bizerte", "Nabeul", "Kairouan", "Gabès", "Ariana", "Ben Arous", "La Marsa", "Hammamet"]
-
-FORMATIONS_DATA = [
-    {"titre": "Développement Web Full Stack", "categorie": "Informatique", "dureeHeures": 120, "prix": 1800.00},
-    {"titre": "Data Science et Machine Learning", "categorie": "Informatique", "dureeHeures": 160, "prix": 2200.00},
-    {"titre": "Cybersécurité Fondamentaux", "categorie": "Informatique", "dureeHeures": 80, "prix": 1400.00},
-    {"titre": "Comptabilité et Fiscalité Tunisienne", "categorie": "Finance", "dureeHeures": 60, "prix": 900.00},
-    {"titre": "Marketing Digital", "categorie": "Marketing", "dureeHeures": 48, "prix": 750.00},
-    {"titre": "Gestion de Projet (PMP)", "categorie": "Management", "dureeHeures": 70, "prix": 1100.00},
-    {"titre": "Anglais des Affaires", "categorie": "Langues", "dureeHeures": 90, "prix": 600.00},
-    {"titre": "Excel Avancé & Power BI", "categorie": "Bureautique", "dureeHeures": 40, "prix": 550.00},
-    {"titre": "Ressources Humaines et Droit du Travail", "categorie": "Management", "dureeHeures": 55, "prix": 850.00},
-    {"titre": "Développement Mobile (Flutter)", "categorie": "Informatique", "dureeHeures": 100, "prix": 1600.00},
-    {"titre": "Cloud Computing AWS", "categorie": "Informatique", "dureeHeures": 90, "prix": 1700.00},
-    {"titre": "Commerce International et Export", "categorie": "Commerce", "dureeHeures": 50, "prix": 780.00},
-    {"titre": "Photoshop & Illustrator", "categorie": "Design", "dureeHeures": 45, "prix": 480.00},
-    {"titre": "Intelligence Artificielle Appliquée", "categorie": "Informatique", "dureeHeures": 80, "prix": 1900.00},
-    {"titre": "Leadership et Management d'Équipe", "categorie": "Management", "dureeHeures": 35, "prix": 650.00},
-    {"titre": "Logistique et Supply Chain", "categorie": "Commerce", "dureeHeures": 60, "prix": 820.00},
-    {"titre": "Python pour la Finance", "categorie": "Finance", "dureeHeures": 55, "prix": 950.00},
-    {"titre": "Communication Professionnelle", "categorie": "Développement Personnel", "dureeHeures": 30, "prix": 380.00},
-    {"titre": "AutoCAD 2D/3D", "categorie": "Design", "dureeHeures": 70, "prix": 720.00},
-    {"titre": "Entrepreneuriat et Création d'Entreprise", "categorie": "Management", "dureeHeures": 40, "prix": 500.00},
-]
-
-FORMATEURS_DATA = [
-    {"nom": "Ben Salah", "prenom": "Karim",      "email": "k.bensalah@formateur.tn",   "specialite": "Informatique",          "telephone": "+21625314872"},
-    {"nom": "Mahjoub",   "prenom": "Sonia",      "email": "s.mahjoub@formateur.tn",    "specialite": "Finance",               "telephone": "+21652871034"},
-    {"nom": "Gharbi",    "prenom": "Mohamed",    "email": "m.gharbi@formateur.tn",     "specialite": "Marketing",             "telephone": "+21698231456"},
-    {"nom": "Trabelsi",  "prenom": "Hichem",     "email": "h.trabelsi@formateur.tn",   "specialite": "Management",            "telephone": "+21620984531"},
-    {"nom": "Khlifi",    "prenom": "Amina",      "email": "a.khlifi@formateur.tn",     "specialite": "Langues",               "telephone": "+21655123789"},
-    {"nom": "Ferchichi", "prenom": "Nabil",      "email": "n.ferchichi@formateur.tn",  "specialite": "Informatique",          "telephone": None},
-    {"nom": "Zouari",    "prenom": "Lilia",      "email": "l.zouari@formateur.tn",     "specialite": "Design",                "telephone": "+21694567012"},
-    {"nom": "Chaabane",  "prenom": "Riadh",      "email": "r.chaabane@formateur.tn",   "specialite": "Commerce",              "telephone": "+21621876543"},
-    {"nom": "Mejri",     "prenom": "Tarek",      "email": "t.mejri@formateur.tn",      "specialite": "Informatique",          "telephone": "+21650432198"},
-    {"nom": "Belhaj",    "prenom": "Sirine",     "email": "s.belhaj@formateur.tn",     "specialite": "Management",            "telephone": "+21693012345"},
-    {"nom": "Oueslati",  "prenom": "Fathi",      "email": "f.oueslati@formateur.tn",   "specialite": "Finance",               "telephone": None},
-    {"nom": "Agrebi",    "prenom": "Wafa",       "email": "w.agrebi@formateur.tn",     "specialite": "Développement Personnel","telephone": "+21627654321"},
-]
-
-LIEUX = ["Salle A - Tunis Centre", "Salle B - Lac 2", "Salle C - Montplaisir", "Salle D - Sfax", "Salle E - Sousse", "En ligne (Teams)", "En ligne (Zoom)", "Salle Polyvalente - Ariana"]
-
-COMMENTAIRES_SATISFACTION = [
-    "Formation très enrichissante, j'ai beaucoup appris.",
-    "Le formateur était excellent, explications claires.",
-    "Contenu bien structuré, je recommande vivement.",
-    "Formation correcte mais pourrait être plus pratique.",
-    "Très bonne expérience, merci pour la qualité.",
-    "Le rythme était un peu rapide mais globalement bien.",
-    "Excellente formation, les cas pratiques étaient très utiles.",
-    "Formation moyenne, le support de cours manquait de détails.",
-    "Formateur compétent et pédagogue, très satisfait.",
-    "Bonne formation, j'aurais aimé plus d'exercices pratiques.",
-    "Très satisfait, cette formation a boosté mes compétences.",
-    "Le contenu était pertinent mais la salle n'était pas très confortable.",
-    "Formation utile pour ma carrière, je la conseille.",
-    "Qualité correcte, pas exceptionnelle.",
-    "Superbe formation ! J'ai pu directement appliquer les acquis.",
-]
-
-# ─────────────────────────────────────────────
-# UTILITAIRES
-# ─────────────────────────────────────────────
-
-def hash_password(pwd):
-    return hashlib.sha256(pwd.encode()).hexdigest()
-
-def random_email(prenom, nom, used_emails):
-    prenom_clean = prenom.lower().replace(" ", "").replace("'", "")
-    nom_clean = nom.lower().replace(" ", "").replace("'", "")
-    domains = ["gmail.com", "yahoo.fr", "hotmail.com", "outlook.com", "topnet.tn", "gnet.tn"]
-    base = f"{prenom_clean}.{nom_clean}"
-    email = f"{base}@{random.choice(domains)}"
-    counter = 1
-    while email in used_emails:
-        email = f"{base}{counter}@{random.choice(domains)}"
-        counter += 1
-    used_emails.add(email)
-    return email
-
-def random_phone():
-    prefixes = ["20", "21", "22", "23", "24", "25", "26", "27", "50", "52", "53", "54", "55", "56", "57", "58", "90", "92", "93", "94", "95", "96", "97", "98", "99"]
-    return f"+216{random.choice(prefixes)}{random.randint(100000, 999999)}"
-
-def random_datetime_in_range(start: datetime, end: datetime) -> datetime:
-    delta = end - start
-    secs = int(delta.total_seconds())
-    return start + timedelta(seconds=random.randint(0, secs))
-
-def random_time_pair():
-    """Génère heureDebut/heureFin réaliste"""
-    starts = [8, 9, 14, 15]
-    start_h = random.choice(starts)
-    duration_h = random.choice([2, 3, 4])
-    end_h = start_h + duration_h
-    start = time(start_h, random.choice([0, 30]))
-    end = time(min(end_h, 20), random.choice([0, 30]))
-    return start.strftime("%H:%M:%S"), end.strftime("%H:%M:%S")
-
-START_DATE = datetime(2022, 1, 1)
-END_DATE = datetime(2025, 3, 31)
-
-# ─────────────────────────────────────────────
-# GÉNÉRATION
-# ─────────────────────────────────────────────
-
-all_emails = set()
-
-# ── 1. INSCRIPTIONS ──────────────────────────
-print("Génération des inscriptions...")
-
-N_INSCRIPTIONS = 200  # 150 accepted → ~100+ apprenants after some rejection
-inscriptions = []
-inscription_emails = {}  # email -> id
-
-statut_distribution = (
-    ["accepted"] * 120 +
-    ["pending"] * 30 +
-    ["not_verified"] * 30 +
-    ["rejected"] * 20
+# --- CONFIGURATION SUPABASE ---
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres.eupoualsvpooxtadhiam:ZbRT6jz1aGqgnAZB@aws-1-eu-west-3.pooler.supabase.com:5432/postgres"
 )
-random.shuffle(statut_distribution)
 
-for i in range(1, N_INSCRIPTIONS + 1):
-    prenom = random.choice(PRENOMS_TUNISIENS)
-    nom = random.choice(NOMS_TUNISIENS)
-    email = random_email(prenom, nom, all_emails)
-    statut = statut_distribution[i - 1]
-    is_verified = statut in ("accepted", "pending", "rejected")
-    created = random_datetime_in_range(START_DATE, END_DATE - timedelta(days=60))
-
-    programmes = [f["titre"] for f in FORMATIONS_DATA]
-    inscription = {
-        "id": i,
-        "nom": nom,
-        "prenom": prenom,
-        "email": email,
-        "telephone": random_phone() if random.random() > 0.1 else None,
-        "programme": random.choice(programmes) if random.random() > 0.15 else None,
-        "password": hash_password("Password123!"),
-        "statut": statut,
-        "isAccountVerified": is_verified,
-        "verifyToken": str(uuid.uuid4()) if not is_verified else None,
-        "createdAt": created.isoformat(),
-    }
-    inscriptions.append(inscription)
-    inscription_emails[email] = inscription
-
-# ── 2. USERS & APPRENANTS ─────────────────────
-print("Génération des users et apprenants...")
-
-users = []
-apprenants = []
-user_id_counter = 1
-
-# Staff fixes
-STAFF = [
-    ("directeur", "Ben Amor", "Ridha", "ridha.benamor@centre-formation.tn"),
-    ("admin", "Khelifi", "Azza", "azza.khelifi@centre-formation.tn"),
-    ("admin", "Saidi", "Mourad", "mourad.saidi@centre-formation.tn"),
-    ("resp_pedagogique", "Jebali", "Emna", "emna.jebali@centre-formation.tn"),
-    ("resp_financier", "Boughattas", "Khaled", "khaled.boughattas@centre-formation.tn"),
-]
-
-for role, nom, prenom, email in STAFF:
-    all_emails.add(email)
-    users.append({
-        "id": user_id_counter,
-        "nom": nom,
-        "prenom": prenom,
-        "email": email,
-        "password": hash_password("Admin@2024!"),
-        "role": role,
-        "status": "accepted",
-        "isActive": True,
-        "phone": random_phone(),
-        "resetToken": None,
-        "resetTokenExpiry": None,
-        "createdAt": START_DATE.isoformat(),
-        "updatedAt": START_DATE.isoformat(),
-        "profileImage": None,
-    })
-    user_id_counter += 1
-
-# Apprenants depuis inscriptions acceptées
-apprenant_id_counter = 1
-accepted_inscriptions = [ins for ins in inscriptions if ins["statut"] == "accepted"]
-
-for ins in accepted_inscriptions:
-    # Bruit resetToken : ~15% ont un token actif (reset en cours)
-    has_reset = random.random() < 0.15
-    reset_token = str(uuid.uuid4()) if has_reset else None
-    reset_expiry = None
-    if has_reset:
-        reset_expiry = (datetime.fromisoformat(ins["createdAt"]) + timedelta(hours=random.randint(1, 48))).isoformat()
-
-    # Bruit profileImage : ~30% ont une photo de profil
-    profile_img = f"profiles/apprenant_{apprenant_id_counter}.jpg" if random.random() < 0.30 else None
-
-    user = {
-        "id": user_id_counter,
-        "nom": ins["nom"],
-        "prenom": ins["prenom"],
-        "email": ins["email"],
-        "password": ins["password"],
-        "role": "apprenant",
-        "status": "accepted",
-        "isActive": random.random() > 0.05,  # bruit : 5% inactif
-        "phone": ins["telephone"],
-        "resetToken": reset_token,
-        "resetTokenExpiry": reset_expiry,
-        "createdAt": ins["createdAt"],
-        "updatedAt": ins["createdAt"],
-        "profileImage": profile_img,
-    }
-    users.append(user)
-
-    date_accepted = datetime.fromisoformat(ins["createdAt"]) + timedelta(days=random.randint(1, 14))
-    apprenant = {
-        "id": apprenant_id_counter,
-        "userId": user_id_counter,
-        "dateAccepted": date_accepted.isoformat(),
-    }
-    apprenants.append(apprenant)
-    ins["_userId"] = user_id_counter
-    ins["_apprenantId"] = apprenant_id_counter
-
-    user_id_counter += 1
-    apprenant_id_counter += 1
-
-apprenant_ids = [a["id"] for a in apprenants]
-apprenant_date_map = {a["id"]: datetime.fromisoformat(a["dateAccepted"]) for a in apprenants}
-
-print(f"  → {len(users)} users, {len(apprenants)} apprenants")
-
-# ── 3. FORMATIONS ─────────────────────────────
-print("Génération des formations...")
-
-formations = []
-for i, f in enumerate(FORMATIONS_DATA, 1):
-    created = random_datetime_in_range(START_DATE, START_DATE + timedelta(days=90))
-    # Bruit : quelques formations complétées, la majorité active
-    statut = "completed" if random.random() < 0.2 else "active"
-    formations.append({
-        "id": i,
-        "titre": f["titre"],
-        "description": f"Formation professionnelle en {f['categorie']} dispensée par notre centre agréé.",
-        "categorie": f["categorie"],
-        "dureeHeures": f["dureeHeures"],
-        "prix": f["prix"],
-        "statut": statut,
-        "createdAt": created.isoformat(),
-        "updatedAt": (created + timedelta(days=random.randint(10, 200))).isoformat(),
-    })
-
-# ── 4. FORMATEURS ─────────────────────────────
-print("Génération des formateurs...")
-
-formateurs = []
-for i, f in enumerate(FORMATEURS_DATA, 1):
-    formateurs.append({
-        "id": i,
-        "nom": f["nom"],
-        "prenom": f["prenom"],
-        "email": f["email"],
-        "specialite": f["specialite"],
-        "telephone": f["telephone"],
-    })
-
-# ── 5. SESSIONS ────────────────────────────────
-print("Génération des sessions (300+)...")
-
-sessions = []
-session_count = 0
-TARGET_SESSIONS = 330
-
-# Répartition par formation pondérée (formations populaires ont plus de sessions)
-formation_weights = [random.randint(8, 25) for _ in formations]
-
-while session_count < TARGET_SESSIONS:
-    formation = random.choices(formations, weights=formation_weights, k=1)[0]
-    form_id = formation["id"]
-    form_created = datetime.fromisoformat(formation["createdAt"])
-    form_price = float(formation["prix"])
-
-    # Session date après la création de la formation
-    sess_date_start = form_created + timedelta(days=random.randint(14, 60))
-    if sess_date_start > END_DATE:
-        sess_date_start = START_DATE + timedelta(days=random.randint(30, 120))
-    sess_date = random_datetime_in_range(sess_date_start, END_DATE)
-
-    heure_debut, heure_fin = random_time_pair()
-    sess_type = random.choice(["présentiel", "en_ligne"])
-    lieu = random.choice(LIEUX) if sess_type == "présentiel" else None
-
-    # Statut cohérent avec la date
-    if sess_date.date() < date(2025, 1, 1):
-        statut = random.choices(["Completed", "Cancelled"], weights=[85, 15])[0]
-    elif sess_date.date() < date.today():
-        statut = random.choices(["Active", "Completed", "Cancelled"], weights=[20, 65, 15])[0]
-    else:
-        statut = "Active"
-
-    # Prix session légèrement différent du prix formation (bruit)
-    noise_factor = random.uniform(0.85, 1.10)
-    sess_prix = round(form_price * noise_factor / len([s for s in sessions if s["formationId"] == form_id] or [1]), 2)
-    # Simplification : prix par session = prix formation / nb sessions attendues par formation
-    sess_prix = round(form_price * random.uniform(0.9, 1.1), 2)
-
-    formateur_id = random.choice(formateurs)["id"] if random.random() > 0.1 else None
-    capacite = random.choice([15, 20, 25, 30])
-
-    sessions.append({
-        "id": str(uuid.uuid4()),
-        "title": f"{formation['titre']} - Session {session_count + 1}",
-        "date": sess_date.date().isoformat(),
-        "heureDebut": heure_debut,
-        "heureFin": heure_fin,
-        "lieu": lieu,
-        "type": sess_type,
-        "statut": statut,
-        "prix": sess_prix,
-        "capacite": capacite,
-        "formationId": form_id,
-        "formateurId": formateur_id,
-    })
-    session_count += 1
-
-print(f"  → {len(sessions)} sessions générées")
-
-# ── 6. SESSIONS_APPRENANTS ─────────────────────
-print("Génération des inscriptions aux sessions...")
-
-sessions_apprenants = []
-sa_set = set()  # (sessionId, apprenantId) unique
-
-# Pour chaque session, inscrire entre 3 et min(capacite, N_apprenants) apprenants
-for sess in sessions:
-    if sess["statut"] == "Cancelled":
-        # Sessions annulées ont peu ou pas d'apprenants (bruit)
-        n = random.randint(0, 3)
-    else:
-        capacite = sess["capacite"]
-        # Bruit : certaines sessions sous-remplies, certaines pleines
-        fill_rate = random.betavariate(3, 2)  # majorité bien remplie
-        n = max(1, int(fill_rate * min(capacite, len(apprenant_ids))))
-
-    sess_date = datetime.fromisoformat(sess["date"])
-
-    # Apprenants éligibles : acceptés avant la date de la session
-    eligible = [
-        aid for aid in apprenant_ids
-        if apprenant_date_map[aid] <= sess_date
-    ]
-
-    if not eligible:
-        continue
-
-    # CRITIQUE : plafonner strictement à la capacité de la session
-    capacite_max = sess["capacite"]
-    n_capped = min(n, capacite_max, len(eligible))
-    chosen = random.sample(eligible, n_capped)
-    for aid in chosen:
-        key = (sess["id"], aid)
-        if key not in sa_set:
-            sa_set.add(key)
-            sessions_apprenants.append({
-                "sessionId": sess["id"],
-                "apprenantId": aid,
-            })
-
-print(f"  → {len(sessions_apprenants)} inscriptions aux sessions")
-
-# Index rapide
-session_apprenant_map = {}  # sessionId -> [apprenantId]
-for sa in sessions_apprenants:
-    session_apprenant_map.setdefault(sa["sessionId"], []).append(sa["apprenantId"])
-
-apprenant_session_map = {}  # apprenantId -> [sessionId]
-for sa in sessions_apprenants:
-    apprenant_session_map.setdefault(sa["apprenantId"], []).append(sa["sessionId"])
-
-# ── 7. PRESENCES ───────────────────────────────
-print("Génération des présences...")
-
-presences = []
-presence_set = set()
-
-for sess in sessions:
-    sess_id = sess["id"]
-    if sess_id not in session_apprenant_map:
-        continue
-    sess_datetime = datetime.fromisoformat(sess["date"])
-
-    # Seules sessions passées ont des présences marquées
-    if sess_datetime.date() > date(2025, 3, 31):
-        continue
-
-    for aid in session_apprenant_map[sess_id]:
-        key = (sess_id, aid)
-        if key in presence_set:
-            continue
-        presence_set.add(key)
-
-        # Bruit : taux de présence ~75% en moyenne
-        est_present = random.random() < random.gauss(0.75, 0.15)
-        date_marquage = sess_datetime + timedelta(minutes=random.randint(-10, 30))
-
-        presences.append({
-            "id": str(uuid.uuid4()),
-            "sessionId": sess_id,
-            "apprenantId": aid,
-            "estPresent": bool(est_present),
-            "dateMarquage": date_marquage.isoformat(),
-        })
-
-print(f"  → {len(presences)} présences")
-
-# ── 8. FINANCES ────────────────────────────────
-print("Génération des finances (5000+)...")
-
-finances = []
-finance_id = 1
-session_id_map = {s["id"]: s for s in sessions}
-
-# ── Règle métier :
-#    Dès qu'un apprenant s'inscrit à une session → enregistrement IMPAYÉ automatique
-#    Ensuite ~75% des impayés sont résolus par un PAIEMENT ultérieur (bruit : 25% restent impayés)
-
-for sa in sessions_apprenants:
-    sess = session_id_map[sa["sessionId"]]
-    sess_date = datetime.fromisoformat(sess["date"])
-    prix_session = float(sess["prix"]) if sess["prix"] else 0
-
-    if prix_session <= 0:
-        continue
-
-    # 1) Enregistrement IMPAYÉ automatique à la date d'inscription (quelques jours avant la session)
-    inscription_date = sess_date - timedelta(days=random.randint(3, 30))
-    if inscription_date < START_DATE:
-        inscription_date = sess_date
-
-    finances.append({
-        "id": finance_id,
-        "montant": prix_session,
-        "type": "impaye",
-        "sessionId": sa["sessionId"],
-        "apprenantId": sa["apprenantId"],
-        "description": f"Inscription session - {sess['title']}",
-        "date": inscription_date.isoformat(),
-    })
-    finance_id += 1
-
-    # 2) ~75% des apprenants paient ensuite → enregistrement PAIEMENT
-    if random.random() < 0.75:
-        pay_date = inscription_date + timedelta(days=random.randint(1, 15))
-        if pay_date > END_DATE:
-            pay_date = inscription_date
-
-        # Bruit : parfois paiement partiel (~15%)
-        montant_paye = round(prix_session * random.uniform(0.7, 1.0), 2) if random.random() < 0.15 else prix_session
-
-        finances.append({
-            "id": finance_id,
-            "montant": montant_paye,
-            "type": "paiement",
-            "sessionId": sa["sessionId"],
-            "apprenantId": sa["apprenantId"],
-            "description": f"Paiement session - {sess['title']}",
-            "date": pay_date.isoformat(),
-        })
-        finance_id += 1
-
-# ── Dépenses formateur et logistique par session (sans apprenantId)
-DEPENSES_FORMATEUR = [
-    ("depense_formateur", "Honoraires formateur", 300, 1200),
-    ("depense_formateur", "Transport formateur",   30,  120),
-    ("depense_formateur", "Hébergement formateur", 80,  250),
-]
-DEPENSES_LOGISTIQUE = [
-    ("depense_logistique", "Loyer salle",            200,  800),
-    ("depense_logistique", "Matériel pédagogique",   50,   300),
-    ("depense_logistique", "Eau et électricité",     30,   120),
-    ("depense_logistique", "Nettoyage locaux",       20,    80),
-    ("depense_logistique", "Équipement informatique",100,  500),
-    ("depense_logistique", "Impression supports",    20,   100),
-]
-
-for sess in sessions:
-    sess_date = datetime.fromisoformat(sess["date"])
-
-    # Dépense formateur si la session a un formateur
-    if sess["formateurId"] is not None:
-        dep_type, desc, mn, mx = random.choice(DEPENSES_FORMATEUR)
-        finances.append({
-            "id": finance_id,
-            "montant": round(random.uniform(mn, mx), 2),
-            "type": dep_type,
-            "sessionId": sess["id"],
-            "apprenantId": None,
-            "description": desc,
-            "date": sess_date.isoformat(),
-        })
-        finance_id += 1
-
-    # Dépense logistique uniquement pour sessions en présentiel
-    if sess["type"] == "présentiel":
-        nb_dep = random.randint(1, 3)
-        for _ in range(nb_dep):
-            dep_type, desc, mn, mx = random.choice(DEPENSES_LOGISTIQUE)
-            finances.append({
-                "id": finance_id,
-                "montant": round(random.uniform(mn, mx), 2),
-                "type": dep_type,
-                "sessionId": sess["id"],
-                "apprenantId": None,
-                "description": desc,
-                "date": sess_date.isoformat(),
-            })
-            finance_id += 1
-
-print(f"  → {len(finances)} entrées finances")
-
-# ── 9. PERFORMANCE ─────────────────────────────
-print("Génération des performances...")
-
-performances = []
-perf_id = 1
-session_formation_map = {s["id"]: s["formationId"] for s in sessions}
-
-for sa in sessions_apprenants:
-    sess = session_id_map[sa["sessionId"]]
-    sess_date = datetime.fromisoformat(sess["date"])
-
-    # Performance seulement pour sessions passées
-    if sess_date.date() > date(2025, 3, 31):
-        continue
-
-    # Bruit : toujours une note mais parfois absente (~15%)
-    if random.random() < 0.15:
-        continue
-
-    # Distribution réaliste des notes
-    base_note = random.gauss(12, 3.5)  # noté sur 20, moyenne ~12
-    base_note = max(2, min(20, base_note))
-    note = round(base_note, 2)
-    est_reussi = note >= 10
-
-    perf_date = sess_date + timedelta(days=random.randint(1, 14))
-
-    performances.append({
-        "id": perf_id,
-        "apprenantId": sa["apprenantId"],
-        "sessionId": sa["sessionId"],
-        "formationId": session_formation_map[sa["sessionId"]],
-        "note": note,
-        "estReussi": est_reussi,
-        "date": perf_date.isoformat(),
-    })
-    perf_id += 1
-
-print(f"  → {len(performances)} performances")
-
-# ── 10. SATISFACTION ───────────────────────────
-print("Génération des satisfactions...")
-
-satisfactions = []
-sat_id = 1
-sat_set = set()  # (apprenantId, formationId) unique
-
-# Apprenants qui ont au moins une session completed
-for sa in sessions_apprenants:
-    sess = session_id_map[sa["sessionId"]]
-    if sess["statut"] != "Completed":
-        continue
-    aid = sa["apprenantId"]
-    fid = session_formation_map[sa["sessionId"]]
-    key = (aid, fid)
-    if key in sat_set:
-        continue
-
-    # Bruit : seulement ~60% des apprenants laissent un avis
-    if random.random() > 0.60:
-        continue
-
-    sat_set.add(key)
-    # Distribution de notes légèrement positive (biais satisfaction client)
-    note = round(max(1, min(5, random.gauss(3.8, 0.9))), 1)
-    has_comment = random.random() > 0.35
-    sess_date = datetime.fromisoformat(sess["date"])
-    created = sess_date + timedelta(days=random.randint(1, 30))
-
-    satisfactions.append({
-        "id": sat_id,
-        "apprenantId": aid,
-        "formationId": fid,
-        "note": note,
-        "commentaire": random.choice(COMMENTAIRES_SATISFACTION) if has_comment else None,
-        "createdAt": created.isoformat(),
-    })
-    sat_id += 1
-
-print(f"  → {len(satisfactions)} avis de satisfaction")
-
-# ─────────────────────────────────────────────
-# CONFIGURATION SUPABASE
-# ─────────────────────────────────────────────
-# Remplis ces valeurs depuis : Supabase → Settings → Database → Connection string
-# Utilise le mode "Session" (port 5432) ou "Transaction" (port 6543)
-
-SUPABASE_HOST     = DB_HOST   # ← remplace
-SUPABASE_PORT     = DB_PORT   # ← remplace
-SUPABASE_DB       = DB_NAME   # ← remplace
-SUPABASE_USER     = DB_USERNAME   # ← remplace
-SUPABASE_PASSWORD = DB_PASSWORD                # ← remplace
-
-# ─────────────────────────────────────────────
-# EXPORT SQL PostgreSQL
-# ─────────────────────────────────────────────
-print("\nGénération du fichier SQL (PostgreSQL)...")
-
-def escape_pg(v):
-    """Échappement compatible PostgreSQL."""
-    if v is None:
-        return "NULL"
-    if isinstance(v, bool):
-        return "TRUE" if v else "FALSE"
-    if isinstance(v, (int, float)):
-        return str(v)
-    # Chaîne : guillemets simples, apostrophes doublées
-    return "'" + str(v).replace("'", "''") + "'"
-
-def bulk_insert_pg(table, rows, f):
-    """INSERT en blocs de 200 lignes, syntaxe PostgreSQL (guillemets doubles)."""
-    if not rows:
-        return
-    keys = [k for k in rows[0].keys() if not k.startswith("_")]
-    cols = ", ".join(f'"{k}"' for k in keys)
-    f.write(f'\n-- {table} ({len(rows)} lignes)\n')
-    chunks = [rows[i:i+200] for i in range(0, len(rows), 200)]
-    for chunk in chunks:
-        f.write(f'INSERT INTO "{table}" ({cols}) VALUES\n')
-        vals = []
-        for row in chunk:
-            vals.append("  (" + ", ".join(escape_pg(row[k]) for k in keys) + ")")
-        f.write(",\n".join(vals) + "\nON CONFLICT DO NOTHING;\n")
-
-output_path = "/mnt/user-data/outputs/seed_data.sql"
-
-with open(output_path, "w", encoding="utf-8") as f:
-    f.write("-- ============================================================\n")
-    f.write("-- SEED DATA - Plateforme BI Centre de Formation Tunisien\n")
-    f.write(f"-- Généré le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    f.write("-- Compatible PostgreSQL / Supabase\n")
-    f.write("-- ============================================================\n\n")
-
-    # Désactiver les FK le temps des inserts, puis réactiver
-    f.write("SET session_replication_role = 'replica';\n\n")
-
-    # Vider les tables dans l'ordre inverse des FK
-    for tbl in ["satisfaction", "performance", "finances", "presences",
-                "sessions_apprenants", "sessions", "formateurs", "formations",
-                "apprenants", "users", "inscriptions"]:
-        f.write(f'TRUNCATE TABLE "{tbl}" CASCADE;\n')
-
-    f.write("\n")
-
-    # Inserts dans l'ordre des dépendances
-    bulk_insert_pg("inscriptions",       inscriptions,       f)
-    bulk_insert_pg("users",              users,              f)
-    bulk_insert_pg("apprenants",         apprenants,         f)
-    bulk_insert_pg("formations",         formations,         f)
-    bulk_insert_pg("formateurs",         formateurs,         f)
-    bulk_insert_pg("sessions",           sessions,           f)
-    bulk_insert_pg("sessions_apprenants",sessions_apprenants,f)
-    bulk_insert_pg("presences",          presences,          f)
-    bulk_insert_pg("finances",           finances,           f)
-    bulk_insert_pg("performance",        performances,       f)
-    bulk_insert_pg("satisfaction",       satisfactions,      f)
-
-    # Réactiver les FK
-    f.write("\nSET session_replication_role = 'origin';\n")
-    f.write("\n-- FIN DU SCRIPT\n")
-
-print(f"✅ Fichier SQL généré : {output_path}")
-
-# ─────────────────────────────────────────────
-# INSERTION DIRECTE DANS SUPABASE (optionnel)
-# ─────────────────────────────────────────────
-# Si tu veux insérer directement sans passer par le SQL Editor,
-# décommente le bloc ci-dessous et installe psycopg2 :
-#   pip install psycopg2-binary
-
-def insert_direct_to_supabase():
+try:
+    import psycopg2
+    from psycopg2.extras import execute_values
+except ImportError:
+    os.system(f"{sys.executable} -m pip install psycopg2-binary")
+    import psycopg2
+    from psycopg2.extras import execute_values
+
+# --- CONFIGURATION PÉRIODE ---
+START_DATE = datetime(2025, 5, 27)
+END_DATE   = datetime(2026, 5, 27)
+PLAN_DATE = datetime(2026, 12, 31)
+
+# --- RÉFÉRENTIELS ---
+TUN_NOMS    = ["Trabelsi","Ghorbel","Ben Amor","Chaari","Masmoudi","Karray","Haddad",
+               "Zouari","Abid","Jallouli","Sfar","Elloumi","Baccar","Bouaziz","Gargouri",
+               "Mejri","Ben Salem","Khemiri","Jlassi","Dridi","Bennour","Selmi","Hamdi",
+               "Gharbi","Zidi","Amari","Cherif","Said","Nasr","Mhenni"]
+TUN_PRENOMS = ["Anis","Sonia","Yassine","Meriem","Skander","Olfa","Hamza","Ines","Mehdi",
+               "Leila","Walid","Sarra","Khaled","Amira","Zied","Faten","Hichem","Moez",
+               "Rania","Bilel","Amel","Tarek","Nadia","Sami","Hela","Fedi","Eya","Omar","Salma","Ali"]
+
+TITRES_FORMATIONS = {
+    "IT": ["Développement Fullstack JS","Expertise Cloud AWS","Mobile Flutter & Dart",
+           "Data Engineering","Cybersécurité Offensive","Intelligence Artificielle",
+           "DevOps & Docker","Architecture Microservices","React & Next.js","Java Spring Boot",
+           "Node.js Backend","SQL & NoSQL Expert","Test & QA Automatisé","Réseaux Cisco Pro","Blockchain Web3"],
+    "Business": ["Marketing Digital & SEO","Audit Financier","Management d'Équipe",
+                 "Négociation B2B","RH Tunisienne","E-commerce Growth","Comptabilité Analytique",
+                 "Finance d'Entreprise","Supply Chain Pro","Stratégie de Marque",
+                 "Vente & Relation Client","Export & Douane","Leadership Exécutif",
+                 "Gestion de Projet PMP","Entreprenariat"],
+    "Design": ["UI/UX Design Mobile","Branding & Identité","Motion Design After Effects",
+               "Adobe Suite Masterclass","Design de Comm","Illustration Digitale","Design d'Espace",
+               "Typographie & Print","Product Design","Figma Design System",
+               "Montage Vidéo Pro","3D Blender Master","Photographie Pro","Design Durable","Portfolio Créatif"]
+}
+
+TITRES_SESSIONS = ["Cohorte Intensive","Bootcamp Pro","Session Executive","Atelier Pratique",
+                   "Workshop Spécialisé","Promo Automne","Cycle de Printemps","Formation de Soir"]
+
+# Saisonnalité tunisienne
+SEASON_MAP = {1:1.3, 2:1.3, 3:1.1, 4:0.8, 5:1.0, 6:1.0, 7:0.5, 8:0.4, 9:1.4, 10:1.5, 11:0.9, 12:0.8}
+SALLES = ["Salle A", "Salle B", "Salle C", "Salle D", "Salle E"]
+LIEN_MEET = "https://meet.google.com/abc-defg-hij"
+
+# AVANT (fixe ~6.4 inscrits/session)
+num_stud = random.choices([2, 4, 6, 8, 10, 12], [0.10, 0.20, 0.30, 0.25, 0.10, 0.05])[0]
+
+# APRÈS (variable selon le "succès" de la session)
+def get_nb_inscrits(capacite, mois):
+    """
+    Retourne le nombre d'inscrits avec variation réaliste
+    """
+    # Taux de remplissage selon le "succès" de la session
+    taux_remplissage = random.choices(
+        [0.15, 0.35, 0.60, 0.85, 1.0],  # faible, moyen-faible, normal, bon, complet
+        [0.15, 0.20, 0.35, 0.20, 0.10]  # 15% faible, 35% normal, 10% complet
+    )[0]
+    saison_mult = SEASON_MAP.get(mois, 1.0)
+    taux_remplissage *= saison_mult
+    
+    # Ajustement saisonnier
+    if mois in [7, 8]:  # Été
+        taux_remplissage *= 0.6
+    elif mois in [9, 10]:  # Rentrée
+        taux_remplissage *= 1.2
+    elif mois in [3, 4]:  # Ramadan
+        taux_remplissage *= 0.65
+    
+    nb_inscrits = max(1, int(capacite * taux_remplissage))
+    return nb_inscrits
+
+def get_unique_names(n):
+    names = set()
+    while len(names) < n:
+        names.add(f"{random.choice(TUN_PRENOMS)} {random.choice(TUN_NOMS)}")
+    return list(names)
+
+def run_seed():
+    conn = None
     try:
-        import psycopg2
-        import psycopg2.extras
-    except ImportError:
-        print("\n❌ psycopg2 non installé. Lance : pip install psycopg2-binary")
-        return
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
+        cur  = conn.cursor()
+        print("🚀 Lancement du Seed Engine ML v5.0 (Final)...")
 
-    print("\n🔌 Connexion à Supabase...")
-    try:
-        conn = psycopg2.connect(
-            host=SUPABASE_HOST,
-            port=SUPABASE_PORT,
-            dbname=SUPABASE_DB,
-            user=SUPABASE_USER,
-            password=SUPABASE_PASSWORD,
-            sslmode="require"
-        )
-        conn.autocommit = False
-        cur = conn.cursor()
+        cur.execute("""TRUNCATE public.inscriptions, public.users, public.apprenants,
+                       public.formations, public.formateur, public.sessions,
+                       public.sessions_apprenants, public.presences, public.performance,
+                       public.finances, public.satisfaction CASCADE;""")
 
-        def pg_insert(table, rows):
-            if not rows:
-                return
-            keys = [k for k in rows[0].keys() if not k.startswith("_")]
-            cols = ", ".join(f'"{k}"' for k in keys)
-            placeholders = ", ".join(["%s"] * len(keys))
-            query = f'INSERT INTO "{table}" ({cols}) VALUES ({placeholders}) ON CONFLICT DO NOTHING'
-            data = [tuple(row[k] for k in keys) for row in rows]
-            psycopg2.extras.execute_batch(cur, query, data, page_size=200)
-            print(f"  ✅ {table} : {len(rows)} lignes insérées")
+        # ── 1. FORMATIONS (45) ──────────────────────────────────────────────
+        form_meta    = {}
+        formations_db = []
+        f_idx = 1
+        for cat, titres in TITRES_FORMATIONS.items():
+            for t in titres:
+                if cat == "IT":
+                    p_base = random.randint(150, 350)
+                elif cat == "Business":
+                    p_base = random.randint(100, 250)
+                else:
+                    p_base = random.randint(80, 180)
+                formations_db.append((f_idx, t, "Formation certifiante", cat,
+                                       random.randint(30, 60), p_base * 4,
+                                       'active', START_DATE, START_DATE))
+                form_meta[f_idx] = {"cat": cat, "price": p_base}
+                f_idx += 1
+        execute_values(cur,
+            """INSERT INTO public.formations
+               (id, titre, description, categorie, "dureeHeures", prix, statut, "createdAt", "updatedAt")
+               VALUES %s""", formations_db)
 
-        print("🗑️  Nettoyage des tables...")
-        cur.execute("SET session_replication_role = 'replica';")
-        for tbl in ["satisfaction", "performance", "finances", "presences",
-                    "sessions_apprenants", "sessions", "formateurs", "formations",
-                    "apprenants", "users", "inscriptions"]:
-            cur.execute(f'TRUNCATE TABLE "{tbl}" CASCADE;')
+        # ── 2. FORMATEURS (30) ──────────────────────────────────────────────
+        f_names      = get_unique_names(30)
+        formateurs_db = []
+        for i, name in enumerate(f_names, 1):
+            p, n = name.split(' ', 1)
+            formateurs_db.append((i, n, p, f"{p.lower()}.{n.lower()}@expert.tn",
+                                   "Expert", f"+2169{random.randint(10,99)}000"))
+        execute_values(cur,
+            "INSERT INTO public.formateur (id, nom, prenom, email, specialite, telephone) VALUES %s",
+            formateurs_db)
 
-        print("📥 Insertion des données...")
-        pg_insert("inscriptions",        inscriptions)
-        pg_insert("users",               users)
-        pg_insert("apprenants",          apprenants)
-        pg_insert("formations",          formations)
-        pg_insert("formateurs",          formateurs)
-        pg_insert("sessions",            sessions)
-        pg_insert("sessions_apprenants", sessions_apprenants)
-        pg_insert("presences",           presences)
-        pg_insert("finances",            finances)
-        pg_insert("performance",         performances)
-        pg_insert("satisfaction",        satisfactions)
+        # ── 3. APPRENANTS (700) — 600 forcés accepted ───────────────────────
+        a_names     = get_unique_names(700)
+        app_profiles = {}   # {apprenant_id: "GOOD"|"AVG"|"WEAK"}
+        users_db, app_db, insc_db = [], [], []
 
-        cur.execute("SET session_replication_role = 'origin';")
+        for i, name in enumerate(a_names, 1):
+            p, n   = name.split(' ', 1)
+            email  = f"{p.lower()}.{n.lower()}{i}@gmail.com"
+            # 600 premiers → accepted, 100 derniers → autres statuts
+            if i <= 600:
+                status = 'accepted'
+            else:
+                status = random.choices(
+                    ['rejected', 'pending', 'not_verified'], [0.4, 0.3, 0.3])[0]
+
+            token = uuid.uuid4().hex if status == 'not_verified' else None
+            insc_db.append((i, n, p, email, "+21622", "Programme", "pwd",
+                             status, token, START_DATE, status == 'accepted'))
+
+            if status == 'accepted':
+                users_db.append((i, email, "hash", 'apprenant', 'accepted',
+                                  True, START_DATE, START_DATE, n, p))
+                app_db.append((i, i, START_DATE))
+                app_profiles[i] = random.choices(["GOOD","AVG","WEAK"], [0.2, 0.6, 0.2])[0]
+
+        execute_values(cur,
+            """INSERT INTO public.inscriptions
+               (id, nom, prenom, email, telephone, programme, password, statut,
+                "verifyToken", "createdAt", "isAccountVerified") VALUES %s""", insc_db)
+        execute_values(cur,
+            """INSERT INTO public.users
+               (id, email, password, role, status, "isActive", "createdAt", "updatedAt", nom, prenom)
+               VALUES %s""", users_db)
+        execute_values(cur,
+            'INSERT INTO public.apprenants (id, "userId", "dateAccepted") VALUES %s', app_db)
+
+        print(f"  ✓ {len(app_profiles)} apprenants acceptés disponibles pour les sessions")
+
+        # ── 4. SESSIONS & FINANCES ───────────────────────────────────────────
+        print("📅 Génération des Sessions et Finances...")
+        sessions_db = []
+        sa_links    = []
+        finances_db = []
+        pres_db     = []
+        perf_db     = []
+        sat_db      = []
+
+        # Compteurs pour la synthèse finale
+        total_billed = 0.0   # CA facturé  = paiements + impayés
+        total_cash   = 0.0   # CA réalisé  = paiements uniquement
+        total_exp    = 0.0   # Dépenses totales
+
+        available_apps = list(app_profiles.keys())  # liste stable des IDs acceptés
+
+        current_date = START_DATE
+        while current_date < PLAN_DATE:
+            month  = current_date.month
+            m_mult = SEASON_MAP[month] * random.gauss(1, 0.1)
+
+            # Effet Ramadan (mars-avril 2026)
+            if current_date.year == 2026 and month in (3, 4):
+                m_mult *= 0.65
+
+            if current_date <END_DATE:
+                # ── Charges fixes mensuelles ────────────────────────────────────
+                finances_db.append((1500.0, 'depense_logistique', None,
+                "Loyer Mensuel", current_date, None, current_date, None))
+                finances_db.append((1250.0, 'depense_logistique', None,
+                "Salaires Admin", current_date, None, current_date, None))
+                total_exp += 2750.0
+
+            # ── Sessions du mois ────────────────────────────────────────────
+            num_sess = max(1, int(20 * m_mult))
+            for _ in range(num_sess):
+                sid   = str(uuid.uuid4())
+                fid   = random.randint(1, 45)
+                f_id  = random.randint(1, 30)
+
+                # Prix unitaire par apprenant avec bruit ±8%
+                prix_unitaire = round(form_meta[fid]["price"] * random.gauss(1, 0.12))
+                prix_unitaire = max(50, prix_unitaire)  # plancher 50 DT
+                type_session = random.choices(['présentiel', 'en_ligne'], [0.7, 0.3])[0]  # 70% présentiel, 30% en ligne
+                if type_session == 'présentiel':
+                    lieu = random.choice(SALLES)
+                    # Capacité selon catégorie pour présentiel
+                    if form_meta[fid]["cat"] == "IT":
+                        capacite = random.choice([15, 20, 25])
+                    elif form_meta[fid]["cat"] == "Business":
+                        capacite = random.choice([20, 30, 40, 50])
+                    else:  # Design
+                        capacite = random.choice([10, 15, 20])
+                else:
+                    lieu = LIEN_MEET
+                    # En ligne : capacité plus grande (pas de contrainte physique)
+                    capacite = random.choice([50, 100, 200, 500])
+
+                s_date   = current_date + timedelta(days=random.randint(0, 27))
+
+                if current_date < END_DATE:
+                    status_s = random.choices(['Completed','Cancelled'], [0.93, 0.07])[0]
+                else:
+                    status_s = random.choices(['Active', 'Cancelled'], [0.9, 0.1])[0]
+                title    = f"{random.choice(TITRES_SESSIONS)} {form_meta[fid]['cat']}"
+                nb_inscrits = get_nb_inscrits(capacite, current_date.month)
+                # Sélection des apprenants
+                selected_apps = random.sample(available_apps, min(nb_inscrits, len(available_apps)))
+                # Log pour voir la variation
+                remplissage = len(selected_apps) / capacite * 100
+                print(f"  Session {title[:30]:<<30} | Capacité: {capacite:>3} | Inscrits: {len(selected_apps):>3} | {remplissage:>5.1f}%")
+
+                sessions_db.append((sid, s_date.date(), time(9,0), time(18,0),
+                                     lieu, status_s, fid, f_id,
+                                     s_date, s_date, prix_unitaire, type_session, capacite, title))
+
+                if current_date >= END_DATE:
+                    continue 
+                if status_s != 'Completed':
+                    continue  # session annulée → pas de finances apprenants
+
+                # ── Inscrits de cette session ───────────────────────────────
+                # Distribution réaliste : sessions quasi-vides à complètes
+                nb_choices = [2, 4, 6, 8, 10, 12]
+                nb_weights = [0.10, 0.20, 0.30, 0.25, 0.10, 0.05]
+                num_stud   = random.choices(nb_choices, nb_weights)[0]
+                num_stud   = min(num_stud, len(available_apps))
+
+                selected_apps = random.sample(available_apps, num_stud)
+
+                # ── Coût formateur = 35% du revenu total de la session ──────
+                # revenu_session = prix unitaire × nombre d'apprenants inscrits
+                revenu_session = prix_unitaire * num_stud
+                f_cost = round(revenu_session * 0.35, 2)
+                finances_db.append((f_cost, 'depense_formateur', sid,
+                                     "Honoraires", s_date, None, s_date, f_id))
+
+                # ── Logistique variable ─────────────────────────────────────
+                l_cost = float(random.randint(25, 50))
+                finances_db.append((l_cost, 'depense_logistique', sid,
+                                     "Logistique Session", s_date, None, s_date, None))
+
+                total_exp += f_cost + l_cost
+
+                # ── Finance par apprenant (75/15/10) ───────────────────────
+                for aid in selected_apps:
+                    sa_links.append((aid, sid))
+
+                    # CE QUI EST DÛ par cet apprenant = prix unitaire
+                    montant_du = prix_unitaire
+                    total_billed += montant_du  # ← compté ici, UNE FOIS par apprenant
+
+                    r = random.random()
+                    if r < 0.75:
+                        # Paiement total
+                        finances_db.append((montant_du, 'paiement', sid,
+                                             "Paiement Total", s_date, aid, s_date, None))
+                        total_cash += montant_du
+
+                    elif r < 0.90:
+                        # Paiement partiel : 60% payé + 40% impayé
+                        paye    = round(montant_du * 0.60, 2)
+                        restant = round(montant_du - paye, 2)
+                        finances_db.append((paye, 'paiement', sid,
+                                             "Acompte 60%", s_date, aid, s_date, None))
+                        finances_db.append((restant, 'impaye', sid,
+                                             "Reliquat 40%", s_date, aid, s_date, None))
+                        total_cash += paye
+
+                    else:
+                        # Impayé total
+                        finances_db.append((montant_du, 'impaye', sid,
+                                             "Impayé", s_date, aid, s_date, None))
+
+                    # ── Présence ───────────────────────────────────────────
+                    prof     = app_profiles[aid]
+                    is_pres  = random.random() < (0.95 if prof == "GOOD" else 0.50)
+                    pres_db.append((str(uuid.uuid4()), sid, aid, is_pres, s_date))
+
+                    # ── Performance ────────────────────────────────────────
+                    mu   = 15 if prof == "GOOD" else (10 if prof == "AVG" else 6)
+                    note = round(max(0.0, min(20.0, random.gauss(mu, 2))), 2)
+                    perf_db.append((note, note >= 10, s_date, aid, fid, sid))
+
+                    # ── Satisfaction (90% répondent) ───────────────────────
+                    if random.random() < 0.90:
+                        sat_note = round(max(1.0, min(5.0, random.gauss(4.0, 0.5))), 1)
+                        sat_db.append((sat_note, "Bien", s_date, aid, fid))
+
+            # Mois suivant
+            current_date = (current_date + timedelta(days=32)).replace(day=1)
+
+        # ── 5. INSERTIONS ────────────────────────────────────────────────────
+        print("💾 Insertion des données en base...")
+        execute_values(cur,
+            """INSERT INTO public.sessions
+               (id, date, "heureDebut", "heureFin", lieu, statut, "formationId", "formateurId",
+                "createdAt", "updatedAt", prix, type, capacite, title) VALUES %s""",
+            sessions_db)
+        execute_values(cur,
+            """INSERT INTO public.finances
+               (montant, type, "sessionId", description, date, "apprenantId", "updatedAt", "formateurId")
+               VALUES %s""",
+            finances_db)
+        execute_values(cur,
+            'INSERT INTO public.sessions_apprenants ("apprenantId", "sessionId") VALUES %s',
+            sa_links)
+        execute_values(cur,
+            """INSERT INTO public.presences
+               (id, "sessionId", "apprenantId", "estPresent", "dateMarquage") VALUES %s""",
+            pres_db)
+        execute_values(cur,
+            """INSERT INTO public.performance
+               (note, "estReussi", date, "apprenantId", "formationId", "sessionId") VALUES %s""",
+            perf_db)
+        execute_values(cur,
+            """INSERT INTO public.satisfaction
+               (note, commentaire, "createdAt", "apprenantId", "formationId") VALUES %s""",
+            sat_db)
+
         conn.commit()
-        print("\n🎉 Insertion directe terminée avec succès !")
 
+        # ── 6. SYNTHÈSE FINALE ───────────────────────────────────────────────
+        taux_rec   = (total_cash / total_billed * 100) if total_billed > 0 else 0
+        encours    = total_billed - total_cash
+        marge_cash = ((total_cash - total_exp) / total_cash * 100) if total_cash > 0 else 0
+
+        print("\n" + "="*55)
+        print("  SYNTHÈSE COMPTABLE FINALE")
+        print("="*55)
+        print(f"  Sessions générées    : {len(sessions_db)}")
+        print(f"  Inscriptions totales : {len(sa_links)}")
+        print(f"  Apprenants uniques   : {len(app_profiles)}")
+        print("-"*55)
+        print(f"  CA Facturé           : {total_billed:>12,.2f} DT")
+        print(f"  CA Réalisé (cash)    : {total_cash:>12,.2f} DT")
+        print(f"  Encours client       : {encours:>12,.2f} DT")
+        print(f"  Taux de recouvrement : {taux_rec:>11.1f} %")
+        print("-"*55)
+        print(f"  Dépenses totales     : {total_exp:>12,.2f} DT")
+        print(f"  Marge nette / cash   : {marge_cash:>11.1f} %")
+        print("="*55)
+
+        # ── Assertions de cohérence ──────────────────────────────────────────
+        assert total_billed > 100_000, f"CA trop bas : {total_billed:,.0f} DT"
+        assert 0.75 <= taux_rec/100 <= 0.90, f"Recouvrement anormal : {taux_rec:.1f}%"
+        assert total_cash > total_exp, f"TRÉSORERIE NÉGATIVE : cash={total_cash:,.0f} < dépenses={total_exp:,.0f}"
+        assert encours / total_billed <= 0.30, f"Encours trop élevé : {encours/total_billed:.1%}"
+        print("  ✅ Toutes les assertions passées — données cohérentes")
+
+    except AssertionError as e:
+        print(f"\n  ⚠️  ALERTE COHÉRENCE : {e}")
+        if conn: conn.rollback()
     except Exception as e:
-        if 'conn' in locals():
-            conn.rollback()
-        print(f"\n❌ Erreur : {e}")
+        print(f"\n  ❌ Erreur : {e}")
+        import traceback; traceback.print_exc()
+        if conn: conn.rollback()
     finally:
-        if 'conn' in locals():
-            conn.close()
+        if conn: conn.close()
 
-# ── Décommente la ligne suivante pour insérer directement dans Supabase ──
-insert_direct_to_supabase()
-
-# ─────────────────────────────────────────────
-# RÉSUMÉ
-# ─────────────────────────────────────────────
-print("\n" + "="*55)
-print("RÉSUMÉ DES DONNÉES GÉNÉRÉES")
-print("="*55)
-print(f"  inscriptions       : {len(inscriptions)}")
-print(f"  users              : {len(users)} (dont {len(STAFF)} staff)")
-print(f"  apprenants         : {len(apprenants)}")
-print(f"  formations         : {len(formations)}")
-print(f"  formateurs         : {len(formateurs)}")
-print(f"  sessions           : {len(sessions)}")
-print(f"  sessions_apprenants: {len(sessions_apprenants)}")
-print(f"  presences          : {len(presences)}")
-print(f"  finances           : {len(finances)}")
-print(f"  performances       : {len(performances)}")
-print(f"  satisfactions      : {len(satisfactions)}")
-print("="*55)
-print("\n📌 COMMENT UTILISER :")
-print("  Option A — SQL Editor Supabase :")
-print(f"    1. Ouvre {output_path}")
-print("    2. Colle dans Supabase → SQL Editor → Run")
-print("  Option B — Insertion directe Python :")
-print("    1. Remplis SUPABASE_HOST et SUPABASE_PASSWORD en haut du script")
-print("    2. pip install psycopg2-binary")
-print("    3. Décommente la ligne insert_direct_to_supabase()")
-print("    4. Relance : python generate_seed.py")
+if __name__ == "__main__":
+    run_seed()

@@ -15,13 +15,6 @@ interface RiskTableProps {
 type SortKey = "riskScore" | "financialImpact" | "fillRate";
 type SortDir = "asc" | "desc" | null;
 
-const glassCard = {
-  background: "rgba(255,255,255,0.65)",
-  backdropFilter: "blur(16px)",
-  WebkitBackdropFilter: "blur(16px)",
-  border: "1px solid rgba(229,234,221,0.9)",
-};
-
 const RISK_CONFIG: Record<RiskLevel, { label: string; bg: string; color: string; dot: string; barColor: string }> = {
   Safe:   { label: "Faible",    bg: "rgba(26,113,73,0.1)",  color: "#1a7149", dot: "#1a7149", barColor: "#1a7149" },
   Medium: { label: "Moyen",     bg: "rgba(217,119,6,0.1)",  color: "#D97706", dot: "#D97706", barColor: "#D97706" },
@@ -214,12 +207,11 @@ export default function RiskTable({ data, loading = false }: RiskTableProps) {
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={glassCard}>
+    <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
 
       {/* ── Main header ──────────────────────────────────────────────────── */}
       <div
         className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 border-b"
-        style={{ borderColor: "#e5eadd" }}
       >
         <div className="flex items-center gap-3">
           <div
@@ -229,10 +221,10 @@ export default function RiskTable({ data, loading = false }: RiskTableProps) {
             <ShieldAlert size={18} style={{ color: "#DC2626" }} />
           </div>
           <div>
-            <h3 className="text-base font-bold font-sora" style={{ color: "#2d4a3e" }}>
+            <h3 className="text-base font-bold text-foreground">
               Sessions à Risque
             </h3>
-            <p className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+            <p className="text-xs mt-0.5 text-muted-foreground">
               {filtered.length} session{filtered.length !== 1 ? "s" : ""} correspondante{filtered.length !== 1 ? "s" : ""}
               {activeFilterCount > 0 && (
                 <span
@@ -349,7 +341,7 @@ export default function RiskTable({ data, loading = false }: RiskTableProps) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "rgba(229,234,221,0.3)" }}>
+            <tr className="bg-muted">
               {[
                 { label: "Session",          key: null },
                 { label: "Formation",        key: null },
@@ -361,8 +353,7 @@ export default function RiskTable({ data, loading = false }: RiskTableProps) {
               ].map((col, i) => (
                 <th
                   key={i}
-                  className={`text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide ${col.key ? "cursor-pointer select-none" : ""}`}
-                  style={{ color: "#2d4a3e", opacity: 0.55 }}
+                  className={`text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground ${col.key ? "cursor-pointer select-none" : ""}`}
                   onClick={() => col.key && handleSort(col.key)}
                 >
                   <span className="flex items-center gap-1.5">
@@ -373,7 +364,7 @@ export default function RiskTable({ data, loading = false }: RiskTableProps) {
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y" style={{ borderColor: "rgba(229,234,221,0.6)" }}>
+          <tbody className="divide-y divide-border">
             {loading
               ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
               : paged.length === 0
@@ -387,7 +378,7 @@ export default function RiskTable({ data, loading = false }: RiskTableProps) {
               : paged.map((row) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-white/50 transition-colors duration-150"
+                  className="hover:bg-accent/20 transition-colors"
                 >
                   <td className="px-5 py-4">
                     <p className="font-semibold" style={{ color: "#2d4a3e" }}>{row.sessionName}</p>
