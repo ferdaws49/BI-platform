@@ -1,4 +1,10 @@
+
 const API =  "http://localhost:5000";
+
+export interface FormationSelect {
+  id: number;
+  title: string;
+}
  
 function getToken(): string {
   if (typeof window === "undefined") return "";
@@ -9,11 +15,18 @@ async function fetchRevenue(endpoint: string, filters: Record<string, any> = {})
   const params = new URLSearchParams();
   
   Object.entries(filters).forEach(([key, val]) => {
-    // ✅ On ne garde QUE les vraies valeurs
-    if (val !== undefined && val !== null && val !== "" && String(val) !== "undefined") {
-      params.append(key, String(val));
-    }
-  });
+  if (val === undefined || val === null || val === "" || String(val) === "undefined") {
+    return;
+  }
+
+  if (key === "limit") {
+    params.append(key, String(Math.min(Number(val), 100)));
+    return;
+  }
+
+  params.append(key, String(val));
+});
+const safeLimit = Math.min(Number(filters.limit ?? 100), 100);
  
   const token = localStorage.getItem('access_token'); 
   const query = params.toString();
@@ -113,15 +126,44 @@ export const revenueApi = {
   getApprenants: (): Promise<{ id: number; nom: string; initiales: string }[]> =>
     fetchRevenue("inscriptions/apprenants-list"),
  
-  getFormationsList: (): Promise<{ id: number; title: string }[]> =>
-    fetchRevenue("student/formations/catalogue"),
+  getFormationsList: async (): Promise<FormationSelect[]> => {
+    const res = await fetchRevenue("financier/dashboard/formations");
+
+    const list =
+      Array.isArray(res)
+        ? res
+        : res?.data
+        ?? res?.formations
+        ?? [];
+
+    return list.map((f: any) => ({
+      id: f.formation_id ?? f.id,
+      title: f.titre ?? f.title,
+    }));
+  },
+
+  getFormateursList: async (): Promise<{ id: number; name: string }[]> => {
+    const res = await fetchRevenue("financier/dashboard/formateurs");
+
+    const list =
+      Array.isArray(res)
+        ? res
+        : res?.data
+        ?? res?.formateurs
+        ?? [];
+
+    return list.map((f: any) => ({
+      id: f.formateur_id ?? f.id,
+      name: f.nom ?? f.name,
+    }));
+  },
 
   async getSessionsByApprenant(id: number): Promise<{ id: number | string; title: string; formationId: number }[]> {
-  const token = getToken();
-  const res = await fetch(`${API}/finance/payments/apprenants/${id}/sessions`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error(`Erreur sessions: ${res.status}`);
-  return res.json();
-}
+    const token = getToken();
+    const res = await fetch(`${API}/finance/payments/apprenants/${id}/sessions`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`Erreur sessions: ${res.status}`);
+    return res.json();
+  }
 };

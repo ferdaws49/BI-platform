@@ -1,108 +1,37 @@
 "use client";
+import { useState } from "react";
+import { ChevronLeft, ChevronRight, Lightbulb } from "lucide-react";
 
-import { TrendingUp, TrendingDown, Minus, Lightbulb, AlertTriangle, Eye } from "lucide-react";
-import type { Insight, InsightType } from "../types";
+export default function InsightsSection({ insights, loading }: { insights: any[], loading: boolean }) {
+  const [page, setPage] = useState(1);
+  const perPage = 4;
+  const totalPages = Math.ceil(insights.length / perPage);
+  const current = insights.slice((page - 1) * perPage, page * perPage);
 
-interface InsightsSectionProps {
-  insights: Insight[];
-  loading?: boolean;
-}
+  if (insights.length === 0) return null;
 
-const TYPE_CONFIG: Record<InsightType, { icon: React.ElementType; iconBg: string; iconColor: string; accent: string }> = {
-  trend: { icon: TrendingUp, iconBg: "rgba(26,113,73,0.1)", iconColor: "#1a7149", accent: "#1a7149" },
-  risk: { icon: AlertTriangle, iconBg: "rgba(220,38,38,0.1)", iconColor: "#DC2626", accent: "#DC2626" },
-  observation: { icon: Eye, iconBg: "rgba(45,74,62,0.1)", iconColor: "#2d4a3e", accent: "#2d4a3e" },
-};
-
-function DirectionIcon({ direction }: { direction?: Insight["direction"] }) {
-  if (direction === "up") return <TrendingUp size={14} style={{ color: "#1a7149" }} />;
-  if (direction === "down") return <TrendingDown size={14} style={{ color: "#DC2626" }} />;
-  return <Minus size={14} style={{ color: "#2d4a3e", opacity: 0.4 }} />;
-}
-
-function SkeletonInsight() {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3 shadow-sm animate-pulse">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl animate-pulse" style={{ background: "#e5eadd" }} />
-        <div className="w-32 h-5 rounded-lg animate-pulse" style={{ background: "#e5eadd" }} />
-      </div>
-      <div className="w-full h-4 rounded-lg animate-pulse" style={{ background: "#e5eadd" }} />
-      <div className="w-3/4 h-4 rounded-lg animate-pulse" style={{ background: "#e5eadd" }} />
-    </div>
-  );
-}
-
-export default function InsightsSection({ insights, loading = false }: InsightsSectionProps) {
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Section header */}
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ background: "rgba(26,113,73,0.1)" }}
-        >
-          <Lightbulb size={18} style={{ color: "#1a7149" }} />
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="text-yellow-500" />
+          <h2 className="text-lg font-bold">Insights IA</h2>
         </div>
-        <div>
-          <h2 className="text-base font-bold text-foreground">
-            Insights IA
-          </h2>
-          <p className="text-xs text-muted-foreground/70">
-            Observations clés générées automatiquement
-          </p>
-        </div>
+        {totalPages > 1 && (
+          <div className="flex gap-2">
+            <button onClick={() => setPage(p => p - 1)} disabled={page === 1} className="p-1 border rounded disabled:opacity-20"><ChevronLeft/></button>
+            <span className="text-sm font-bold">{page}/{totalPages}</span>
+            <button onClick={() => setPage(p => p + 1)} disabled={page === totalPages} className="p-1 border rounded disabled:opacity-20"><ChevronRight/></button>
+          </div>
+        )}
       </div>
-
-      {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading
-          ? Array.from({ length: 4 }).map((_, i) => <SkeletonInsight key={i} />)
-          : insights.map((insight) => {
-              const cfg = TYPE_CONFIG[insight.type];
-              const Icon = cfg.icon;
-              return (
-                <div
-                  key={insight.id}
-                  className="relative rounded-xl border border-border bg-card p-4 flex flex-col gap-3 overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-                >
-                  {/* Accent bar */}
-                  <div
-                    className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl"
-                    style={{ background: cfg.accent }}
-                  />
-
-                  {/* Icon + value row */}
-                  <div className="flex items-start justify-between">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center"
-                      style={{ background: cfg.iconBg }}
-                    >
-                      <Icon size={18} style={{ color: cfg.iconColor }} />
-                    </div>
-                    {insight.value && (
-                      <div
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold"
-                        style={{ background: cfg.iconBg, color: cfg.iconColor }}
-                      >
-                        <DirectionIcon direction={insight.direction} />
-                        {insight.value}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex flex-col gap-1">
-                    <h4 className="text-sm font-bold text-foreground">
-                      {insight.title}
-                    </h4>
-                    <p className="text-xs leading-relaxed text-muted-foreground/70">
-                      {insight.description}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {current.map(ins => (
+          <div key={ins.id} className="bg-white p-4 rounded-xl border border-border shadow-sm">
+             <h4 className="font-bold text-[#2d4a3e]">{ins.title}</h4>
+             <p className="text-xs text-gray-500 mt-2">{ins.description}</p>
+          </div>
+        ))}
       </div>
     </div>
   );

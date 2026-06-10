@@ -22,13 +22,16 @@ export interface FiltersState {
 interface Props {
   filters: FiltersState;
   onChange: (f: FiltersState) => void;
-  formations: { id: number; title: string }[];
-  formateurs: { id: number; nom: string }[];
+  formations?: { id: number; title: string }[];  // ← optionnel
+  formateurs?: { id: number; nom: string }[];     // ← optionnel
 }
 
-const PERIODES: PeriodeFilter[] = ["Mois", "Trimestre", "Année", "Personnalisé"];
 
+
+const PERIODES: PeriodeFilter[] = ["Mois", "Trimestre", "Année", "Personnalisé"];
 export default function FiltersBar({ filters, onChange, formations, formateurs }: Props) {
+  const safeFormations = Array.isArray(formations) ? formations : [];
+  const safeFormateurs = Array.isArray(formateurs) ? formateurs : [];
   const set = <K extends keyof FiltersState>(key: K, val: FiltersState[K]) =>
     onChange({ ...filters, [key]: val, page: 1 }); // reset page on filter change
 
@@ -88,24 +91,30 @@ export default function FiltersBar({ filters, onChange, formations, formateurs }
         <div className="w-px h-5 mx-1 bg-border" />
 
         <FilterSelect
-          label="Formateur :"
-          value={String(filters.formateurId)}
-          onChange={v => set("formateurId", v === "all" ? "all" : Number(v))}
-          options={[
-            { label: "Tous", value: "all" },
-            ...formateurs.map(f => ({ label: f.nom, value: String(f.id) })),
-          ]}
-        />
+    label="Formateur :"
+    value={String(filters.formateurId)}
+    onChange={v => set("formateurId", v === "all" ? "all" : Number(v))}
+    options={[
+      { label: "Tous", value: "all" },
+      ...safeFormateurs.map(f => ({  // ← utilise safeFormateurs
+        label: f.nom, 
+        value: String(f.id) 
+      })),
+    ]}
+  />
 
         <FilterSelect
-          label="Formation :"
-          value={String(filters.formationId)}
-          onChange={v => set("formationId", v === "all" ? "all" : Number(v))}
-          options={[
-            { label: "Toutes", value: "all" },
-            ...formations.map(f => ({ label: f.title.split(" ")[0], value: String(f.id) })),
-          ]}
-        />
+    label="Formation :"
+    value={String(filters.formationId)}
+    onChange={v => set("formationId", v === "all" ? "all" : Number(v))}
+    options={[
+      { label: "Toutes", value: "all" },
+      ...safeFormations.map(f => ({  // ← utilise safeFormations
+        label: f.title.split(" ")[0], 
+        value: String(f.id) 
+      })),
+    ]}
+  />
       </div>
 
       {/* Row 2 — filtres analytiques */}

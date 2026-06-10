@@ -278,7 +278,7 @@ export default function ChartsSection({ revenueByMonth, categoryStats, formation
       <div className="lg:col-span-2">
         <ChartCard
           title="Évolution du Chiffre d'Affaires"
-          subtitle="Revenus mensuels cumulés — Exercice 2025"
+          subtitle="Revenus mensuels cumulés"
         >
           <RevenueLineChart data={revenueByMonth ?? []} />
         </ChartCard>

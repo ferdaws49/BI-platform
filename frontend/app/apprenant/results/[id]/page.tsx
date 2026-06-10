@@ -77,7 +77,7 @@ export default function DetailsPage() {
                   </div>
                   <div>
                     {/* On affiche Formation + ID de session ou Titre si dispo */}
-                    <p className="font-bold text-gray-700">Session d'évaluation</p>
+                    <p className="font-bold text-gray-700">Session d'évaluation: {item.sessionTitle}</p>
                     <p className="text-[10px] text-gray-400">
                       {item.date ? new Date(item.date).toLocaleDateString('en-GB') : 'Pas de date'}
                     </p>

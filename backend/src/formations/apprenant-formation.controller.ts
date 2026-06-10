@@ -7,8 +7,6 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { FormationsService } from './formations.service';
-import {AuthGuard} from "../auth/guards/auth.guard";
-import type { JWTPayloadType } from 'src/utils/types';
 import { CurrentUser } from 'src/users/decorators/current-user.decorator';
 import { FormationStatus } from './entities/formation.entity';
 
@@ -21,13 +19,22 @@ export class ApprenantFormationsController {
   constructor(private readonly formationsService: FormationsService) {}
 
     @Get('catalogue')
-    async getFormationCatalogue(@CurrentUser() user: any) {
-      const userId = user?.id || user?.userId || user?.sub;
-      if (!userId) {
+  async getFormationCatalogue(
+    @CurrentUser() user: any,
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+  ) {
+    const userId = user?.id || user?.userId || user?.sub;
+    if (!userId) {
       throw new BadRequestException("Impossible d'identifier l'utilisateur");
     }
-       return this.formationsService.findAllAvailableFormations(Number(userId));
-    }
+
+    return this.formationsService.findAllAvailableFormations(
+      Number(userId),
+      Number(page) || 1,
+      
+    );
+  }
 
   
   //GET: ~/student/formations  
@@ -52,7 +59,9 @@ export class ApprenantFormationsController {
     @Get(':id/available-sessions')
     async getAvailableSessions(
       @Param('id', ParseIntPipe) formationId: number, // ParseIntPipe vérifie que l'ID est bien un nombre
-      @CurrentUser() user: any
+      @CurrentUser() user: any,
+      
+      
     ) {
         // PROTECTION : On vérifie id ou sub pour éviter le NaN
        const userId = user?.id || user?.userId || user?.sub;
@@ -61,7 +70,7 @@ export class ApprenantFormationsController {
          throw new BadRequestException("Impossible d'identifier l'utilisateur (ID manquant dans le token)");
        }
 
-       return this.formationsService.findAllAvailableSessions(formationId, Number(userId));
+       return this.formationsService.findAllAvailableSessions(formationId, Number(userId), );
     }
 
       /**

@@ -84,60 +84,63 @@ export class FormationsService {
     * @returns collection of formations
     */
   async findStudentFormations(userId: number, pageNumber = 1, formationPerPage = 10, status?: FormationStatus) {
-    const query = this.formationRepo.createQueryBuilder('formation')
-      // On joint la table inscriptions pour vérifier que l'utilisateur y est
-      .innerJoin('formation.sessions', 'session')
-      .innerJoin('session.apprenants', 'apprenant')
-      .leftJoinAndMapOne(
-        'formation.mySatisfaction', 
-        Satisfaction, 
-        'satisfaction', 
-        'satisfaction.formationId = formation.id AND satisfaction.apprenantId = apprenant.id'
+  const query = this.formationRepo.createQueryBuilder('formation')
+    // On ne garne que les sessions non-annulées dès le join
+    .innerJoin(
+      'formation.sessions', 
+      'session', 
+      'session.statut != :annuleStatus'
     )
-      .where('apprenant.userId = :userId', { userId })
-      .distinct(true); //Si un apprenant est inscrit à deux sessions différentes (ex: un rattrapage et une session normale) pour la même formation, getManyAndCount pourrait parfois compter la formation deux fois selon la configuration. 
-      // TypeORM gère généralement cela, mais si ya des doubleons on utilise cet ft
-      
+    .innerJoin('session.apprenants', 'apprenant')
+    .leftJoinAndMapOne(
+      'formation.mySatisfaction', 
+      Satisfaction, 
+      'satisfaction', 
+      'satisfaction.formationId = formation.id AND satisfaction.apprenantId = apprenant.id'
+    )
+    .where('apprenant.userId = :userId', { userId })
+    .setParameter('annuleStatus', SessionStatut.ANNULE) // 'Cancelled'
+    .distinct(true);
 
-    // FILTRAGE : Si l'utilisateur veut voir seulement les cours 'active' ou 'completed'
-    if (status) {
-      query.andWhere('formation.statut = :status', { status });
-    }
-    // PAGINATION : On saute les pages précédentes et on prend la limite
-    const [items, total] = await query
+  if (status) {
+    query.andWhere('formation.statut = :status', { status });
+  }
+
+  const [items, total] = await query
     .leftJoinAndSelect('session.formateur', 'formateur')
-      .skip((pageNumber - 1) * formationPerPage) //9aadech bech yamel mn skip. exp(skip:1 w take:5 maneha bech ywarri juste el 5 ethenyn ) 
-      .take(formationPerPage) //9adeh mn formation bech todhor fl page 
-      .getManyAndCount();
-      
+    .skip((pageNumber - 1) * formationPerPage)
+    .take(formationPerPage)
+    .getManyAndCount();
 
-    const formattedData = items.map(formation => {
-      const firstSession = formation.sessions?.[0];
-  const instructorName = firstSession?.formateur 
-    ? `${firstSession.formateur.nom} ${firstSession.formateur.prenom}`
-    : 'Centre de Formation';
-      return{
+  const formattedData = items.map(formation => {
+    // Toutes les sessions ici sont non-annulées
+    const firstSession = formation.sessions?.[0];
+    const instructorName = firstSession?.formateur 
+      ? `${firstSession.formateur.nom} ${firstSession.formateur.prenom}`
+      : 'Centre de Formation';
+
+    return {
       id: formation.id,
       title: formation.titre,
-      userRating: (formation as any).mySatisfaction?.note || null, // On ajoute la note ici
+      userRating: (formation as any).mySatisfaction?.note || null,
       userComment: (formation as any).mySatisfaction?.commentaire || null,
       description: formation.description,
       instructor: instructorName,
       duration: `${formation.dureeHeures || 0}h`, 
-      progress: formation.statut === 'completed' ? 100 : 35, // Simulé ou calculé
+      progress: formation.statut === 'completed' ? 100 : 35,
       createdAt: formation.createdAt,
-      }
-    });
-
-    return {
-      data: formattedData,
-      meta: {
-        totalItems: total,
-        currentPage: Number(pageNumber),
-        totalPages: Math.ceil(total / formationPerPage),
-      },
     };
-  }
+  });
+
+  return {
+    data: formattedData,
+    meta: {
+      totalItems: total,
+      currentPage: Number(pageNumber),
+      totalPages: Math.ceil(total / formationPerPage),
+    },
+  };
+}
 
   /** hedhi wallet tekhdem
     * Récupérer les détails d'UNE formation précise(espace apprenant)
@@ -185,27 +188,37 @@ export class FormationsService {
   };
 }
 //hedhi tekhdem zeda
-public async findAllAvailableFormations(userId: number) {
-  // 1. Charger l'apprenant une fois pour toutes
+public async findAllAvailableFormations(userId: number, page = 1, limit = 9) {
+  const skip = (page - 1) * limit;
   const apprenant = await this.apprenantRepo.findOne({ where: { userId } });
-   if (!apprenant) {
-    // Retourner TOUTES les formations actives (nouveau compte = aucune inscription possible)
-    const formations = await this.formationRepo.find({
+
+  // ── Cas 1 : pas encore d'apprenant créé (nouveau compte) ──
+  if (!apprenant) {
+    const [formations, total] = await this.formationRepo.findAndCount({
       where: { statut: FormationStatus.ACTIVE },
-      select: ['id', 'titre', 'description', 'dureeHeures'],
+      select: ['id', 'titre', 'description', 'dureeHeures', 'categorie'],
+      skip,
+      take: limit,
     });
-    
-    return formations.map(f => ({
-      id: f.id,
-      title: f.titre,
-      description: f.description,
-      duration: `${f.dureeHeures}h`,
-      instructor: "Centre de formation"
-    }));
+
+    return {
+      data: formations.map(f => ({
+        id: f.id,
+        title: f.titre,
+        description: f.description,
+        duration: `${f.dureeHeures}h`,
+        categorie: f.categorie,
+      })),
+      meta: {
+        totalItems: total,
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
-  const formations = await this.formationRepo
-    .createQueryBuilder('formation')
+  // ── Cas 2 : apprenant existe → formations avec sessions disponibles ──
+  const query = this.formationRepo.createQueryBuilder('formation')
     .where('formation.statut = :statut', { statut: FormationStatus.ACTIVE })
     .andWhere(qb => {
       const subQuery = qb
@@ -215,7 +228,7 @@ public async findAllAvailableFormations(userId: number) {
         .leftJoin(
           'sessions_apprenants',
           'sa',
-          'sa."sessionId" = session.id AND sa."apprenantId" = :apprenantId'
+          'sa."sessionId" = session.id AND sa."apprenantId" = :apprenantId',
         )
         .where('session.formationId = formation.id')
         .andWhere('session.statut = :sessionStatut')
@@ -225,16 +238,32 @@ public async findAllAvailableFormations(userId: number) {
         .getQuery();
       return `EXISTS ${subQuery}`;
     })
-    .select(['formation.id', 'formation.titre', 'formation.description', 'formation.dureeHeures'])
-    .getMany();
+    .select([
+      'formation.id',
+      'formation.titre',
+      'formation.description',
+      'formation.dureeHeures',
+      'formation.categorie',
+    ])
+    .skip(skip)
+    .take(limit);
 
-  return formations.map(f => ({
-    id: f.id,
-    title: f.titre,
-    description: f.description,
-    duration: `${f.dureeHeures}h`,
-    instructor: "Centre de formation"
-  }));
+  const [formations, total] = await query.getManyAndCount();
+
+  return {
+    data: formations.map(f => ({
+      id: f.id,
+      title: f.titre,
+      description: f.description,
+      duration: `${f.dureeHeures}h`,
+      categorie: f.categorie,
+    })),
+    meta: {
+      totalItems: total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }
 
 
@@ -244,13 +273,13 @@ public async findAllAvailableFormations(userId: number) {
   // 1. Charger l'apprenant
   const apprenant = await this.apprenantRepo.findOne({ where: { userId } });
   if (!apprenant) {
-    console.log('ℹ️ No apprenant found, returning all active sessions');
+    console.log(' No apprenant found, returning all active sessions');
     const sessions = await this.sessionRepo.find({
       where: { 
         formationId,
         statut: SessionStatut.ACTIF 
       },
-      select: ['id', 'title', 'date', 'capacite'],
+      select: ['id', 'title', 'date', 'capacite', 'prix'],
     });
     return sessions;
   }

@@ -53,6 +53,33 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("fr-TN", { style: "currency", currency: "TND", minimumFractionDigits: 0 }).format(value);
 }
 
+
+const getPaginationRange = (currentPage: number, totalPages: number) => {
+  const delta = 1; // Nombre de pages à afficher autour de la page active
+  const range = [];
+  const rangeWithDots = [];
+  let l;
+
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - delta && i <= currentPage + delta)) {
+      range.push(i);
+    }
+  }
+
+  for (let i of range) {
+    if (l) {
+      if (i - l === 2) {
+        rangeWithDots.push(l + 1);
+      } else if (i - l !== 1) {
+        rangeWithDots.push("...");
+      }
+    }
+    rangeWithDots.push(i);
+    l = i;
+  }
+  return rangeWithDots;
+};
+
 export default function PerformanceTable({ data }: PerformanceTableProps) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
@@ -89,7 +116,8 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
     return rows;
   }, [data, search, sortKey, sortDir]);
 
-  const totalPages = Math.ceil(filtered.length / perPage);
+     const pages = Math.ceil(filtered.length / perPage);
+  const paginationRange = useMemo(() => getPaginationRange(page, pages), [page, pages]);
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   return (
@@ -207,42 +235,43 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div
-          className="flex items-center justify-between px-5 py-3 border-t"
-          style={{ borderColor: "#e5eadd" }}
-        >
+      {pages > 1 && (
+        <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: "#e5eadd" }}>
           <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.45 }}>
-            Page {page} sur {totalPages}
+            Affichage de {paged.length} sur {filtered.length} sessions
           </p>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1">
+            {/* Bouton Précédent */}
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="p-1.5 rounded-lg disabled:opacity-30 transition-all hover:bg-white"
-              style={{ color: "#2d4a3e" }}
+              className="p-1.5 rounded-lg disabled:opacity-30 hover:bg-secondary transition-all"
             >
               <ChevronLeft size={16} />
             </button>
-            {Array.from({ length: totalPages }, (_, i) => (
+
+            {/* Rendu des pages avec "..." */}
+            {paginationRange.map((p, i) => (
               <button
                 key={i}
-                onClick={() => setPage(i + 1)}
-                className="w-7 h-7 rounded-lg text-xs font-medium transition-all"
+                onClick={() => typeof p === "number" && setPage(p)}
+                disabled={p === "..."}
+                className="w-8 h-8 rounded-lg text-xs font-medium transition-all"
                 style={
-                  page === i + 1
+                  page === p
                     ? { background: "#1a7149", color: "#fff" }
-                    : { color: "#2d4a3e" }
+                    : { color: "#2d4a3e", opacity: p === "..." ? 0.5 : 1 }
                 }
               >
-                {i + 1}
+                {p}
               </button>
             ))}
+
+            {/* Bouton Suivant */}
             <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-1.5 rounded-lg disabled:opacity-30 transition-all hover:bg-white"
-              style={{ color: "#2d4a3e" }}
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+              disabled={page === pages}
+              className="p-1.5 rounded-lg disabled:opacity-30 hover:bg-secondary transition-all"
             >
               <ChevronRight size={16} />
             </button>

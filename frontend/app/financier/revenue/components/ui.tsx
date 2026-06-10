@@ -113,9 +113,9 @@ export function SearchBox({ value, onChange, placeholder = "Rechercher..." }: {
 }
 
 // ── Export button ──────────────────────────────────────────
-export function ExportBtn({ onClick }: { onClick?: () => void }) {
+export function ExportBtn({ onClick , disabled  }: { onClick?: () => void ; disabled?: boolean}) {
   return (
-    <button onClick={onClick}
+    <button onClick={onClick} disabled={disabled}
       className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-border bg-secondary text-foreground transition-all hover:bg-accent/20 hover:shadow-sm">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>

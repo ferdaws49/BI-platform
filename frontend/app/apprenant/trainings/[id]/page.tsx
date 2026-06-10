@@ -1,7 +1,17 @@
 'use client'
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, BookOpen, CheckCircle, Loader2, Calendar, Tag } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  User, 
+  BookOpen, 
+  CheckCircle, 
+  Loader2, 
+  Calendar, 
+  Tag, 
+  ChevronRight,
+  GraduationCap
+} from 'lucide-react';
 import { getFormationDetails } from '@/lib/trainings';
 
 export default function TrainingDetailPage() {
@@ -27,126 +37,119 @@ export default function TrainingDetailPage() {
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-      <Loader2 className="animate-spin text-brand-dark" size={40} />
-      <p className="text-gray-500 font-medium">Chargement de votre formation...</p>
+      <Loader2 className="animate-spin text-[#1b5333]" size={40} />
+      <p className="text-gray-500 font-medium">Chargement...</p>
     </div>
   );
 
-  if (!training) return <div className="p-10 text-center">Formation introuvable.</div>;
+  if (!training) return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <BookOpen className="text-gray-300 mx-auto" size={32} />
+        <h2 className="text-xl font-bold text-gray-800">Formation introuvable</h2>
+        <button 
+          onClick={() => router.back()}
+          className="text-[#1b5333] font-medium hover:underline"
+        >
+          Retour
+        </button>
+      </div>
+    </div>
+  );
 
-  // Données dérivées de la réponse backend
-  const instructor = training.sessions?.[0]?.formateur || 'Centre de Formation';
   const sessionCount = training.sessions?.length || 0;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-20 p-6">
-      {/* Bouton Retour */}
+    <div className="max-w-4xl mx-auto space-y-6 pb-12 p-6">
+      {/* Breadcrumb */}
       <button 
-        onClick={() => router.back()}
-        className="flex items-center gap-2 text-gray-500 hover:text-brand-dark transition-colors font-medium text-sm"
+        onClick={() => router.push('/apprenant/trainings')}
+        className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#1b5333] transition-colors"
       >
-        <ArrowLeft size={18} /> Retour à mes formations
+        <ArrowLeft size={16} /> Mes formations
       </button>
 
-      {/* Header */}
-      <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between gap-8">
-        <div className="space-y-4 flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="px-4 py-1.5 bg-brand-input text-brand-dark rounded-full text-[10px] font-bold uppercase tracking-wider">
-              {training.statut}
+      {/* Header + Description */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+            training.statut === 'completed' 
+              ? 'bg-emerald-50 text-emerald-600' 
+              : 'bg-amber-50 text-amber-600'
+          }`}>
+            {training.statut}
+          </span>
+          {training.categorie && (
+            <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 flex items-center gap-1">
+              <Tag size={10} /> {training.categorie}
             </span>
-            {training.categorie && (
-              <span className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
-                <Tag size={10} /> {training.categorie}
-              </span>
-            )}
-          </div>
-          
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900">{training.title}</h1>
-          
-          <div className="flex flex-wrap gap-6 text-sm text-gray-500">
-            <div className="flex items-center gap-2">
-              <User size={18} className="text-brand-dark" />
-              <span className="font-medium">{instructor}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <BookOpen size={18} className="text-brand-dark" />
-              <span className="font-medium">{sessionCount} Session{sessionCount > 1 ? 's' : ''}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Calendar size={18} className="text-brand-dark" />
-              <span className="font-medium">
-                {training.createdAt ? new Date(training.createdAt).toLocaleDateString() : '-'}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
+        
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{training.title}</h1>
+        
+        {/* ✅ Description remontée ici, sous le titre */}
+        <p className="text-gray-500 text-sm leading-relaxed max-w-2xl">
+          {training.description || 'Aucune description disponible.'}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Colonne Gauche */}
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-sm">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">À propos de ce cours</h3>
-            <p className="text-gray-600 leading-relaxed">{training.description}</p>
-          </div>
+      {/* Sessions */}
+      <div className="bg-white rounded-[20px] border border-gray-100 shadow-sm">
+        <div className="p-5 border-b border-gray-50 flex items-center justify-between">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2">
+            <BookOpen size={18} className="text-[#1b5333]" />
+            Sessions
+          </h3>
+          <span className="text-xs text-gray-400 font-medium">{sessionCount} au total</span>
+        </div>
+        
+        <div className="p-5">
+          {training.sessions?.length > 0 ? (
+            <div className="space-y-3">
+              {training.sessions.map((session: any, index: number) => (
+                <div 
+                  key={session.id} 
+                  className="flex items-center gap-4 p-4 rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50/20 transition-all"
+                >
+                  <div className="w-10 h-10 rounded-lg bg-[#1b5333] text-white flex items-center justify-center font-bold text-sm shrink-0">
+                    {index + 1}
+                  </div>
 
-          <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-sm">
-            <h3 className="text-xl font-bold text-gray-900 mb-6">Vos sessions inscrites</h3>
-            <div className="space-y-4">
-              {training.sessions?.map((session: any, index: number) => (
-                <div key={session.id} className="flex items-center justify-between p-4 rounded-2xl border border-gray-50 bg-gray-50/30 hover:bg-gray-50 transition-colors group">
-                  <div className="flex items-center gap-4">
-                    <span className="w-8 h-8 rounded-full bg-white border border-gray-100 flex items-center justify-center text-xs font-bold text-gray-400 group-hover:text-brand-dark shrink-0">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <span className="font-bold text-gray-700 block text-sm">
-                        {session.title || `Session ${index + 1}`}
-                      </span>
-                      <span className="text-xs text-gray-500">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-gray-800 text-sm">
+                      {session.title || `Session ${index + 1}`}
+                    </h4>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <Calendar size={12} />
                         {session.date 
-                          ? new Date(session.date).toLocaleDateString() 
+                          ? new Date(session.date).toLocaleDateString('fr-FR', {
+                              day: 'numeric',
+                              month: 'short'
+                            })
                           : 'Date à définir'
-                        } 
-                        {session.formateur ? ` • ${session.formateur}` : ''}
+                        }
                       </span>
+                      {session.formateur && (
+                        <span className="flex items-center gap-1">
+                          <User size={12} />
+                          {session.formateur}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg text-[10px] font-bold uppercase shrink-0">
-                    <CheckCircle size={14} /> Inscrit
+
+                  <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase shrink-0">
+                    <CheckCircle size={12} />
+                    Inscrit
                   </div>
                 </div>
               ))}
-              
-              {(!training.sessions || training.sessions.length === 0) && (
-                <div className="text-center py-8 text-gray-400 text-sm">
-                  Aucune session active pour cette formation.
-                </div>
-              )}
             </div>
-          </div>
-        </div>
-
-        {/* Colonne Droite : Résumé */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-[32px] p-6 border border-gray-100 shadow-sm">
-            <h4 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">Résumé</h4>
-            <div className="space-y-4 text-sm">
-              <div className="flex justify-between text-gray-500">
-                <span>Statut</span>
-                <span className="font-medium text-gray-900">{training.statut}</span>
-              </div>
-              <div className="flex justify-between text-gray-500">
-                <span>Catégorie</span>
-                <span className="font-medium text-gray-900">{training.categorie || '-'}</span>
-              </div>
-              <div className="flex justify-between text-gray-500">
-                <span>Sessions</span>
-                <span className="font-medium text-gray-900">{sessionCount}</span>
-              </div>
-            </div>
-          </div>
+          ) : (
+            <p className="text-center text-gray-400 text-sm py-8">Aucune session planifiée</p>
+          )}
         </div>
       </div>
     </div>

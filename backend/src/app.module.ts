@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
-import { User } from './users/users.entity';
 
 // Modules métiers
 import { AuthModule } from './auth/auth.module';
@@ -52,6 +50,7 @@ import { RolesGuard } from './auth/guards/roles.guard';*/
   secret: process.env.SECRET_KEY,
   signOptions: { expiresIn: '1d' },
 }),
+ 
     // 2. Configuration de la base de données
     TypeOrmModule.forRoot({
       type: 'postgres',

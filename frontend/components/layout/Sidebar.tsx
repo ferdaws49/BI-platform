@@ -34,7 +34,7 @@ export default function Sidebar({ role }: { role: Role }) {
     <aside className="w-64 min-h-screen p-6 flex flex-col border-r border-border bg-sidebar-background transition-colors duration-300">
       {/* Logo / Role */}
       <div className="mb-8">
-        <h1 className="text-xl font-semibold text-foreground">BI Platform</h1>
+        <h1 className="text-xl font-semibold text-foreground">MBICenter</h1>
         <p className="text-sm mt-1 text-muted-foreground">{roleLabel}</p>
       </div>
 

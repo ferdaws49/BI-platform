@@ -1,8 +1,9 @@
- import { Body, Controller, Get, Post, Query, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+ import { Body, Controller, Get, Header, Post, Query, Res, StreamableFile, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
 import { CostFilterDto } from '../dto/cost-filter.dto';
@@ -20,6 +21,8 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
 import { CreateExpenseDto } from '../dto/create-expense.dto';
 import { Finance } from '../entities/finance.entity';
+import type { Response } from 'express';
+
 
 
 
@@ -80,5 +83,23 @@ export class FinanceCostController {
   async addExpense(@Body() dto: CreateExpenseDto): Promise<Finance> {
     return this.financeCostService.createExpense(dto);
   }
+
+ @Get('export')
+@ApiOperation({ summary: 'Export CSV des coûts et rentabilité' })
+@ApiProduces('text/csv')
+async exportCosts(
+  @Query() filter: CostFilterDto,
+  @Res() res: Response,
+): Promise<void> {
+  const csv = await this.financeCostService.exportCostCsv(filter);
+  const now = new Date().toISOString().slice(0, 10);
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="rapport-couts-${now}.csv"`,
+  );
+  res.send(csv);
+}
 }
 

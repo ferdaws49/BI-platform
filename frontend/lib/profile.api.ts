@@ -16,8 +16,9 @@ export async function updateProfile(data: { username?: string; phone?: string; p
     body: JSON.stringify(data),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || 'Erreur mise à jour');
+    const text = await res.text();
+    try { const err = JSON.parse(text); throw new Error(err.message); } 
+    catch { throw new Error(text); }
   }
   return res.json();
 }
@@ -28,32 +29,33 @@ export async function uploadProfileImage(file: File) {
 
   const res = await fetch(`${API_URL}/upload-image`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: getHeaders(), // ← Pas de Content-Type ici
     body: formData,
   });
 
-  // ← AJOUTÉ : sinon vous ne voyez jamais l'erreur
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || 'Erreur upload image');
+    const text = await res.text();
+    try {
+      const err = JSON.parse(text);
+      throw new Error(err.message || 'Erreur upload');
+    } catch {
+      throw new Error(text || 'Erreur upload');
+    }
   }
 
-  return res.json();
+  return res.json(); // ← Retourne l'objet user mis à jour par le backend
 }
-
 export const deleteProfileImage = async () => {
   const token = localStorage.getItem('access_token');
-  const res = await fetch(`${API_URL}/images/remove-profile-image`, { // <-- Vérifie l'URL de ton controller
+  const res = await fetch(`${API_URL}/images/remove-profile-image`, {
     method: 'DELETE',
-    headers: { 
-      'Authorization': `Bearer ${token}`
-    }
+    headers: { 'Authorization': `Bearer ${token}` }
   });
 
   if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.message || "Erreur lors de la suppression");
+    const text = await res.text();
+    try { const err = JSON.parse(text); throw new Error(err.message); }
+    catch { throw new Error(text); }
   }
-
   return res.json();
 };

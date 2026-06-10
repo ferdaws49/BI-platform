@@ -8,6 +8,8 @@ import {
 } from "../ui";
 import type { PaginationMeta, SessionCoutRow } from "../../types";
 
+
+
 // ── Remplissage badge ─────────────────────────────────────
 function RemplissageBadge({ pct }: { pct: number }) {
   const color = pct >= 70 ? "#1a7149" : pct >= 50 ? "#D97706" : "#DC2626";
@@ -70,9 +72,11 @@ interface Props {
   rows: SessionCoutRow[];
   pagination: PaginationMeta;
   onPageChange: (page: number) => void;
+  onExport?: () => Promise<void>; // ← NOUVEAU
 }
 
-export default function DetailTable({ rows, pagination, onPageChange }: Props) {
+
+export default function DetailTable({ rows, pagination, onPageChange,onExport }: Props) {
   // Client-side search filters within the current page only.
   // Full cross-page search would require a backend search param — acceptable
   // limitation; add a search query param to CostFilterDto if needed later.
@@ -144,7 +148,11 @@ export default function DetailTable({ rows, pagination, onPageChange }: Props) {
             onChange={(v) => setSearch(v)}
             placeholder="Session, formation, formateur..."
           />
-          <ExportBtn data={sorted} />
+          {onExport ? (
+            <ExportBtn onClick={onExport} label="Exporter tout" />
+          ) : (
+            <ExportBtn data={sorted} label="Exporter page" />
+          )}
         </div>
       </div>
 
@@ -208,7 +216,7 @@ export default function DetailTable({ rows, pagination, onPageChange }: Props) {
                         className="text-xs px-2 py-1 rounded-lg font-medium"
                         style={{ background: "rgba(45,74,62,0.08)", color: "#2d4a3e" }}
                       >
-                        {row.formateur.split(" ")[0]}
+                        {row.formateur}
                       </span>
                     </td>
 

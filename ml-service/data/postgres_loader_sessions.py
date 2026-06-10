@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from db import get_connection
 from schemas.deficit_schema import SessionFilter
@@ -26,38 +27,53 @@ def load_sessions_data(filters: SessionFilter) -> pd.DataFrame:
 
     where_sql = " AND ".join(conditions)
 
-    # ── CORRECTION : JOINs dans le bon ordre ──
     query = f"""
     SELECT
       s.session_id::text AS session_id,
-      COUNT(DISTINCT f.sk_apprenant) AS nb_inscrits,
+      s.titre::text AS session_name,
+      s.type_session,
       s.capacite,
+      s.prix_session,
+      s.date::text AS date,
+
+      -- Dimensions via fact_finance (MAX pour éviter les doublons GROUP BY)
+      MAX(fo.formation_id) AS formation_id,
+      MAX(fo.titre) AS formation_name,
+      MAX(fo.categorie) AS categorie,
+      MAX(fr.formateur_id) AS formateur_id,
+
+      -- Données pour le LABEL (post-session) -- NE PAS utiliser comme features
+      COUNT(DISTINCT f.sk_apprenant) AS nb_inscrits,
       COALESCE(SUM(ABS(f.montant)) FILTER (WHERE tf.type = 'paiement'), 0) AS revenu,
-      COALESCE(SUM(ABS(f.montant)) FILTER (WHERE tf.type = 'depense_formateur'), 0) AS cout_formateur,
-      COALESCE(SUM(ABS(f.montant)) FILTER (WHERE tf.type = 'depense_logistique'), 0) AS cout_logistique,
-      COALESCE(SUM(f.montant) FILTER (WHERE tf.type = 'impaye'), 0) AS impayes,
-      s.date::text AS date
+      COALESCE(SUM(f.montant) FILTER (WHERE tf.type = 'depense_formateur'), 0) AS cout_formateur,
+      COALESCE(SUM(f.montant) FILTER (WHERE tf.type = 'depense_logistique'), 0) AS cout_logistique,
+      COALESCE(SUM(f.montant) FILTER (WHERE tf.type = 'impaye'), 0) AS impayes
+
     FROM dw.dim_session s
     LEFT JOIN dw.fact_finance f ON f.sk_session = s.sk_session
     LEFT JOIN dw.dim_type_finance tf ON tf.sk_type_finance = f.sk_type_finance
     LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
     LEFT JOIN dw.dim_formateur fr ON f.sk_formateur = fr.sk_formateur
     WHERE {where_sql}
-    GROUP BY s.session_id, s.capacite, s.date
+    GROUP BY s.session_id, s.titre, s.type_session, s.capacite, s.prix_session, s.date
     """
 
     df = pd.read_sql(query, conn, params=params)
     conn.close()
 
-    # --- CORRECTION ICI ---
-    # On convertit en numérique et on prend la valeur ABSOLUE (pour transformer -30 en 30)
-    for col in ["revenu", "cout_formateur", "cout_logistique", "impayes"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-        df[col] = df[col].abs()  # <--- FORCE LA VALEUR POSITIVE
+    # Conversion numérique sécurisée : on ne convertit que les colonnes qui existent
+    numeric_cols = ["revenu", "cout_formateur", "cout_logistique", "impayes", "prix_session"]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    for col in ["nb_inscrits", "capacite"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+    int_cols = ["nb_inscrits", "capacite"]
+    for col in int_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
+    # --- CORRECTION CRITIQUE : remplacer NaN par None pour Pydantic ---
+    # Les colonnes optionnelles (formation_id, formateur_id, categorie) peuvent être NULL
+    df = df.replace({np.nan: None})
 
-
-    return df
+    return df 

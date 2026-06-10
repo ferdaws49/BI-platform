@@ -15,7 +15,7 @@ export default function ApprenantWelcomePage() {
       try {
         const token = localStorage.getItem('access_token');
         if (!token) {
-          router.replace('/login');
+          router.replace('/auth/login');
           return;
         }
 
@@ -25,7 +25,7 @@ export default function ApprenantWelcomePage() {
 
         if (!res.ok) {
           setChecking(false);
-          return; // Reste sur Welcome
+          return;
         }
 
         const text = await res.text();
@@ -34,7 +34,7 @@ export default function ApprenantWelcomePage() {
         if (Array.isArray(regs) && regs.length > 0) {
           router.replace('/apprenant/dashboard');
         } else {
-          setChecking(false); // Nouveau apprenant, reste sur Welcome
+          setChecking(false);
         }
       } catch (err) {
         console.error(err);
@@ -47,14 +47,14 @@ export default function ApprenantWelcomePage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#f9f8f3]">
         <Loader2 className="animate-spin text-emerald-500" size={40} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-[calc(100vh-5rem)] bg-gradient-to-br from-emerald-50 via-white to-gray-50 flex items-center justify-center p-6">
       <div className="max-w-2xl text-center space-y-8">
         <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold uppercase tracking-wider">
           <Sparkles size={14} /> Bienvenue dans votre espace d'apprentissage

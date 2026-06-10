@@ -1,63 +1,59 @@
 'use client'
+
 import { StarRating } from '@/components/apprenant/StarRating';
 import { ReviewModal } from '@/components/apprenant/ReviewModal';
 import React, { useEffect, useState } from 'react';
-import { Search, Clock, BookOpen, ChevronRight, ChevronLeft, Star} from 'lucide-react';
-import { getMyFormations, rateFormation  } from '@/lib/trainings';
+import { Search, Clock, BookOpen, ChevronRight, ChevronLeft, Star } from 'lucide-react';
+import { getMyFormations, rateFormation } from '@/lib/trainings';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner'; // ✅ AJOUT ICI
 
 export default function TrainingsPage() {
   const [trainings, setTrainings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTraining, setSelectedTraining] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // États pour le filtre et la pagination
-  const [statusFilter, setStatusFilter] = useState(''); // "" signifie "All Status"
+
+  const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
   const router = useRouter();
 
-  // On recharge quand le filtre OU la page change
   useEffect(() => {
     loadTrainings();
   }, [statusFilter, currentPage]);
 
   const loadTrainings = async () => {
     setLoading(true);
-  try {
-    const res = await getMyFormations(statusFilter, currentPage);
-    
-    // ✅ On vérifie si res existe ET si res.meta existe
-    if (res && res.meta) {
-      setTrainings(res.data);
-      setTotalPages(res.meta.totalPages || 1);
-    } else {
-      setTrainings([]); // Liste vide si erreur
-      setTotalPages(1);
+    try {
+      const res = await getMyFormations(statusFilter, currentPage);
+      if (res && res.meta) {
+        setTrainings(res.data);
+        setTotalPages(res.meta.totalPages || 1);
+      } else {
+        setTrainings([]);
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setLoading(false);
-  }
   };
 
-  // Quand on change le filtre, on doit revenir à la page 1
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setStatusFilter(e.target.value);
-    setCurrentPage(1); 
+    setCurrentPage(1);
   };
 
   const handleRate = async (formationId: number, note: number) => {
     try {
       await rateFormation(formationId, note);
-      // Optionnel : Recharger les formations pour voir la note mise à jour
-      loadTrainings(); 
-      alert("Merci pour votre note !");
+      loadTrainings();
+      toast.success("Merci pour votre note !"); // ✅ REMPLACÉ
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Une erreur est survenue"); // ✅ REMPLACÉ
     }
   };
 
@@ -70,13 +66,12 @@ export default function TrainingsPage() {
     try {
       await rateFormation(selectedTraining.id, note, comment);
       setIsModalOpen(false);
-      loadTrainings(); // Recharger pour afficher la nouvelle note
-      alert("Avis enregistré !");
+      loadTrainings();
+      toast.success("Avis enregistré !"); // ✅ REMPLACÉ
     } catch (err: any) {
-      alert(err.message);
+      toast.error(err.message || "Impossible d'enregistrer l'avis"); // ✅ REMPLACÉ
     }
   };
-  
 
   return (
     <div className="space-y-8 min-h-screen">
@@ -89,14 +84,14 @@ export default function TrainingsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input 
-            type="text" 
-            placeholder="Rechercher des formations..." 
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-[#1b5333] outline-none" 
+          <input
+            type="text"
+            placeholder="Rechercher des formations..."
+            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-[#1b5333] outline-none"
           />
         </div>
 
-        <select 
+        <select
           value={statusFilter}
           onChange={handleFilterChange}
           className="px-4 py-2 bg-white border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-[#1b5333] cursor-pointer outline-none"
@@ -123,32 +118,31 @@ export default function TrainingsPage() {
                       {training.status}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-400 mb-6 italic">{training.instructor}</p>
-                  
+                  <p className="text-xs text-gray-400 mb-6 italic">durée du formation</p>
+
                   <div className="flex items-center gap-2 text-xs text-gray-500 font-medium mb-6">
                     <Clock size={14} className="text-[#1b5333]" /> {training.duration}
                   </div>
 
                   <div className="mb-4 flex items-center justify-between">
-                <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Noter cette formation</p>
-                    <div className="flex items-center gap-1">
-                        {[1,2,3,4,5].map(s => (
-                            <Star key={s} size={14} className={s <= (training.userRating || 0) ? "fill-yellow-400 text-yellow-400" : "text-gray-200"} />
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">Noter cette formation</p>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map(s => (
+                          <Star key={s} size={14} className={s <= (training.userRating || 0) ? "fill-yellow-400 text-yellow-400" : "text-gray-200"} />
                         ))}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => handleOpenReview(training)}
+                      className="text-[10px] font-bold text-[#1b5333] hover:underline"
+                    >
+                      {training.userRating ? "Modifier l'avis" : "Noter"}
+                    </button>
+                  </div>
                 </div>
-                <button 
-                  onClick={() => handleOpenReview(training)}
-                  className="text-[10px] font-bold text-[#1b5333] hover:underline"
-                >
-                  {training.userRating ? "Modifier l'avis" : "Noter"}
-                </button>
-              </div>
-        
 
-                </div>
-                <button 
+                <button
                   onClick={() => router.push(`/apprenant/trainings/${training.id}`)}
                   className="w-full py-4 border-t border-gray-50 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
                 >
@@ -159,31 +153,31 @@ export default function TrainingsPage() {
           </div>
 
           {selectedTraining && (
-        <ReviewModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onSubmit={handleSubmitReview}
-          trainingTitle={selectedTraining.title}
-          initialNote={selectedTraining.userRating}
-          initialComment={selectedTraining.userComment}
-        />
-      )}
+            <ReviewModal
+              isOpen={isModalOpen}
+              onClose={() => setIsModalOpen(false)}
+              onSubmit={handleSubmitReview}
+              trainingTitle={selectedTraining.title}
+              initialNote={selectedTraining.userRating}
+              initialComment={selectedTraining.userComment}
+            />
+          )}
 
-          {/* PAGINATION UI */}
+          {/* PAGINATION */}
           <div className="flex items-center justify-center gap-4 pt-8">
-            <button 
+            <button
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(prev => prev - 1)}
               className="p-2 rounded-xl border border-gray-200 disabled:opacity-30 hover:bg-gray-50 transition-colors"
             >
               <ChevronLeft size={20} />
             </button>
-            
+
             <span className="text-sm font-bold text-gray-600">
               Page {currentPage} sur {totalPages}
             </span>
 
-            <button 
+            <button
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(prev => prev + 1)}
               className="p-2 rounded-xl border border-gray-200 disabled:opacity-30 hover:bg-gray-50 transition-colors"

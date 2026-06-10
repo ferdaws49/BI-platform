@@ -93,7 +93,12 @@ export class CostTrendResponseDto {
 
 export class SessionCostTableRowDto {
   @ApiProperty()
+  sessionId: string; 
+  
+  @ApiProperty()
   formation: string;
+
+  
 
   @ApiProperty()
   session: string;

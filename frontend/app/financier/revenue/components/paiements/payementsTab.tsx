@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Chart,
   ArcElement,
@@ -605,8 +605,8 @@ export function PaiementModal({
             </button>
             
             <button
-  type="button"
-  onClick={handleSubmit}
+  type="submit"
+  
   className="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90"
   style={{ background: "#1a7149" }}
 >
@@ -756,6 +756,9 @@ export default function PaiementsTab({
     { id: number; title: string }[]
   >([]);
 
+  const safeFormations = Array.isArray(formations) ? formations : [];
+const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
+
   const [search, setSearch] = useState("");
   const [filterFormation, setFilterFormation] = useState("Tout");
   const [filterStatut, setFilterStatut] = useState("Tout");
@@ -897,30 +900,36 @@ export default function PaiementsTab({
 
   // ── Sauvegarde (create / update) ──────────────────────
   async function handleSave(dto: {
-    id?: number;
-    apprenantId: number;
-    formationId: number;
-    montant: number;
-    paymentDate: string;
-    sessionId?: string | number;
-  }) {
-    try {
-      if (dto.id) {
-        await revenueApi.updatePayment(dto.id, dto);
-        setToast("Paiement modifié avec succès ✅");
-      } else {
-        await revenueApi.addPayment(dto);
-        setToast("Paiement ajouté avec succès ✅");
-      }
+  id?: number;
+  apprenantId: number;
+  formationId: number;
+  montant: number;
+  paymentDate: string;
+  sessionId?: string | number;
+}) {
+  try {
+    if (dto.id) {
+      await revenueApi.updatePayment(dto.id, dto);
+      setToast("Paiement modifié avec succès ✅");
+    } else {
+      await revenueApi.addPayment(dto);
+      setToast("Paiement ajouté avec succès ✅");
+    }
 
-      await reload();
+    // 🔥 Fermer le modal APRÈS que le toast ait eu le temps de s'afficher
+    setTimeout(() => {
       setModalOpen(false);
       setEditItem(null);
-    } catch (e) {
-      console.error(e);
-      alert('Erreur lors de l\'enregistrement du paiement.');
-    }
+    }, 100);
+
+    // 🔥 Recharger les données en background
+    reload().catch(err => console.error("Erreur reload:", err));
+
+  } catch (e) {
+    console.error(e);
+    alert('Erreur lors de l\'enregistrement du paiement.');
   }
+}
 
   // ── Suppression ────────────────────────────────────────
   async function handleDelete(id: number) {
@@ -971,6 +980,8 @@ export default function PaiementsTab({
     a.download = "paiements.csv";
     a.click();
   }
+  const closeToast = useCallback(() => setToast(null), []);
+
 
   // ── Skeleton ──────────────────────────────────────────
   if (loading) {
@@ -996,27 +1007,24 @@ export default function PaiementsTab({
   return (
     <div className="space-y-6">
       {/* ── Toast ── */}
-      {toast && <SuccessToast message={toast} onClose={() => setToast(null)} />}
+      {toast && <SuccessToast message={toast} onClose={closeToast} />}
 
       {/* ── Filtres locaux ── */}
       <div
         className="flex flex-wrap items-center gap-2 p-2 rounded-xl border border-border bg-card shadow-sm"
       >
         <FilterSelect
-          value={filterFormation}
-          onChange={(v) => {
-            setFilterFormation(v);
-            setPage(1);
-          }}
-          label="Formation :"
-          options={[
-            { label: "Toutes", value: "Tout" },
-            ...formations.map((f) => ({
-              label: f.title,
-              value: String(f.id),
-            })),
-          ]}
-        />
+  value={filterFormation}
+  onChange={(v) => { setFilterFormation(v); setPage(1); }}
+  label="Formation :"
+  options={[
+    { label: "Toutes", value: "Tout" },
+    ...safeFormations.map((f) => ({  // ← safeFormations au lieu de formations
+      label: f.title,
+      value: String(f.id),
+    })),
+  ]}
+/>
 
         <FilterSelect
           value={filterStatut}

@@ -31,6 +31,11 @@ getFormations() {
   return this.financierdashboardService.getAllFormations();
 }
 
+@Get('formateurs')
+getFormateurs() {
+  return this.financierdashboardService.getAllFormateurs();
+}
+
 
   @Get('kpis')
   @ApiOperation({ summary: 'KPIs globaux (legacy) : CA, facture, marge, croissance' })

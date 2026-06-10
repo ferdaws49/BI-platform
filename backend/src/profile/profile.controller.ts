@@ -11,12 +11,9 @@ import { Body, Controller,
 import { FileInterceptor } from "@nestjs/platform-express";
 import {diskStorage} from 'multer';
 import type { Express, Response } from "express";
-import type { JWTPayloadType } from "src/utils/types";
 import { ProfileService } from "./profile.service";
-import { AuthGuard } from "src/auth/guards/auth.guard";
 import { CurrentUser } from "src/users/decorators/current-user.decorator";
-import { Roles } from "src/users/decorators/user-role.decorators";
-import { UserRole } from "src/users/users.entity";
+
 import { UpdateProfileDto } from "./dtos/update-profile.dto";
 import { JwtAuthGuard } from "src/auth/guards/jwt-auth.guard";
 import { RolesGuard } from "src/auth/guards/roles.guard";

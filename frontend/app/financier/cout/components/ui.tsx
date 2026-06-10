@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Download } from "lucide-react";
 import type { RentabiliteStatut } from "../types";
 
 /** Conteneur card aligné sur le design system global */
@@ -179,50 +180,54 @@ export function SearchBox({
 }
 
 // ── Export button ──────────────────────────────────────────
-type Props = {
-  data: any[];
-};
+interface ExportBtnProps {
+  data?: any[];
+  onClick?: () => Promise<void>;
+  label?: string;
+}
 
-export function ExportBtn({ data }: Props) {
+export function ExportBtn({ data, onClick, label = "Exporter" }: ExportBtnProps) {
+  const handleClick = async () => {
+    if (onClick) {
+      await onClick();
+      return;
+    }
 
-  const handleExport = () => {
-  if (!data || data.length === 0) {
-    console.warn("No data to export");
-    return;
-  }
+    if (!data || data.length === 0) return;
 
-  const headers = Object.keys(data[0]);
+    // Génération CSV client-side (fallback)
+    const headers = Object.keys(data[0]).join(";");
+    const rows = data.map((row) =>
+      Object.values(row)
+        .map((val) => {
+          const str = String(val ?? "");
+          if (str.includes(";") || str.includes("\n")) return `"${str.replace(/"/g, '""')}"`;
+          return str;
+        })
+        .join(";")
+    );
 
-  const csv = [
-    headers.join(","),
-    ...data.map(row =>
-      headers.map(h => `"${row[h] ?? ""}"`).join(",")
-    )
-  ].join("\n");
+    const csv = "\uFEFF" + [headers, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `export-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.setAttribute("download", "cout_sessions.csv");
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
-
-  
   return (
     <button
-      onClick={handleExport}
-      className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-border bg-secondary text-foreground transition-all hover:bg-accent/20"
+      onClick={handleClick}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-80"
+      style={{ background: "#1a7149", color: "#fff" }}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-      Exporter CSV
+      <Download size={13} />
+      {label}
     </button>
   );
+
 }

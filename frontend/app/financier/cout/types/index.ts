@@ -135,6 +135,7 @@ export interface SessionCostTableRowDto {
   formation: string;
   session: string;
   formateur: string;
+  date: string;
   coutDirectFormateur: number;
   fraisLogistique: number;
   coutTotal: number;

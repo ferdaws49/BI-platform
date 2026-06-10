@@ -58,14 +58,22 @@ export default function RevenusPage() {
   const [formations, setFormations] = useState<Formation[]>([]);
 
   useEffect(() => {
-    async function load() {
+  async function load() {
+    try {
       const data = await revenueApi.getFormationsList();
       console.log("FORMATIONS API 👉", data);
-      setFormations(data);
+      
+      // ✅ SÉCURITÉ : si le backend retourne { data: [...] } ou un objet
+      const list: Formation[] = Array.isArray(data) ? data : [];
+      setFormations(list);
+    } catch (err) {
+      console.error(err);
+      setFormations([]); // ← Jamais undefined
     }
+  }
 
-    load();
-  }, []);
+  load();
+}, []);
 
 
 
@@ -113,7 +121,7 @@ export default function RevenusPage() {
         {/* Footer */}
         <footer className="text-center pb-2">
           <p className="text-xs text-muted-foreground/60">
-            CentreForm BI · Revenus & Facturation · Exercice {currentYear}
+            MBICenter · Revenus & Facturation · Exercice {currentYear}
           </p>
         </footer>
       </div>

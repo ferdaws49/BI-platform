@@ -23,18 +23,22 @@ async function fetchCost(
   const params = new URLSearchParams();
 
   for (const [key, val] of Object.entries(filters)) {
-    // Skip every value that should not reach the backend
-    if (
-      val === undefined ||
-      val === null ||
-      val === "" ||
-      val === "all" ||
-      val === "undefined"
-    ) {
-      continue;
-    }
-    params.append(key, String(val));
+  if (
+    val === undefined ||
+    val === null ||
+    val === "" ||
+    val === "all" ||
+    val === "undefined"
+  ) continue;
+
+  if (key === "limit") {
+    const safeLimit = Math.min(Number(val), 100);
+    params.append(key, String(safeLimit));
+    continue;
   }
+
+  params.append(key, String(val));
+}
 
   // Safety net: if the caller provided no time-range information at all,
   // tell the backend to use the current year. This covers the edge case
@@ -61,9 +65,6 @@ async function fetchCost(
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-
-  console.error("🚨 400 FULL ERROR BODY:", body);
-
   throw new Error(
     `Erreur API ${endpoint}: ${res.status} - ${JSON.stringify(body)}`
   );
@@ -88,9 +89,12 @@ export const costApi = {
     formateurNom?: string;
     description?: string;
   }) {
-    const res = await fetch(`${API}/finances/expenses`, {
+    const token = getToken();
+    const res = await fetch(`${API}/finance/cout/expenses`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
@@ -100,6 +104,47 @@ export const costApi = {
     }
     return res.json();
   },
+
+  async export(filters: Record<string, any> = {}): Promise<Blob> {
+  // Retirer les params de pagination/tri ET les props non reconnues par le backend
+  const { page, limit, sortBy, sortOrder, periode, ...exportFilters } = filters;
+
+  const params = new URLSearchParams();
+  for (const [key, val] of Object.entries(exportFilters)) {
+    if (
+      val === undefined ||
+      val === null ||
+      val === "" ||
+      val === "all" ||
+      val === "undefined"
+    )
+      continue;
+    params.append(key, String(val));
+  }
+
+  if (
+    !params.has("startDate") &&
+    !params.has("endDate") &&
+    !params.has("periodPreset")
+  ) {
+    params.set("periodPreset", "year");
+  }
+
+  const token = getToken();
+  const res = await fetch(
+    `${API}/finance/cout/export?${params.toString()}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Export échoué (${res.status})`);
+  }
+
+  return res.blob();
+}
 };
 
 

@@ -90,7 +90,7 @@ function RevenueLineChart({ data }: { data: RevEvolution }) {
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-all"
             style={{ background: isVisible ? `${color}18` : "#efefea", color: isVisible ? color : "rgba(45,74,62,0.4)", border: `1px solid ${isVisible ? color + "40" : "#e5eadd"}`, fontFamily: "'DM Sans'" }}>
             <span className="w-2 h-2 rounded-full" style={{ background: color, opacity: isVisible ? 1 : 0.3 }} />
-            {s.formationTitle.split(" ")[0]?? "—"}
+            {s.formationTitle}
           </button>
           );
         })}
@@ -110,7 +110,7 @@ function RevenueBarChart({ data }: { data: TopForm[] }) {
     chartRef.current = new Chart(ref.current, {
       type: "bar",
       data: {
-        labels: data.map(d => d.formationTitle.split(" ")[0]?? d.formationTitle ?? "—"),
+        labels: data.map(d => d.formationTitle?? d.formationTitle ?? "—"),
         datasets: [{
           label: "CA",
           data: data.map(d => d.caRealise),
@@ -230,12 +230,40 @@ function BubbleChart({ data }: { data: BubblePt[] }) {
   return <div style={{ height: 280 }}><canvas ref={ref} /></div>;
 }
 
+
+const getPaginationRange = (currentPage: number, totalPages: number) => {
+  const delta = 1; // Nombre de pages à afficher autour de la page active
+  const range = [];
+  const rangeWithDots = [];
+  let l;
+
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - delta && i <= currentPage + delta)) {
+      range.push(i);
+    }
+  }
+
+  for (let i of range) {
+    if (l) {
+      if (i - l === 2) {
+        rangeWithDots.push(l + 1);
+      } else if (i - l !== 1) {
+        rangeWithDots.push("...");
+      }
+    }
+    rangeWithDots.push(i);
+    l = i;
+  }
+  return rangeWithDots;
+};
+
 // ── Sessions Table ────────────────────────────────────────
-function SessionsTable({ data }: { data: TableResp | null }) {
+function SessionsTable({ data, filters }: { data: TableResp | null; filters: Record<string, any> }) {
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<"ca" | "inscrits" | "montant" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
   const PER = 5; 
 
   const rows = data?.items ?? [];
@@ -279,6 +307,9 @@ function SessionsTable({ data }: { data: TableResp | null }) {
   const paged = sorted.slice((page - 1) * PER, page * PER);
   const pages = Math.ceil(filtered.length / PER);
 
+    const paginationRange = useMemo(() => getPaginationRange(page, pages), [page, pages]);
+
+
   function toggleSort(col: "ca" | "inscrits" | "montant") {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("desc"); }
@@ -289,6 +320,27 @@ function SessionsTable({ data }: { data: TableResp | null }) {
     <span className="ml-1 opacity-40 text-xs">{sortCol === col ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
   );
 
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const blob = await revenueApi.exportSessionsCsv(filters);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sessions-revenue-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Erreur export CSV:", err);
+      alert("Erreur lors du téléchargement du CSV");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className={`overflow-hidden ${cardClass}`}>
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b" style={{ borderColor: "#e5eadd" }}>
@@ -298,7 +350,7 @@ function SessionsTable({ data }: { data: TableResp | null }) {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <SearchBox value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Session ou formation..." />
-          <ExportBtn />
+          <ExportBtn onClick={handleExport} disabled={exporting}/>
         </div>
       </div>
 
@@ -349,21 +401,82 @@ function SessionsTable({ data }: { data: TableResp | null }) {
                 <td className="px-4 py-3"><GrowthBadge value={row.variation?.variationPercent} /></td>
               </tr>
             ))}
+            {paged.length === 0 && (
+    <tr>
+      <td colSpan={7} className="px-4 py-8 text-center">
+        <div className="flex flex-col items-center gap-2">
+          <svg 
+            width="40" 
+            height="40" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="1.5"
+            className="text-gray-300"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.3-4.3" />
+            <path d="M8 8l6 6" />
+            <path d="M14 8l-6 6" />
+          </svg>
+          <p className="text-sm font-medium" style={{ color: "#2d4a3e", opacity: 0.6 }}>
+            Aucun résultat trouvé
+          </p>
+          <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+            Essayez un autre terme de recherche
+          </p>
+        </div>
+      </td>
+    </tr>
+  )}
           </tbody>
         </table>
       </div>
 
       {pages > 1 && (
         <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: "#e5eadd" }}>
-          <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>Page {page}/{pages}</span>
-          <div className="flex gap-1">
-            {Array.from({ length: pages }, (_, i) => (
-              <button key={i} onClick={() => setPage(i + 1)}
+          <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+            Affichage de {paged.length} sur {filtered.length} sessions
+          </span>
+          
+          <div className="flex items-center gap-1">
+            {/* Bouton Précédent */}
+            <button 
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-2 py-1 text-xs font-medium disabled:opacity-20"
+              style={{ color: "#2d4a3e" }}
+            >
+              Préc.
+            </button>
+
+            {/* Chiffres condensés */}
+            {paginationRange.map((p, i) => (
+              <button
+                key={i}
+                onClick={() => typeof p === "number" && setPage(p)}
+                disabled={p === "..."}
                 className="w-7 h-7 rounded-lg text-xs font-medium transition-all"
-                style={{ background: page === i + 1 ? "#1a7149" : "transparent", color: page === i + 1 ? "#fff" : "#2d4a3e" }}>
-                {i + 1}
+                style={{
+                  background: page === p ? "#1a7149" : "transparent",
+                  color: page === p ? "#fff" : "#2d4a3e",
+                  cursor: p === "..." ? "default" : "pointer",
+                  opacity: p === "..." ? 0.5 : 1
+                }}
+              >
+                {p}
               </button>
             ))}
+
+            {/* Bouton Suivant */}
+            <button 
+              onClick={() => setPage(p => Math.min(pages, p + 1))}
+              disabled={page === pages}
+              className="px-2 py-1 text-xs font-medium disabled:opacity-20"
+              style={{ color: "#2d4a3e" }}
+            >
+              Suiv.
+            </button>
           </div>
         </div>
       )}
@@ -490,7 +603,7 @@ export default function CATab({ filters }: { filters: Record<string, any> }) {
       </div>
 
       {/* Table */}
-      <SessionsTable data={table}  />
+      <SessionsTable data={table}  filters={filters}  />
     </div>
   );
 }

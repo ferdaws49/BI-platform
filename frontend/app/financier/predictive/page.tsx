@@ -1,113 +1,122 @@
 "use client";
-
 import { useState, useEffect } from "react";
-import { Brain, RefreshCw } from "lucide-react";
-
+import { mlApi } from "@/lib/ml-api";
+import { mapPredictResponse } from "@/app/financier/predictive/utils/mlMappers";
+import DashboardLayout from "@/components/layout/financier/DashboardLayout";
 import FiltersBar from "./components/FiltersBar";
 import KPICards from "./components/KPICards";
 import ForecastChart from "./components/ForcastChart";
 import RiskTable from "./components/RiskTable";
 import InsightsSection from "./components/InsightsSection";
 import RecommendationsSection from "./components/RecommendationsSection";
+import { FilterState, Formation, Formateur } from "./types";
+import { revenueApi } from "@/lib/financier-revenue.api";
 
-import {
-  FORMATIONS,
-  FORMATEURS,
-  KPI_DATA,
-  RISK_SESSIONS,
-  INSIGHTS,
-  RECOMMENDATIONS,
-} from "./mockdata";
-import type { FilterState } from "./types";
-import DashboardLayout from "@/components/layout/financier/DashboardLayout";
-
-export default function DashboardBIPage() {
+export default function PredictiveDashboard() {
   const [loading, setLoading] = useState(true);
+  const [caPoints, setCaPoints] = useState([]);
+  const [horizon, setHorizon] = useState<number | null>(null);
+  const [data, setData] = useState<any>(null);
+  
+  const [formations, setFormations] = useState<Formation[]>([]);
+  const [formateurs, setFormateurs] = useState<Formateur[]>([]);
+
+  // Filtres par défaut (1er Janvier de l'année en cours)
   const [filters, setFilters] = useState<FilterState>({
     period: "Mois",
+    dateFrom: `${new Date().getFullYear()}-01-01`,
+    dateTo: new Date().toISOString().split('T')[0],
     formationId: "all",
-    sessionType: "Tout",
     formateurId: "all",
+    sessionType: "Tout",
   });
 
-  // Simulate initial data load
+  // Charger les listes de filtres une fois au début
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 1200);
-    return () => clearTimeout(t);
+    async function loadLists() {
+      try {
+        const [formationsList, formateursList] = await Promise.all([
+          revenueApi.getFormationsList(),
+          revenueApi.getFormateursList()
+        ]);
+        
+        // Conversion explicite en types attendus
+        const mappedFormations = formationsList.map((f: any) => ({
+          id: String(f.id),
+          title: f.title
+        }));
+        
+        const mappedFormateurs = formateursList.map((f: any) => ({
+          id: String(f.id),
+          name: f.name
+        }));
+
+        setFormations(mappedFormations);
+        setFormateurs(mappedFormateurs);
+      } catch (err) {
+        console.error("Erreur lors du chargement des formations/formateurs:", err);
+        setFormations([{ id: "all", title: "Toutes les formations" }]);
+        setFormateurs([{ id: "all", name: "Tous les formateurs" }]);
+      }
+    }
+    loadLists();
   }, []);
 
-  function handleFilterChange(newFilters: FilterState) {
-    setFilters(newFilters);
-    setLoading(true);
-    // Simulate re-fetch
-    setTimeout(() => setLoading(false), 800);
-  }
+  // CHARGEMENT GLOBAL
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        // 1. On récupère les points du graphique (Historique ou Prediction)
+        let resCA;
+        if (horizon === null) {
+          resCA = await mlApi.getCAHistorique(filters);
+        } else {
+          resCA = await mlApi.predictCA(filters, horizon);
+        }
+        
+        // 2. On récupère les risques sessions
+        const resPredict = await mlApi.predictDeficit(filters);
 
-  function handleRefresh() {
-    setLoading(true);
-    setTimeout(() => setLoading(false), 1000);
-  }
+        // 3. On branche tout ensemble
+        const points = resCA.points || [];
+        setCaPoints(points);
+        setData(mapPredictResponse(resPredict, points));
+
+      } catch (err) {
+        console.error("Erreur API:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [filters, horizon]); // <--- TRÈS IMPORTANT : Réagit aux filtres et au bouton 1M/3M
 
   return (
     <DashboardLayout>
-      <div className="p-4 md:p-6 flex flex-col gap-6">
+      <main className="p-8 space-y-8 overflow-y-auto h-screen bg-[#efefea]/30">
+        <h1 className="text-2xl font-bold text-[#2d4a3e]">Analyse Prédictive</h1>
+        
+        <FiltersBar 
+          onFilterChange={setFilters} 
+          formations={formations} 
+          formateurs={formateurs} 
+        />
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10"
-            >
-              <Brain size={22} className="text-primary" />
-            </div>
-            <div>
-              <h1
-                className="text-xl font-bold tracking-tight text-foreground"
-              >
-                Business Intelligence Dashboard
-              </h1>
-              <p className="text-xs text-muted-foreground/70">
-                Prédictions & analyse de risques — Centre de Formation
-              </p>
-            </div>
-          </div>
+        {data && <KPICards data={data.kpi} loading={loading} />}
 
-          <button
-            onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors border border-border bg-card hover:bg-accent/20"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            Actualiser
-          </button>
-        </div>
+        <ForecastChart 
+          data={caPoints} 
+          horizon={horizon as any} 
+          onHorizonChange={setHorizon} 
+          showPrediction={horizon !== null}
+          loading={loading}
+        />
 
-        {/* ── Filters ────────────────────────────────────────────────────── */}
-        <FiltersBar formations={FORMATIONS} formateurs={FORMATEURS} onFilterChange={handleFilterChange} />
-
-        {/* ── KPI Cards ──────────────────────────────────────────────────── */}
-        <KPICards data={KPI_DATA} loading={loading} />
-
-        {/* ── CA Forecast Chart ──────────────────────────────────────────── */}
-        <ForecastChart loading={loading} />
-
-        {/* ── Risk Sessions Table ────────────────────────────────────────── */}
-        <RiskTable data={RISK_SESSIONS} loading={loading} />
-
-        {/* ── Insights ───────────────────────────────────────────────────── */}
-        <InsightsSection insights={INSIGHTS} loading={loading} />
-
-        {/* ── Recommendations ────────────────────────────────────────────── */}
-        <RecommendationsSection recommendations={RECOMMENDATIONS} loading={loading} />
-
-        {/* ── Footer ─────────────────────────────────────────────────────── */}
-        <div
-          className="flex items-center justify-between py-3 border-t text-xs"
-          style={{ borderColor: "rgba(229,234,221,0.7)", color: "#2d4a3e", opacity: 0.4 }}
-        >
-          <span>Dashboard BI — Exercice 2025</span>
-          <span>Dernière mise à jour : {new Date().toLocaleDateString("fr-TN")}</span>
-        </div>
-      </div>
+        {data && <RiskTable data={data.riskSessions} loading={loading} />}
+        {data && <InsightsSection insights={data.insights} loading={loading} />}
+        {data && <RecommendationsSection recommendations={data.recommendations} loading={loading} />}
+      </main>
     </DashboardLayout>
   );
 }

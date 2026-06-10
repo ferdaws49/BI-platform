@@ -375,8 +375,10 @@ private async sumFinanceInRange(start: string, end: string, type: string, format
     const slice = sorted.slice(start, start + limit);
 
     const items: SessionCostTableRowDto[] = slice.map((r) => ({
+      sessionId: r.sessionId, 
       formation: r.formationTitle,
       session: r.sessionTitle,
+      date: r.startDate,     
       formateur: r.instructor || '—',
       coutDirectFormateur: Number(r.coutFormateur.toFixed(2)),
       fraisLogistique: Number(r.coutLogistique.toFixed(2)),
@@ -515,9 +517,16 @@ private async sumFinanceInRange(start: string, end: string, type: string, format
       } else if (dto.formateurNom) {
         // Recherche insensible à la casse (exemple simple)
         formateur = await this.formateurRepo
-          .createQueryBuilder('f')
-          .where('LOWER(f.nom) = LOWER(:nom)', { nom: dto.formateurNom })
-          .getOne();
+  .createQueryBuilder('f')
+  .where(
+    "LOWER(CONCAT(f.prenom, ' ', f.nom)) = LOWER(:fullName)",
+    { fullName: dto.formateurNom.trim() }
+  )
+  .orWhere(
+    "LOWER(CONCAT(f.nom, ' ', f.prenom)) = LOWER(:fullName)",
+    { fullName: dto.formateurNom.trim() }
+  )
+  .getOne();
       }
 
       if (!formateur) {
@@ -558,6 +567,84 @@ private async sumFinanceInRange(start: string, end: string, type: string, format
 
     // 4️⃣ Sauvegarde
     return this.financeRepo.save(finance);
+  }
+
+
+  async exportCostCsv(filter: CostFilterDto): Promise<string> {
+  const metrics = await this.loadSessionMetrics(filter);
+  const rows = this.applyMetricFilters(filter, metrics);
+
+  // ← AJOUT : même calcul de charges fixes que dans getKpi()
+  const { currentStart, currentEnd } = resolveDashboardPeriod(filter);
+  const chargesFixes = await this.sumFinanceInRange(
+    currentStart.toISOString().split('T')[0],
+    currentEnd.toISOString().split('T')[0],
+    'depense_logistique'
+  );
+  const logistiqueVariable = rows.reduce((sum, m) => sum + (m.coutTotal - m.coutFormateur), 0);
+  const chargesFixesSeulement = Math.max(0, chargesFixes - logistiqueVariable);
+
+  return this.generateCostCsv(rows, chargesFixesSeulement);
+}
+
+private generateCostCsv(rows: SessionCostMetrics[], chargesFixes: number): string {
+  const SEP = ';';
+  const lines: string[] = [];
+
+  lines.push('\ufeff');
+
+  lines.push(`RAPPORT COÛTS & RENTABILITÉ${SEP}`);
+  lines.push(`Généré le${SEP}${new Date().toLocaleDateString('fr-FR')}`);
+  lines.push('');
+
+  const totalCoutSessions = rows.reduce((s, r) => s + r.coutTotal, 0);
+  const totalCout = totalCoutSessions + chargesFixes;
+  const totalCA   = rows.reduce((s, r) => s + r.ca, 0);
+  const totalMarge = rows.reduce((s, r) => s + r.marge, 0);
+
+  
+
+  
+  lines.push([
+    'Session', 'Formation', 'Formateur', 'Date', 'Inscrits', 'Capacité',
+    'Coût Formateur (DT)', 'Coût Logistique (DT)', 'Coût Total (DT)',
+    'CA (DT)', 'Marge (DT)', 'Remplissage (%)', 'Statut',
+  ].join(SEP));
+
+  for (const r of rows) {
+    lines.push([
+      this.escapeCsv(r.sessionTitle),
+      this.escapeCsv(r.formationTitle),
+      this.escapeCsv(r.instructor),
+      r.startDate ? new Date(r.startDate).toLocaleDateString('fr-FR') : '',
+      r.inscrits,
+      r.capaciteMax,
+      this.formatCsvNumber(r.coutFormateur),
+      this.formatCsvNumber(r.coutLogistique),
+      this.formatCsvNumber(r.coutTotal),
+      this.formatCsvNumber(r.ca),
+      this.formatCsvNumber(r.marge),
+      this.formatCsvNumber(r.tauxRemplissagePercent),
+      r.rentabilite,
+    ].join(SEP));
+  }
+
+  lines.push('');
+  lines.push(`Document confidentiel${SEP}${rows.length} session(s)`);
+
+  return lines.join('\n');
+}
+
+  private formatCsvNumber(value: number): string {
+    return Number(value).toFixed(2).replace('.', ',');
+  }
+
+  private escapeCsv(value: string): string {
+    if (value == null) return '""';
+    const str = String(value);
+    const needsQuotes = str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r');
+    const escaped = str.replace(/"/g, '""');
+    return needsQuotes ? `"${escaped}"` : escaped;
   }
 
 }

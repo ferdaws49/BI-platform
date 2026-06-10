@@ -1,6 +1,5 @@
 import pandas as pd
 from db import get_connection
-from schemas.ca_schema import CAFilter
 
 """
     data/postgres_loader.py — Connexion PostgreSQL (Supabase) → DataFrames ML
@@ -35,81 +34,91 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_engine():
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    
     """Connexion SQLAlchemy — une engine par requête, fermée après read_sql."""
     if not DATABASE_URL:
+
         raise ValueError(
             "DATABASE_URL manquant. Ajoute-le dans ml-service/.env "
             "(ex. postgresql://user:pass@host:5432/dbname)"
         )
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+    # 2. Correction pour Pgbouncer : supprimer le paramètre qui fait planter psycopg2
+    if "pgbouncer=true" in DATABASE_URL:
+        # On retire pgbouncer=true de l'URL
+        DATABASE_URL = DATABASE_URL.replace("pgbouncer=true", "")
+        # On nettoie les éventuels ?? ou ?& restants
+        DATABASE_URL = DATABASE_URL.replace("?&", "?").replace("&&", "&").rstrip("?").rstrip("&")
+
     return create_engine(DATABASE_URL)
 
 import numpy as np
 import pandas as pd
 from db import get_connection
 
-def load_data():
-    conn = get_connection()
+
+def get_filtered_finance_data(filters=None):
+    if filters is None:
+        filters = {}
     
     query = """
+    WITH sessions_payantes AS (
+        -- Seules les sessions avec au moins un vrai paiement
+        SELECT DISTINCT f.sk_session
+        FROM dw.fact_finance f
+        JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+        WHERE tf.type = 'paiement'
+    ),
+    capacite_net AS (
+        SELECT 
+            EXTRACT(YEAR FROM s.date)::INTEGER as annee,
+            EXTRACT(MONTH FROM s.date)::INTEGER as mois,
+            SUM(s.capacite) as capacite_plan
+        FROM dw.dim_session s
+        WHERE s.date IS NOT NULL
+          AND EXISTS (SELECT 1 FROM sessions_payantes p WHERE p.sk_session = s.sk_session)
+        GROUP BY 1, 2
+    )
     SELECT 
-        EXTRACT(YEAR FROM s.date) as annee,
-        EXTRACT(MONTH FROM s.date) as mois,
-        COUNT(*) as nb_sessions,
-        SUM(COALESCE(fin.montant, 0)) as ca_mensuel
-    FROM public.sessions s
-    LEFT JOIN (
-        SELECT "sessionId", SUM(montant) as montant
-        FROM public.finances
-        WHERE type = 'paiement'
-        GROUP BY "sessionId"
-    ) fin ON fin."sessionId" = s.id
-    WHERE s.statut = 'Completed'
-    GROUP BY EXTRACT(YEAR FROM s.date), EXTRACT(MONTH FROM s.date)
-    ORDER BY annee, mois;
+        t.annee, t.mois,
+        SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca_reel,
+        SUM(CASE WHEN tf.type = 'impaye' THEN f.montant ELSE 0 END) as flux_impayes,
+        COUNT(DISTINCT f.sk_apprenant) as nb_apprenants_uniques,
+        COUNT(DISTINCT f.sk_session) as nb_sessions_plan,
+        MAX(COALESCE(cn.capacite_plan, 0)) as capacite_plan
+    FROM dw.fact_finance f
+    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    LEFT JOIN capacite_net cn ON cn.annee = t.annee AND cn.mois = t.mois
+    WHERE 1=1
     """
     
-    df = pd.read_sql(query, conn)
-    conn.close()
+    params = {}
+    if filters.get('sk_formateur'):
+        query += " AND f.sk_formateur = :sk_formateur"
+        params['sk_formateur'] = filters['sk_formateur']
+    if filters.get('sk_formation'):
+        query += " AND f.sk_formation = :sk_formation"
+        params['sk_formation'] = filters['sk_formation']
+    if filters.get('date_debut') and filters.get('date_fin'):
+        query += " AND t.date_key BETWEEN :date_debut AND :date_fin"
+        params['date_debut'] = filters['date_debut']
+        params['date_fin'] = filters['date_fin']
     
-    for col in ['nb_sessions', 'ca_mensuel']:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    query += " GROUP BY t.annee, t.mois ORDER BY t.annee, t.mois"
     
-    df['mois_cos'] = np.cos(2 * np.pi * df['mois'] / 12)
+   
     
-    
-    return df
-
-def get_features(df):
-    return ['nb_sessions', 'mois_cos']
-
-def get_features(df):
-    """
-    Retourne les features disponibles dans le DataFrame.
-    """
-    # Vérifie quelles colonnes existent réellement
-    available = list(df.columns)
-    
-    features = []
-    
-    # Priorité 1 : nb_sessions (si disponible)
-    if 'nb_sessions' in available:
-        features.append('nb_sessions')
-    
-    # Priorité 2 : revenu_potentiel_total (si disponible)
-    elif 'revenu_potentiel_total' in available:
-        features.append('revenu_potentiel_total')
-    elif 'est_ete' in df.columns:
-        features.append('est_ete')
-    if 'prop_it' in df.columns and len(df) >= 10:
-        features.append('prop_it')
-        
-    
-    # Saisonnalité (toujours présente car créée dans load_data)
-    features.append('mois_cos')
-    
-    return features
-
-
+    engine = get_engine()
+    try:
+        df = pd.read_sql(text(query), engine, params=params)
+        return df
+    except Exception as e:
+        print(f"❌ Erreur SQL : {e}")
+        return None
 
 def load_risk_data(payment_type: str = "impaye") -> pd.DataFrame:
     """Charge les 6 features par apprenant + label abandon.

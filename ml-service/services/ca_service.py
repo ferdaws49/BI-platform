@@ -1,106 +1,115 @@
-import numpy as np
-import joblib
-from pathlib import Path
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from db import get_connection
+# ml-service/services/ca_service.py
 import pandas as pd
+from typing import Optional, List, Dict, Any
+from data.postgres_loader_sessions import get_connection
 
-MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "ca_model_mensuel.pkl"
+def get_historique(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    formation_id: Optional[int] = None,
+    formateur_id: Optional[int] = None,
+    session_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Retourne le CA historique agrégé par mois depuis la DW.
+    """
+    conn = get_connection()
+    
+    # Utilise ta DW pour calculer le CA réalisé par mois
+    query = """
+    SELECT 
+        TO_CHAR(t.date_key, 'YYYY-MM') as month,
+        COALESCE(SUM(f.montant), 0) as ca_net
+    FROM dw.fact_finance f
+    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+    LEFT JOIN dw.dim_formateur fr ON f.sk_formateur = fr.sk_formateur
+    LEFT JOIN dw.dim_session s ON f.sk_session = s.sk_session
+    WHERE tf.type = 'paiement'
+    """
+    
+    params = []
+    
+    if date_from:
+        query += " AND t.date_key >= %s"
+        params.append(date_from)
+    if date_to:
+        query += " AND t.date_key <= %s"
+        params.append(date_to)
+    if formation_id:
+        query += " AND fo.formation_id = %s"
+        params.append(formation_id)
+    if formateur_id:
+        query += " AND fr.formateur_id = %s"
+        params.append(formateur_id)
+    if session_type:
+        query += " AND s.type_session = %s"
+        params.append(session_type)
+    
+    query += " GROUP BY TO_CHAR(t.date_key, 'YYYY-MM') ORDER BY month"
+    
+    df = pd.read_sql(query, conn, params=params)
+    
+    if df.empty:
+        return []
+    
+    points = []
+    for _, row in df.iterrows():
+        points.append({
+            "month": row['month'],
+            "historical": float(row['ca_net']) if row['ca_net'] is not None else 0,
+            "predicted": None,
+        })
+    
+    return points
 
-class CAService:
-    def __init__(self):
-        self.model = None
-        self.scaler = None
-        self.FEATURES = None
-        self.history = None 
-        self._load()
-    
-    def _load(self):
-        if MODEL_PATH.exists():
-            bundle = joblib.load(MODEL_PATH)
-            self.model = bundle["model"]
-            self.scaler = bundle["scaler"]
-            self.FEATURES = bundle["features"]
-            history_data = bundle.get("history", None)
-            self.history = pd.DataFrame(history_data) if history_data else None
-            print("✅ Modèle chargé")
-        else:
-            print("❌ Modèle non trouvé")
-    
-    def _get_nb_sessions(self, year, month):
-        conn = get_connection()
-        query = """
-        SELECT COUNT(*) as nb
-        FROM public.sessions
-        WHERE EXTRACT(YEAR FROM date) = %s
-          AND EXTRACT(MONTH FROM date) = %s
-          AND statut IN ('Active', 'Completed');
-        """
-        df = pd.read_sql(query, conn, params=(year, month))
-        conn.close()
-        return int(df.iloc[0]['nb']) if not df.empty else 0
-    
-    def predict_month(self, year=None, month=None):
-        if self.model is None:
-            return {"error": "Modèle non chargé"}
-        
-        if year is None or month is None:
-            next_d = datetime.now() + relativedelta(months=1)
-            year, month = next_d.year, next_d.month
-        
-        mois_str = f"{year}-{month:02d}"
-        nb_sessions = self._get_nb_sessions(year, month)
-        
-        if nb_sessions == 0:
-            return self._fallback(year, month, mois_str)
-        
-        mois_cos = np.cos(2 * np.pi * month / 12)
-        
-        vec = np.array([[nb_sessions, mois_cos]])
-        vec_s = self.scaler.transform(vec)
-        ca_pred = float(self.model.predict(vec_s)[0])
-        ca_pred = max(0, ca_pred)
-        
-        return {
-            "mois": mois_str,
-            "ca_predit": round(ca_pred, 2),
-            "marge_estimee": round(ca_pred * 0.3, 2),
-            "nb_sessions": nb_sessions,
-            "source": "planning_reel"
-        }
-    
-    def _fallback(self, year, month, mois_str):
-        # Moyenne historique du même mois
-        return {
-            "mois": mois_str,
-            "ca_predit": 12000,  # à adapter
-            "marge_estimee": 3600,
-            "nb_sessions": 0,
-            "source": "estimation_historique",
-            "warning": "Aucune session planifiée"
-        }
-    
-    def predict_period(self, nb_mois=1):
-        if nb_mois not in [1, 3, 6]:
-            return {"error": "Période: 1, 3 ou 6"}
-        
-        previsions = []
-        total_ca = 0
-        
-        start = datetime.now() + relativedelta(months=1)
-        
-        for i in range(nb_mois):
-            current = start + relativedelta(months=i)
-            result = self.predict_month(current.year, current.month)
-            previsions.append(result)
-            total_ca += result.get('ca_predit', 0)
-        
-        return {
-            "periode_mois": nb_mois,
-            "ca_total": round(total_ca, 2),
-            "marge_total": round(total_ca * 0.3, 2),
-            "previsions": previsions
-        }
 
-ca_service = CAService()
+def predict_ca(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    formation_id: Optional[int] = None,
+    formateur_id: Optional[int] = None,
+    session_type: Optional[str] = None,
+    horizon: int = 3,
+) -> List[Dict[str, Any]]:
+    """
+    Retourne l'historique + les prédictions futures.
+    """
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+    
+    # 1. Historique depuis la DW
+    historique = get_historique(
+        date_from=date_from,
+        date_to=date_to,
+        formation_id=formation_id,
+        formateur_id=formateur_id,
+        session_type=session_type,
+    )
+    
+    if not historique:
+        return []
+    
+    # 2. Prédictions (tendance simple)
+    last_point = historique[-1]
+    last_month = datetime.strptime(last_point['month'], '%Y-%m')
+    
+    # Calcule la moyenne des 3 derniers mois
+    recent_values = [p['historical'] for p in historique[-3:] if p['historical'] is not None]
+    avg_ca = sum(recent_values) / len(recent_values) if recent_values else 0
+    
+    # Génère les prédictions
+    predictions = historique.copy()
+    
+    for i in range(1, horizon + 1):
+        future_month = last_month + relativedelta(months=i)
+        month_str = future_month.strftime('%Y-%m')
+        
+        predictions.append({
+            "month": month_str,
+            "historical": None,
+            "predicted": round(avg_ca, 2),
+        })
+    
+    return predictions

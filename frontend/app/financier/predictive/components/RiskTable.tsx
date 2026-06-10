@@ -429,49 +429,57 @@ export default function RiskTable({ data, loading = false }: RiskTableProps) {
         </table>
       </div>
 
-      {/* ── Pagination ───────────────────────────────────────────────────── */}
-      {totalPages > 1 && (
-        <div
-          className="flex items-center justify-between px-5 py-3 border-t"
-          style={{ borderColor: "#e5eadd" }}
-        >
-          <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.45 }}>
-            Page {page} sur {totalPages}
-          </p>
-          <div className="flex gap-1">
+{totalPages > 1 && (
+  <div
+    className="flex items-center justify-end gap-6 px-5 py-3 border-t" // justify-end déplace tout à droite
+    style={{ borderColor: "#e5eadd" }}
+  >
+    {/* Texte indicateur de page */}
+    <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.45 }}>
+      Page {page} sur {totalPages}
+    </p>
+
+    {/* Boutons de navigation */}
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => setPage((p) => Math.max(1, p - 1))}
+        disabled={page === 1}
+        className="p-1.5 rounded-lg disabled:opacity-20 hover:bg-gray-100 transition-all text-[#2d4a3e]"
+      >
+        <ChevronLeft size={16} />
+      </button>
+
+      {/* Logique des numéros < 1 2 3 ... 10 > */}
+      {Array.from({ length: totalPages }, (_, i) => i + 1)
+        .filter((p) => p === 1 || p === totalPages || (p >= page - 1 && p <= page + 1))
+        .map((p, i, arr) => (
+          <div key={p} className="flex items-center">
+            {i > 0 && arr[i - 1] !== p - 1 && (
+              <span className="px-1 text-gray-400 text-xs">...</span>
+            )}
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-1.5 rounded-lg disabled:opacity-30 hover:bg-white transition-all"
-              style={{ color: "#2d4a3e" }}
+              onClick={() => setPage(p)}
+              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                page === p
+                  ? "bg-[#1a7149] text-white shadow-sm"
+                  : "text-[#2d4a3e] hover:bg-gray-100 border border-transparent"
+              }`}
             >
-              <ChevronLeft size={16} />
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => (
-              <button
-                key={i}
-                onClick={() => setPage(i + 1)}
-                className="w-7 h-7 rounded-lg text-xs font-medium transition-all"
-                style={
-                  page === i + 1
-                    ? { background: "#1a7149", color: "#fff" }
-                    : { color: "#2d4a3e" }
-                }
-              >
-                {i + 1}
-              </button>
-            ))}
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-1.5 rounded-lg disabled:opacity-30 hover:bg-white transition-all"
-              style={{ color: "#2d4a3e" }}
-            >
-              <ChevronRight size={16} />
+              {p}
             </button>
           </div>
-        </div>
-      )}
+        ))}
+
+      <button
+        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+        disabled={page === totalPages}
+        className="p-1.5 rounded-lg disabled:opacity-20 hover:bg-gray-100 transition-all text-[#2d4a3e]"
+      >
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  </div>
+)}
     </div>
   );
 }

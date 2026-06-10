@@ -137,7 +137,6 @@ export class AuthService {
       );
     }
 
-
     /** tawa ken mal9inech email */
     /**bech naamlou tachfir lel password elli 3tah */
     /** salt y9awwi akther fi tachfir*/
@@ -202,7 +201,7 @@ export class AuthService {
            const randomString = randomBytes(32).toString('hex');
     
            // 2. Calculer l'expiration (Maintenant + 1 heure en millisecondes)
-          const expirationTime = Date.now() + 3600000; // 3600000 ms = 1h
+          const expirationTime = Date.now() + 360000; // 3600000 ms = 1h
 
           // 3. On stocke les deux dans la même colonne, séparés par un point
           user.resetToken = `${randomString}.${expirationTime}`;

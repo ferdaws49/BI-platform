@@ -255,10 +255,13 @@ def run_seed():
 
                 # ── Inscrits de cette session ───────────────────────────────
                 # Distribution réaliste : sessions quasi-vides à complètes
+                #--------------------# Le code prend le vrai nombre d'inscrits saisonnier calculé selon la capacité-----------------
+                #-----------num_stud   = min(nb_inscrits, len(available_apps))------------------------------hedha ki nheb n9awi el prediction(R²) lezem nbadelha
                 nb_choices = [2, 4, 6, 8, 10, 12]
                 nb_weights = [0.10, 0.20, 0.30, 0.25, 0.10, 0.05]
                 num_stud   = random.choices(nb_choices, nb_weights)[0]
                 num_stud   = min(num_stud, len(available_apps))
+
 
                 selected_apps = random.sample(available_apps, num_stud)
 

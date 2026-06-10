@@ -6,7 +6,6 @@ import { UsersService } from "src/users/users.service";
 import { InjectRepository } from "@nestjs/typeorm";
 import { UpdateProfileDto } from "./dtos/update-profile.dto";
 import * as bcrypt from 'bcryptjs' ;
-import { JWTPayloadType } from "src/utils/types";
 import { User, UserRole } from "src/users/users.entity";
 import { Apprenant } from "src/apprenants/entities/apprenant.entity";
 import { Repository } from "typeorm";

@@ -67,6 +67,14 @@ export class SessionApprenantService{
     throw new NotFoundException("Session introuvable");
   }
 
+  if (session.statut === SessionStatut.TERMINE ) {
+    throw new BadRequestException("Impossible de participer : cette session est completé.");
+  }
+
+  if (session.statut === SessionStatut.ANNULE ) {
+    throw new BadRequestException("Impossible de participer : cette session a été annulée par l'organisateur.");
+  }
+
   // 3. Vérifier doublon
   const isAlreadyIn = (session.apprenants || []).find(
     (a) => Number(a.id) === Number(apprenant.id)
@@ -81,6 +89,7 @@ export class SessionApprenantService{
   if (capacite > 0 && count >= capacite) {
     throw new BadRequestException('Session complète');
   }
+
 
   // ✅ FIX : Insertion manuelle contrôlée dans la table de jointure
   // session.id = UUID (string)  → colonne sessionId

@@ -15,7 +15,7 @@ export default function DashboardLayout({
       <div className="flex-1 flex flex-col min-w-0">
         <Header
           title="Pilotage Financier"
-          subtitle="Exercice 2025 · Mise à jour il y a 5 min"
+          subtitle="Exercice 2026"
           showFilters={false}
         />
 

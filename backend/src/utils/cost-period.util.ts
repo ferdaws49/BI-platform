@@ -53,9 +53,10 @@ export function resolveCostPeriod(filter: CostFilterDto): {
   if (filter.periodPreset === CostPeriodPreset.YEAR) {
     return { rangeStart: startOfUtcYear(now), rangeEnd: endOfUtcYear(now) };
   }
-  const rangeEnd = filter.endDate ? new Date(filter.endDate) : now;
-  const rangeStart = filter.startDate
-    ? new Date(filter.startDate)
-    :  new Date(Date.UTC(2025, 4, 25)); // défaut à 2025 pour éviter de remonter trop loin dans le passé
-  return { rangeStart, rangeEnd };
+
+  // 3. fallback SAFE (PAS 2025 !)
+  return {
+    rangeStart: startOfUtcYear(now),
+    rangeEnd: now,
+  };
 }

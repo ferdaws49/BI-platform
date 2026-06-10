@@ -82,7 +82,7 @@ export class ApprennatDashboardService {
       myTrainings: sessionApprenant.slice(0, 3).map(s => ({ // Ajouté
         title: s.formation?.titre,
         teacher: s.formateur ? `${s.formateur.nom} ${s.formateur.prenom}`: 'Non assigné',
-        status: s.statut,
+        status: s.formation?.statut,
       })),
       myRegistrations: sessionApprenant.slice(0, 3).map(s => ({ // Ajouté
         title: s.formation?.titre,

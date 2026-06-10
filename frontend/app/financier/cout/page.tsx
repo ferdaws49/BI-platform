@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 
 import FiltersBar, { type FiltersState } from "./components/filters/FiltersBar";
 import KPISection from "./components/kpis/KPISection";
 import DetailTable from "./components/table/DetailTable";
 import DashboardLayout from "@/components/layout/financier/DashboardLayout";
-import { AddCostModal } from "./components/modals/AddCostModal"; // ✅ AJOUT
+import { AddCostModal } from "./components/modals/AddCostModal";
 
 import { costApi } from "@/lib/financier-cost.api";
 import { revenueApi } from "@/lib/financier-revenue.api";
@@ -25,6 +25,9 @@ import type {
   CostTrendPointDto,
   SessionCostTableRowDto,
 } from "./types";
+
+
+
 
 const ChartsSection = dynamic(
   () => import("./components/charts/ChartsSection"),
@@ -77,7 +80,7 @@ function mapFilters(f: FiltersState): Record<string, unknown> {
   if (f.niveauCout !== "all") mapped.niveauCout = f.niveauCout;
 
   mapped.page = Number(f.page || 1);
-  mapped.limit = Number(10);
+  
   mapped.sortBy = "cout" as any;
   mapped.sortOrder = (f.sortOrder || "desc").toUpperCase();
 
@@ -137,10 +140,21 @@ export default function CoutsRentabilitePage() {
   const [formateursList, setFormateursList] = useState<{ id: number; nom: string }[]>([]);
   // ✅ AJOUT — sessions pour le dropdown du modal
   const [sessionsList, setSessionsList] = useState<{ id: string; title: string }[]>([]);
+  const validSessions = useMemo(() => {
+    return sessionsList.filter(
+      (s) => s.id && s.id !== 'undefined' && s.id !== 'null' && s.id.trim() !== ''
+    );
+  }, [sessionsList]);
 
   // ✅ AJOUT — état modal & toast
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [costModalKey, setCostModalKey] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+
+
+  
+
 
   // ── Chargement initial (dropdowns) ─────────────────────────
   useEffect(() => {
@@ -167,6 +181,9 @@ export default function CoutsRentabilitePage() {
             res.items.map((r: SessionCostTableRowDto) => ({
               id: String(r.sessionId),
               title: r.session || `Session ${r.sessionId}`,
+              formation: r.formation,      // ← AJOUT
+          formateur: r.formateur,      // ← AJOUT
+          date: r.date || "",
             }))
           );
         }
@@ -244,7 +261,7 @@ export default function CoutsRentabilitePage() {
       .catch(console.error);
 
     costApi
-      .getSessions(mapped)
+      .getSessions({...mapped, limit: 5})
       .then((res) => {
         if (!res?.items) return;
         const ESTIMATED_CAPACITY = 15;
@@ -314,6 +331,31 @@ export default function CoutsRentabilitePage() {
     }
   }
 
+  const handleExportAll = useCallback(async () => {
+  try {
+    setIsExporting(true);
+    const blob = await costApi.export(filters);
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rapport-couts-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Export error:", err);
+  } finally {
+    setIsExporting(false);
+  }
+}, [filters]);
+
+  
+
+
+  
+
   return (
     <DashboardLayout>
       <div className="p-4 md:p-6 space-y-6">
@@ -338,17 +380,20 @@ export default function CoutsRentabilitePage() {
         />
 
         {/* ✅ AJOUT — Barre d'action "Ajouter coût" (même style que Paiements) */}
-        <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl border border-border bg-card shadow-sm">
+        
           <span className="text-xs font-medium text-muted-foreground">
-            Actions rapides :
+          
           </span>
           <button
-            onClick={() => setCostModalOpen(true)}
-            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-primary-foreground transition-all hover:bg-accent"
-          >
-            <span>+</span> Ajouter coût
-          </button>
-        </div>
+  onClick={() => {
+    setCostModalKey(k => k + 1);   // ← FORCE la création d'un nouveau composant
+    setCostModalOpen(true);
+  }}
+  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-primary text-primary-foreground transition-all hover:bg-accent"
+>
+  <span>+</span> Ajouter coût
+</button>
+        
 
         {/* ── KPIs ── */}
         <section>
@@ -371,6 +416,7 @@ export default function CoutsRentabilitePage() {
             rows={filteredRows}
             pagination={pagination}
             onPageChange={handlePageChange}
+            onExport={handleExportAll}
           />
         </section>
 
@@ -386,13 +432,16 @@ export default function CoutsRentabilitePage() {
         )}
 
         {/* ✅ AJOUT — Modal */}
-        <AddCostModal
-          open={costModalOpen}
-          onClose={() => setCostModalOpen(false)}
-          onSave={handleAddCost}
-          sessions={sessionsList}
-          formateurs={formateursList}
-        />
+        {costModalOpen && (
+  <AddCostModal
+    key={costModalKey}              // ← OBLIGATOIRE : force React à tout recréer
+    open={costModalOpen}
+    onClose={() => setCostModalOpen(false)}
+    onSave={handleAddCost}
+    sessions={validSessions}
+    formateurs={formateursList}
+  />
+)}
       </div>
     </DashboardLayout>
   );

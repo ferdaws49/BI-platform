@@ -39,7 +39,6 @@ export default function FinancialDashboardPage() {
 
 
   
-
   const loadAllData = async () => {
     setLoading(true);
     try {
@@ -80,7 +79,12 @@ export default function FinancialDashboardPage() {
     console.log("FILTERS =", filters);
     loadAllData();
   }, [filters]); // Re-charge les données dès qu'un filtre change
+   
+  const exerciceYear = filters?.startDate
+  ? new Date(filters.startDate).getFullYear()
+  : new Date().getFullYear();
 
+const exerciceLabel = `Exercice ${exerciceYear}`;
   
 
   return (
@@ -124,7 +128,7 @@ export default function FinancialDashboardPage() {
         {/* Footer */}
         <footer className="text-center pb-2">
           <p className="text-xs" style={{ color: "#2d4a3e", opacity: 0.3 }}>
-            CentreForm BI · Pilotage Financier · Données de démonstration — Exercice 2025
+            CentreForm BI · Pilotage Financier · Données de démonstration — {exerciceLabel}
           </p>
         </footer>
       </div>

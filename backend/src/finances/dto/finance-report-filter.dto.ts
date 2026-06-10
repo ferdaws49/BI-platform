@@ -12,11 +12,11 @@ export enum FinanceReportPeriod {
 export class FinanceReportFilterDto {
   @ApiPropertyOptional({
     enum: FinanceReportPeriod,
-    default: FinanceReportPeriod.CURRENT_MONTH,
+    default: FinanceReportPeriod.CURRENT_YEAR,
   })
   @IsOptional()
   @IsEnum(FinanceReportPeriod)
-  period?: FinanceReportPeriod = FinanceReportPeriod.CURRENT_MONTH;
+  period?: FinanceReportPeriod = FinanceReportPeriod.CURRENT_YEAR;
 
   @ApiPropertyOptional({ example: '2026-01-01' })
   @IsOptional()

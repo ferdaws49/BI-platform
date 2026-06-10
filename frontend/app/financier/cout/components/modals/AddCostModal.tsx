@@ -5,8 +5,10 @@ import { useState, useEffect, useRef, useMemo } from "react";
 interface SessionOption {
   id: string;
   title: string;
+  formation?: string;   // ← AJOUT
+  formateur?: string;   // ← AJOUT
+  date?: string;        // ← AJOUT
 }
-
 interface AddCostModalProps {
   open: boolean;
   onClose: () => void;
@@ -29,9 +31,13 @@ export function AddCostModal({
   sessions,
   formateurs,
 }: AddCostModalProps) {
+  if (!open) return null;
+
+  // ✅ State simple — suffisant car key={costModalKey} recrée le composant à chaque fois
   const [type, setType] = useState<"depense_formateur" | "depense_logistique">(
     "depense_formateur"
   );
+
   const [searchSession, setSearchSession] = useState("");
   const [selectedSession, setSelectedSession] = useState<SessionOption | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -44,20 +50,11 @@ export function AddCostModal({
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Reset quand on ouvre
-  useEffect(() => {
-    if (!open) return;
-    setType("depense_formateur");
-    setSearchSession("");
-    setSelectedSession(null);
-    setShowDropdown(false);
-    setMontant("");
-    setFormateurId("");
-    setFormateurNom("");
-    setDescription("");
-    setError(null);
-    setLoading(false);
-  }, [open]);
+
+
+  
+
+  //
 
   // Fermer dropdown si clic extérieur
   useEffect(() => {
@@ -73,10 +70,21 @@ export function AddCostModal({
 
   // Filtrage dynamique : commence par le terme tapé
   const filteredSessions = useMemo(() => {
-    if (!searchSession.trim()) return sessions;
-    const q = searchSession.toLowerCase().trim();
-    return sessions.filter((s) => s.title.toLowerCase().startsWith(q));
-  }, [searchSession, sessions]);
+  if (!searchSession.trim()) return sessions;
+  const q = searchSession.toLowerCase().trim();
+  return sessions.filter((s) => {
+    const haystack = [
+      s.title,
+      s.formation,
+      s.formateur,
+      s.date,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(q);  // ← includes au lieu de startsWith
+  });
+}, [searchSession, sessions]);
 
   const selectSession = (session: SessionOption) => {
     setSelectedSession(session);
@@ -95,27 +103,36 @@ export function AddCostModal({
     setError(null);
 
     const sessionId = selectedSession?.id;
-    if (!sessionId || !montant || Number(montant) <= 0) {
-      setError("Veuillez choisir une session et saisir un montant valide.");
+    if (
+      !sessionId ||
+      sessionId === "undefined" ||
+      sessionId === "null" ||
+      sessionId.trim() === ""
+    ) {
+      setError("Veuillez sélectionner une session valide dans la liste.");
       return;
     }
 
-    if (type === "depense_formateur") {
-      if (!formateurId && !formateurNom.trim()) {
-        setError("Veuillez sélectionner ou saisir un formateur.");
-        return;
-      }
-    } else {
-      if (!description.trim()) {
-        setError("Veuillez saisir une description pour le coût logistique.");
-        return;
-      }
+    if (!montant || Number(montant) <= 0) {
+      setError("Veuillez saisir un montant valide.");
+      return;
+    }
+
+    // ✅ VALIDATION CORRIGÉE : deux if séparés, pas de else
+    if (type === "depense_formateur" && !formateurId) {
+      setError("Veuillez sélectionner un formateur.");
+      return;
+    }
+
+    if (type === "depense_logistique" && !description.trim()) {
+      setError("Veuillez saisir une description pour le coût logistique.");
+      return;
     }
 
     setLoading(true);
     try {
       await onSave({
-        type,
+        type, // ← utilise le state, pas une ref
         sessionId,
         montant: parseFloat(montant),
         ...(type === "depense_formateur"
@@ -129,7 +146,7 @@ export function AddCostModal({
           : {}),
       });
     } catch (e: any) {
-          setError(e.message || "Une erreur est survenue.");
+      setError(e.message || "Une erreur est survenue.");
     } finally {
       setLoading(false);
     }
@@ -162,10 +179,8 @@ export function AddCostModal({
               Type de coût <span style={{ color: "#DC2626" }}>*</span>
             </label>
             <select
-              value={type}
-              onChange={(e) =>
-                setType(e.target.value as "depense_formateur" | "depense_logistique")
-              }
+    value={type}
+    onChange={(e) => setType(e.target.value as "depense_formateur" | "depense_logistique")}
               className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
               style={{ borderColor: "#e5eadd", color: "#2d4a3e", background: "#fff" }}
             >
@@ -211,24 +226,22 @@ export function AddCostModal({
                   </div>
                 ) : (
                   filteredSessions.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => selectSession(s)}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[rgba(26,113,73,0.06)]"
-                    >
-                      <span
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold"
-                        style={{
-                          background: "rgba(26,113,73,0.12)",
-                          color: "#1a7149",
-                        }}
-                      >
-                        {s.title.charAt(0).toUpperCase()}
-                      </span>
-                      <span style={{ color: "#2d4a3e" }}>{s.title}</span>
-                    </button>
-                  ))
+  <button
+    key={s.id}
+    type="button"
+    onClick={() => selectSession(s)}
+    className="flex w-full flex-col px-3 py-2.5 text-left text-sm transition-colors hover:bg-[rgba(26,113,73,0.06)]"
+  >
+    <span className="font-medium" style={{ color: "#2d4a3e" }}>
+      {s.title}
+    </span>
+    {(s.formation || s.formateur || s.date) && (
+      <span className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.5 }}>
+        {[s.formation, s.formateur, s.date].filter(Boolean).join(" • ")}
+      </span>
+    )}
+  </button>
+))
                 )}
               </div>
             )}

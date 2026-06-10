@@ -111,8 +111,9 @@ export default function LoginPage() {
       router.push("/apprenant");
     }
   };
+  
 
-  return (
+   return (
     <div className=" w-screen h-screen flex overflow-hidden bg-secondary ">
       {/* LEFT */}
       <div className="w-full md:w-1/2 flex items-center justify-center h-full">

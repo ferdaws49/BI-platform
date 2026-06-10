@@ -251,6 +251,8 @@ private async sumFactureTotal(
 
   async getRevenueEvolutionByFormation(filter: RevenueFilterDto): Promise<RevenueEvolutionMultiLineDto> {
     const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
+        console.log("DEBUG DATES:", { currentStart, currentEnd });
+
     const topN = filter.topFormations ?? 5;
 
     const topIds = await this.getTopFormationIdsByRevenue(currentStart, currentEnd, topN);
@@ -275,6 +277,8 @@ private async sumFactureTotal(
     `, [currentStart, currentEnd, topIds]);
 
     const months = this.enumerateMonths(currentStart, currentEnd);
+        console.log("DEBUG MOIS GENERES:", months);
+
     const titles = await this.loadFormationTitles(topIds);
 
     const series = topIds.map((id) => {
@@ -407,6 +411,9 @@ private async sumFactureTotal(
   async getBubbleChart(filter: RevenueFilterDto): Promise<BubbleChartPointDto[]> {
   const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
   const metric = filter.bubbleMetric ?? BubbleMetric.MARGIN;
+  
+  // 1. Définir la limite (par défaut 5 si non précisé dans le DTO)
+  const limit = filter.topFormations ?? 5;
 
   const rows = await this.dataSource.query(`
     SELECT 
@@ -420,10 +427,14 @@ private async sumFactureTotal(
     LEFT JOIN dw.fact_finance f ON f.sk_formation = fo.sk_formation
     LEFT JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps AND t.date_key BETWEEN $1 AND $2
     LEFT JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-    LEFT JOIN dw.dim_session se ON f.sk_session = se.sk_session   -- ← VIA fact_finance !
+    LEFT JOIN dw.dim_session se ON f.sk_session = se.sk_session
     WHERE fo.formation_id != -1
     GROUP BY fo.formation_id, fo.titre
-  `, [currentStart, currentEnd]);
+    -- 2. On trie par revenu décroissant pour avoir les plus importantes
+    ORDER BY revenue DESC 
+    -- 3. On limite le nombre de bulles
+    LIMIT $3
+  `, [currentStart, currentEnd, limit]); // Ajout de la limite en paramètre
 
   return rows.map((row: any): BubbleChartPointDto => {
     const revenue = Number(parseFloat(row.revenue || 0).toFixed(2));
@@ -431,6 +442,8 @@ private async sumFactureTotal(
     const avgPrice = Number(parseFloat(row.avgprice || 0).toFixed(2));
     const inscriptions = parseInt(row.inscriptions) || 0;
     const margin = revenue - costs;
+    
+    // Détermination de la taille de la bulle selon la métrique choisie
     const bubbleSize = metric === BubbleMetric.PRICE ? avgPrice : margin;
 
     return {
@@ -441,9 +454,9 @@ private async sumFactureTotal(
       bubbleSize: Number(bubbleSize.toFixed(2)),
       bubbleMetric: metric === BubbleMetric.PRICE ? 'price' : 'margin',
     };
-  }).sort((a: any, b: any) => b.revenue - a.revenue);
+  });
+  // Note: Le .sort() final en TypeScript n'est plus strictement nécessaire car le SQL s'en charge.
 }
-
   // ========== SESSIONS REVENUE TABLE ==========
 
   async getSessionsRevenueTable(filter: RevenueFilterDto): Promise<SessionRevenueTableResponseDto> {
@@ -463,31 +476,25 @@ private async sumFactureTotal(
 
   const raw = await this.dataSource.query(`
     WITH cur_rev AS (
-      SELECT 
-        f.sk_session,
-        COUNT(DISTINCT f.sk_apprenant) as inscrits,
-        SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+      SELECT f.sk_session, COUNT(DISTINCT f.sk_apprenant) as inscrits,
+             SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
+      FROM dw.fact_finance f 
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
       JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      WHERE t.date_key BETWEEN $1 AND $2
+      WHERE t.date_key BETWEEN $1 AND $2 
       GROUP BY f.sk_session
     ),
     prev_rev AS (
-      SELECT 
-        f.sk_session,
-        SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+      SELECT f.sk_session, SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
+      FROM dw.fact_finance f 
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
       JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      WHERE t.date_key BETWEEN $3 AND $4
+      WHERE t.date_key BETWEEN $3 AND $4 
       GROUP BY f.sk_session
     ),
     session_info AS (
-      SELECT DISTINCT ON (f.sk_session)
-        f.sk_session,
-        fo.titre as formation_title
-      FROM dw.fact_finance f
+      SELECT DISTINCT ON (f.sk_session) f.sk_session, fo.titre as formation_title
+      FROM dw.fact_finance f 
       JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
       ORDER BY f.sk_session, f.id_fact_finance
     )
@@ -512,13 +519,20 @@ private async sumFactureTotal(
   const items: SessionRevenueTableRowDto[] = raw.map((r: any) => {
     const current = parseFloat(r.caEncaisse) || 0;
     const previous = parseFloat(r.caEncaissePrev) || 0;
+    
     let percent = 0;
-    if (previous > 0) percent = ((current - previous) / previous) * 100;
-    else if (current > 0) percent = 100;
-
     let trendColor: 'green' | 'red' | 'neutral' = 'neutral';
-    if (percent > 0) trendColor = 'green';
-    else if (percent < 0) trendColor = 'red';
+
+    if (previous > 0) {
+      percent = ((current - previous) / previous) * 100;
+      trendColor = percent > 0 ? 'green' : (percent < 0 ? 'red' : 'neutral');
+    } else if (previous === 0 && current > 0) {
+      percent = 100;
+      trendColor = 'green';
+    } else if (current === 0 && previous > 0) {
+      percent = -100;
+      trendColor = 'red';
+    }
 
     return {
       sessionId: r.sessionId,
@@ -541,134 +555,10 @@ private async sumFactureTotal(
     total: items.length,
     page: 1,
     limit: items.length,
-    totalPages: 1,
+    totalPages: 1, // pagination gérée 100 % côté frontend
   };
 }
-  private async buildSessionRevenueRows(
-  filter: RevenueFilterDto,
-  curStart: string,
-  curEnd: string,
-  prevStart: string,
-  prevEnd: string,
-): Promise<SessionRevenueTableRowDto[]> {
-  const params: any[] = [curStart, curEnd, prevStart, prevEnd];
-  let sessionFilter = '';
-  let formationFilter = '';
-
-  if (filter.sessionId) {
-    params.push(filter.sessionId);
-    sessionFilter = `AND ds.session_id = $${params.length}`;
-  }
-
-  if (filter.formationId) {
-    params.push(filter.formationId);
-    formationFilter = `AND fo.formation_id = $${params.length}`;
-  }
-
-  const raw = await this.dataSource.query(`
-    WITH cur_rev AS (
-      SELECT 
-        f.sk_session,
-        COUNT(DISTINCT f.sk_apprenant) as inscrits,
-        SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      WHERE t.date_key BETWEEN $1 AND $2
-      GROUP BY f.sk_session
-    ),
-    prev_rev AS (
-      SELECT 
-        f.sk_session,
-        SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      WHERE t.date_key BETWEEN $3 AND $4
-      GROUP BY f.sk_session
-    ),
-    session_info AS (
-      SELECT DISTINCT ON (f.sk_session)
-        f.sk_session,
-        fo.titre as formation_title,
-        fo.formation_id
-      FROM dw.fact_finance f
-      JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
-      ORDER BY f.sk_session, f.id_fact_finance
-    )
-    SELECT 
-      ds.session_id as "sessionId",
-      ds.type_session as "sessionTitle",
-      MIN(dt.date_key) as "sessionDate",
-      ds.capacite as "capacite",
-      si.formation_title as "formationTitle",
-      ds.prix_session as "sessionPrix",
-      COALESCE(cr.inscrits, 0) as "inscrits",
-      COALESCE(cr.ca, 0) as "caEncaisse",
-      COALESCE(pr.ca, 0) as "caEncaissePrev"
-    FROM dw.dim_session ds
-    LEFT JOIN dw.fact_finance f ON f.sk_session = ds.sk_session
-    LEFT JOIN dw.dim_temps dt ON f.sk_temps = dt.sk_temps
-    LEFT JOIN cur_rev cr ON cr.sk_session = ds.sk_session
-    LEFT JOIN prev_rev pr ON pr.sk_session = ds.sk_session
-    LEFT JOIN session_info si ON si.sk_session = ds.sk_session
-    WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
-      ${sessionFilter}
-      ${formationFilter}
-    GROUP BY ds.session_id, ds.type_session, ds.capacite, si.formation_title, ds.prix_session, cr.inscrits, cr.ca, pr.ca
-  `, params);
-
-  return raw.map((r: any): SessionRevenueTableRowDto => {
-    const current = parseFloat(r.caEncaisse) || 0;
-    const previous = parseFloat(r.caEncaissePrev) || 0;
-    const prixFinal = parseFloat(r.sessionPrix) || 0;
-    const inscrits = parseInt(r.inscrits) || 0;
-
-    let percent = 0;
-    if (previous > 0) percent = ((current - previous) / previous) * 100;
-    else if (current > 0) percent = 100;
-
-    let trendColor: 'green' | 'red' | 'neutral' = 'neutral';
-    if (percent > 0) trendColor = 'green';
-    else if (percent < 0) trendColor = 'red';
-
-    return {
-      sessionId: r.sessionId,
-      session: r.sessionTitle || r.formationTitle || "—",
-      formation: r.formationTitle || "—",
-      date: r.sessionDate,
-      inscrits,
-      prix: prixFinal,
-      caEncaisse: Number(current.toFixed(2)),
-      variation: {
-        variationPercent: Number(percent.toFixed(2)),
-        color: trendColor,
-      }
-    };
-  });
-}
-
-  private sortSessionRevenueRows(rows: SessionRevenueTableRowDto[], sortBy: PerformanceSortBy, sortOrder: SortOrder): SessionRevenueTableRowDto[] {
-    return rows.sort((a, b) => {
-      let valA: any;
-      let valB: any;
-
-      switch (sortBy) {
-        case PerformanceSortBy.DATE: valA = new Date(a.date).getTime(); valB = new Date(b.date).getTime(); break;
-        case PerformanceSortBy.SESSION: valA = a.session; valB = b.session; break;
-        case PerformanceSortBy.FORMATION: valA = a.formation; valB = b.formation; break;
-        case PerformanceSortBy.INSCRITS: valA = a.inscrits; valB = b.inscrits; break;
-        case PerformanceSortBy.PRIX: valA = a.prix; valB = b.prix; break;
-        case PerformanceSortBy.CA_ENCAISSE: valA = a.caEncaisse; valB = b.caEncaisse; break;
-        default: valA = a.caEncaisse; valB = b.caEncaisse;
-      }
-
-      if (typeof valA === 'string') {
-        return sortOrder === SortOrder.ASC ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return sortOrder === SortOrder.ASC ? valA - valB : valB - valA;
-    });
-  }
+  
 
   // ========== EXPORT CSV ==========
 
@@ -677,47 +567,71 @@ private async sumFactureTotal(
 
   const rows = await this.dataSource.query(`
     WITH cur_rev AS (
-      SELECT f.sk_session, COUNT(DISTINCT f.sk_apprenant) as inscrits, SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
-      FROM dw.fact_finance f JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      WHERE t.date_key BETWEEN $1 AND $2 GROUP BY f.sk_session
+      SELECT f.sk_session, 
+             COUNT(DISTINCT f.sk_apprenant) as inscrits, 
+             SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
+      FROM dw.fact_finance f 
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      WHERE t.date_key BETWEEN $1 AND $2 
+      GROUP BY f.sk_session
     ),
     prev_rev AS (
-      SELECT f.sk_session, SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
-      FROM dw.fact_finance f JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      WHERE t.date_key BETWEEN $3 AND $4 GROUP BY f.sk_session
+      SELECT f.sk_session, 
+             SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
+      FROM dw.fact_finance f 
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      WHERE t.date_key BETWEEN $3 AND $4 
+      GROUP BY f.sk_session
     ),
     session_info AS (
       SELECT DISTINCT ON (f.sk_session) f.sk_session, fo.titre as formation_title
-      FROM dw.fact_finance f JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation ORDER BY f.sk_session, f.id_fact_finance
+      FROM dw.fact_finance f 
+      JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation 
+      ORDER BY f.sk_session, f.id_fact_finance
     )
-    SELECT ds.session_id, ds.type_session as session, COALESCE(si.formation_title,'Non définie') as formation,
-      MIN(dt.date_key) as date, ds.capacite, COALESCE(cr.inscrits,0) as inscrits, COALESCE(ds.prix_session,0) as prix,
-      COALESCE(cr.ca,0) as caEncaisse, COALESCE(pr.ca,0) as caEncaissePrev
+    SELECT 
+      ds.session_id, 
+      ds.type_session as session, 
+      COALESCE(si.formation_title,'Non définie') as formation,
+      ds.date as date,                    -- ✅ CORRECTION : utilise ds.date directement
+      ds.capacite, 
+      COALESCE(cr.inscrits,0) as inscrits, 
+      COALESCE(ds.prix_session,0) as prix,
+      COALESCE(cr.ca,0) as caEncaisse, 
+      COALESCE(pr.ca,0) as caEncaissePrev
     FROM dw.dim_session ds
-    LEFT JOIN dw.fact_finance f ON f.sk_session = ds.sk_session
-    LEFT JOIN dw.dim_temps dt ON f.sk_temps = dt.sk_temps
     LEFT JOIN cur_rev cr ON cr.sk_session = ds.sk_session
     LEFT JOIN prev_rev pr ON pr.sk_session = ds.sk_session
     LEFT JOIN session_info si ON si.sk_session = ds.sk_session
     WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
-    GROUP BY ds.session_id, ds.type_session, ds.capacite, ds.prix_session, si.formation_title, cr.inscrits, cr.ca, pr.ca
     ORDER BY COALESCE(cr.ca,0) DESC
   `, [currentStart, currentEnd, previousStart, previousEnd]);
 
   const header = ['Session', 'Formation', 'Date', 'Inscrits', 'Prix (DT)', 'CA Encaisse (DT)', 'Variation (%)', 'Statut Tendance'];
+  
   const lines = rows.map((r: any) => {
     const current = parseFloat(r.caEncaisse) || 0;
     const previous = parseFloat(r.caEncaissePrev) || 0;
     let percent = 0;
+    
     if (previous > 0) percent = ((current - previous) / previous) * 100;
     else if (current > 0) percent = 100;
+    
     let color = 'NEUTRAL';
     if (percent > 0) color = 'GREEN';
     else if (percent < 0) color = 'RED';
+
+    // ✅ CORRECTION : formatage de la date en français
+    const dateStr = r.date 
+      ? new Date(r.date).toLocaleDateString('fr-FR') 
+      : '';
+
     return [
       this.csvEscape(r.session),
       this.csvEscape(r.formation),
-      r.date,
+      dateStr,
       r.inscrits,
       parseFloat(r.prix).toFixed(2),
       current.toFixed(2),
@@ -790,8 +704,9 @@ private async sumFactureTotal(
     const nbInscrits = parseInt(s.inscrits) || 0;
     const expectedTotal = prixUnitaire * nbInscrits;
     const actualEncaisse = parseFloat(s.ca_encaisse) || 0;
+    
 
-    if (expectedTotal === 0) continue;
+    
 
     if (actualEncaisse >= expectedTotal) paye++;
     else if (actualEncaisse > 0) avance++;
@@ -925,22 +840,18 @@ private async sumFactureTotal(
     return Number(((current - previous) / previous * 100).toFixed(2));
   }
 
-  private resolveDashboardPeriod(filter: RevenueFilterDto) {
+private resolveDashboardPeriod(filter: RevenueFilterDto) {
   const now = new Date();
-  
-  // Date de fin : aujourd'hui (ou celle du filtre)
   const currentEnd = filter.endDate || this.fmt(now);
-
-  // Date de début : il y a un an (ou celle du filtre)
   let currentStart = filter.startDate;
   if (!currentStart) {
-    const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(now.getFullYear() - 1);
-    currentStart = this.fmt(oneYearAgo);
+    const firstDayOfYear = new Date(now.getFullYear(), 0, 1);
+    currentStart = this.fmt(firstDayOfYear);
   }
 
-  const start = new Date(currentStart);
-  const end = new Date(currentEnd);
+  // ✅ Parse local au lieu de new Date(string) qui est UTC
+  const start = this.parseDate(currentStart);
+  const end = this.parseDate(currentEnd);
   const diff = end.getTime() - start.getTime();
 
   return {
@@ -951,23 +862,35 @@ private async sumFactureTotal(
   };
 }
 
+// Ajoutez aussi dans FinanceRevenueService :
+private parseDate(str: string): Date {
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
   private fmt(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  private enumerateMonths(start: string, end: string): string[] {
-    const months: string[] = [];
-    const current = new Date(start);
-    current.setDate(1);
-    const last = new Date(end);
-    last.setDate(1);
+  private enumerateMonths(startStr: string, endStr: string): string[] {
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  const months: string[] = [];
 
-    while (current <= last) {
-      months.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`);
-      current.setMonth(current.getMonth() + 1);
-    }
-    return months;
+  // On se place au 1er jour du mois pour éviter les problèmes de fin de mois (ex: 31 janv)
+  let curr = new Date(start.getFullYear(), start.getMonth(), 1);
+
+  // On boucle tant qu'on n'a pas dépassé la date de fin
+  while (curr <= end) {
+    const y = curr.getFullYear();
+    const m = String(curr.getMonth() + 1).padStart(2, '0');
+    months.push(`${y}-${m}`);
+    
+    // On avance de exactement 1 mois
+    curr.setMonth(curr.getMonth() + 1);
   }
+  return months;
+}
 
 
   // ============================================================
@@ -993,7 +916,7 @@ private async sumFactureTotal(
       apprenant,
       montant: Number(dto.montant),
       type: FinanceType.PAIEMENT,
-      date: new Date(dto.paymentDate),
+      date: new Date(dto.paymentDate + (dto.paymentDate.includes('T') ? '' : 'T00:00:00')),
       apprenantId: apprenant.id,
       sessionId: dto.sessionId ? dto.sessionId.toString() : null,
       description: `${apprenant.user.nom} ${apprenant.user.prenom} - Paiement ${dto.paymentDate}`,
@@ -1099,10 +1022,13 @@ private async sumFactureTotal(
   }
 
   async getFormationsForPayments() {
-    return this.financeRepository.createQueryBuilder('f')
-      .select('DISTINCT session.formationId', 'formationId')
-      .innerJoin('f.session', 'session')
-      .getRawMany();
-  }
+  return this.financeRepository
+    .createQueryBuilder('f')
+    .select('DISTINCT session.formationId', 'id')
+    .addSelect('fo.titre', 'title')
+    .innerJoin('f.session', 'session')
+    .innerJoin('session.formation', 'fo')
+    .getRawMany();
+}
 
 }

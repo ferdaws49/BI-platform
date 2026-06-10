@@ -22,8 +22,10 @@ function getPeriodDates(period: string) {
   }
 
   if (period === "Année" || period === "year") {
-    start.setDate(now.getDate() - 365);
-  }
+  start.setFullYear(now.getFullYear());
+  start.setMonth(0);
+  start.setDate(1);
+}
 
   return {
     startDate: format(start),
@@ -34,8 +36,17 @@ function getPeriodDates(period: string) {
 
 interface FiltersBarProps {
   onFilterChange: (filters: any) => void;
-  formations: { id: number; title: string }[];
+  formations: { id: number; titre: string }[];
 }
+
+const mapPeriod = (p: string) => {
+  if (p === "Mois") return "month";
+  if (p === "Trimestre") return "quarter";
+  if (p === "Année") return "year";
+  return "year";
+};
+
+
 
 export default function FiltersBar({ onFilterChange, formations }: FiltersBarProps) {
   const [period, setPeriod] = useState("Année");
@@ -69,9 +80,20 @@ const mapStatus = (s: string) => {
       startDate: dates.startDate,
       endDate: dates.endDate,
       status: mapStatus(status) || undefined,
-      formationId: formationId ? Number(formationId) : undefined,
+      formationId: formationId === "" ? undefined : Number(formationId), // <-- TRÈS IMPORTANT
     });
   };
+
+  const getExerciceYear = () => {
+  const now = new Date();
+
+  if (period === "Année") return now.getFullYear();
+  if (period === "Trimestre" || period === "Mois")
+    return new Date(getPeriodDates(mapPeriod(period)).startDate).getFullYear();
+
+  return now.getFullYear();
+};
+const exerciceLabel = `Exercice ${getExerciceYear()}`;
 
   return (
     <div
@@ -113,13 +135,16 @@ const mapStatus = (s: string) => {
           className="relative flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer bg-secondary border border-border"
         >
           <select
+          value={formationId}
+          
              onChange={(e) => {const value = e.target.value;
               setFormationId(value);
               handleApplyFilters(period, status, value);}}
-            className="appearance-none bg-transparent text-sm font-medium outline-none pr-5 cursor-pointer text-foreground"
+            className="appearance-none bg-transparent text-sm font-medium outline-none pr-5 cursor-pointer text-foreground"  
           >
-            {formations.map((f) => (
-              <option key={f.id} value={f.id}>{f.title}</option>
+            <option value="">Toutes les formations</option>
+            {formations && formations.map((f) => (
+              <option key={f.id} value={f.id}>{f.titre}</option>
             ))}
           </select>
           <ChevronDown
@@ -161,7 +186,7 @@ const mapStatus = (s: string) => {
       <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20">
         <span className="w-1.5 h-1.5 rounded-full bg-primary" />
         <span className="text-xs font-medium text-primary">
-          Exercice 2025
+          {exerciceLabel}
         </span>
       </div>
     </div>

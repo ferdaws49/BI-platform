@@ -50,7 +50,7 @@ export default function KPICards({ data }: KPICardsProps) {
     {
       title: "Taux de Marge",
       value: `${data.tauxMarge.toFixed(1)}%`,
-      sub: "Marge nette / CA total",
+      sub: "Rentabilité financière",
       icon: Percent,
       iconBg: "rgba(45,74,62,0.1)",
       iconColor: "#2d4a3e",
@@ -60,7 +60,7 @@ export default function KPICards({ data }: KPICardsProps) {
     {
       title: "Marge Brute",
       value: formatCurrency(data.margeBrute),
-      sub: "Revenue − Coûts directs",
+      sub: "Bénéfice réalisé",
       icon: TrendingUp,
       iconBg: "rgba(26,113,73,0.12)",
       iconColor: "#1a7149",

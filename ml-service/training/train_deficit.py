@@ -16,19 +16,11 @@ import json
 import logging
 import sys
 from pathlib import Path
+from services.deficit_service import run_training
 
 
 
 from schemas.deficit_schema import RawSessionInput, TrainResponse
-from services.deficit_service import (
-    clean_sessions,
-    create_labels,
-    engineer_features,
-    load_model,
-    model_exists,
-    save_model,
-    train_model,
-)
 
 logging.basicConfig(
     level=logging.INFO,

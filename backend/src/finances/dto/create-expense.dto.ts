@@ -1,5 +1,5 @@
 // src/finances/dto/create-expense.dto.ts
-import { IsEnum, IsNumber, IsString, IsOptional, Min, IsNotEmpty } from 'class-validator';
+import { IsEnum, IsNumber, IsString, IsOptional, Min, IsNotEmpty, IsUUID } from 'class-validator';
 import { FinanceType } from '../entities/finance.entity';
 
 export class CreateExpenseDto {
@@ -10,7 +10,7 @@ export class CreateExpenseDto {
   @Min(0)
   montant: number;
 
-  @IsString()
+  @IsUUID('4', { message: 'sessionId doit être un UUID valide' })
   @IsNotEmpty()
   sessionId: string;
 

@@ -98,6 +98,7 @@ export class PerformanceService {
     average: Number(average.toFixed(2)),        
     isPassed: average >= 10,
     sessions: performances.map(p => ({
+      sessionTitle: p.session?.title || "Session",
       sessionId: p.id,
       note: Number(p.note),
       date: p.date,

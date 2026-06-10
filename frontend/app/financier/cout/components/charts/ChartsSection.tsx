@@ -42,7 +42,7 @@ export function FormateursCoutChart({ formateursCoutData }: { formateursCoutData
     chartRef.current = new Chart(ref.current, {
       type: "bar",
       data: {
-        labels: formateursCoutData.map(d => d.formateur.split(" ")[0]),
+        labels: formateursCoutData.map(d => d.formateur),
         datasets: [
           {
             label: "Coût total",
@@ -100,7 +100,7 @@ export function EfficienceComboChart({ rows }: { rows: SessionCoutRow[] }) {
     if (!ref.current || !rows) return;
     chartRef.current?.destroy();
 
-    const labels = rows.map(r => r.sessionNom.split(" ").slice(0, 2).join(" "));
+    const labels = rows.map(r => [r.sessionNom, r.formation]);
     const couts  = rows.map(r => r.coutTotal);
     const coutsParEtu = rows.map(r =>
       r.inscrits > 0 ? Math.round(r.coutTotal / r.inscrits) : 0,

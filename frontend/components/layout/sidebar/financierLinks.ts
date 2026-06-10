@@ -7,6 +7,7 @@ import {
   BellIcon,
   Settings,
   LogOut,
+  BarChart3,
 } from "lucide-react";
 
 export const financierLinks = [
@@ -26,8 +27,8 @@ export const financierLinks = [
     href: "/financier/cout",
   },
   {
-    icon: User,
-    label: "Analytics",
+    icon: BarChart3,
+    label: "Analyse prédictive",
     href: "/financier/predictive",
   },
   {
@@ -44,11 +45,6 @@ export const financierLinks = [
     icon: User,
     label: "Profile",
     href: "/apprenant/profile",
-  },
-  {
-    icon: Settings,
-    label: "Paramètres",
-    href: "#",
   },
   {
     icon: LogOut,

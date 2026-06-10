@@ -18,6 +18,7 @@ function getPeriodDates(period: string, customStart?: string, customEnd?: string
 
   // 👇 نخدمو copy بش ما نبدلوش now
   const start = new Date(now);
+  const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
 
   if (period === "month") {
     start.setDate(now.getDate() - 30);
@@ -38,10 +39,8 @@ function getPeriodDates(period: string, customStart?: string, customEnd?: string
   }
 
   if (period === "year") {
-    start.setDate(now.getDate() - 365);
-
     return {
-      startDate: format(start),
+      startDate: format(startOfYear),
       endDate: format(now),
     };
   }
@@ -65,7 +64,8 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
   const [formationId, setFormationId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   
-  
+    const safeFormations = Array.isArray(formations) ? formations : [];
+
 
 
  
@@ -150,13 +150,14 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
         <div className="relative">
           <select
             value={formationId}
-            onChange={(e) => setFormationId(e.target.value)}
+            onChange={(e) =>{const value = e.target.value;
+    setFormationId(value)}}
             className="appearance-none bg-transparent text-sm outline-none pr-6 cursor-pointer px-3 py-1.5 rounded-lg border border-border bg-secondary text-foreground"
           >
             <option value="">Toutes formations</option>
-            {formations.map((f) => (
+            {safeFormations.map((f:any) => (
               <option key={f.id} value={f.id}>
-                {f.title}
+                {f.title || f.titre || "Formation"}
               </option>
             ))}
           </select>

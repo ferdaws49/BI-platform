@@ -1,4 +1,6 @@
-// ─── KPI Types ────────────────────────────────────────────────────────────────
+// types/index.ts
+
+// ─── KPI ─────────────────────────────────────────────
 export interface KPIData {
   caRealise: number;
   caPredicted: number;
@@ -7,30 +9,30 @@ export interface KPIData {
   croissance: number;
 }
 
-// ─── Forecast Types ───────────────────────────────────────────────────────────
+// ─── Forecast (Graphique CA) ─────────────────────────
 export interface ForecastPoint {
-  month: string;
+  month: string;          // ex: "2025-01"
   historical: number | null;
   predicted: number | null;
 }
 
 export type ForecastHorizon = 1 | 3 | 6;
 
-// ─── Risk Session Types ───────────────────────────────────────────────────────
+// ─── Risque / Table ────────────────────────────────────
 export type RiskLevel = "Safe" | "Medium" | "High";
 
 export interface RiskSession {
   id: string;
   sessionName: string;
   formation: string;
-  riskScore: number;
+  riskScore: number;      // 0 → 1
   financialImpact: number;
   status: RiskLevel;
-  fillRate: number;      // 0–1  (taux de remplissage)
-  profitable: boolean;   // true = rentable
+  fillRate: number;       // 0 → 1
+  profitable: boolean;
 }
 
-// ─── Insight Types ────────────────────────────────────────────────────────────
+// ─── Insights IA ─────────────────────────────────────
 export type InsightType = "trend" | "risk" | "observation";
 
 export interface Insight {
@@ -42,7 +44,7 @@ export interface Insight {
   direction?: "up" | "down" | "neutral";
 }
 
-// ─── Recommendation Types ─────────────────────────────────────────────────────
+// ─── Recommandations ───────────────────────────────────
 export type RecommendationAction = "cancel" | "promote" | "reduce-costs" | "watch";
 
 export interface Recommendation {
@@ -55,19 +57,19 @@ export interface Recommendation {
   priority: "high" | "medium" | "low";
 }
 
-// ─── Filter Types — Global (affect entire dashboard) ──────────────────────────
+// ─── Filtres Globaux (barre du haut) ─────────────────
 export type PeriodOption = "Mois" | "Trimestre" | "Année" | "Personnalisé";
 
 export interface FilterState {
   period: PeriodOption;
-  dateFrom?: string;   // ISO date string, used when period === "Personnalisé"
+  dateFrom?: string;      // YYYY-MM-DD
   dateTo?: string;
-  formationId: string;
-  formateurId: string;
+  formationId: string;   // "all" ou "1", "2"...
+  formateurId: string;    // "all" ou "1", "2"...
   sessionType: "Tout" | "En ligne" | "Présentiel";
 }
 
-// ─── Filter Types — Table only (session risk table) ───────────────────────────
+// ─── Filtres Table (sessions à risque) ─────────────────
 export type RiskFilter = "Tout" | "Faible" | "Moyen" | "Élevé";
 export type ProfitabilityFilter = "Tout" | "Rentable" | "Non rentable";
 export type FillRateFilter = "Tout" | "Faible" | "Moyen" | "Élevé";
@@ -78,7 +80,7 @@ export interface TableFilterState {
   fillRate: FillRateFilter;
 }
 
-// ─── Reference Types ──────────────────────────────────────────────────────────
+// ─── Références (listes déroulantes) ───────────────────
 export interface Formation {
   id: string;
   title: string;
