@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import {  PassportModule } from '@nestjs/passport';
+import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
-import { JwtStrategy } from './jwt.strategy';  // ← add this
+import { JwtStrategy } from './jwt.strategy'; // ← add this
 import { ResetPasswordController } from './reset-password.controller';
 import { InscriptionsModule } from '../inscriptions/inscriptions.module';
 import { MailModule } from 'src/mail/mail.module';
@@ -19,16 +19,16 @@ import { Inscription } from 'src/inscriptions/entities/inscriptions.entity';
     UsersModule,
     InscriptionsModule,
     PassportModule,
-    MailModule,                             // ← add this
+    MailModule, // ← add this
     JwtModule.register({
-      secret: 'SECRET_KEY',
+      secret: process.env.SECRET_KEY ?? 'SECRET_KEY',
       signOptions: { expiresIn: '1d' },
     }),
-    
-    TypeOrmModule.forFeature([User,  Inscription]),
+
+    TypeOrmModule.forFeature([User, Inscription]),
   ],
-  providers: [AuthService, JwtStrategy, AuthGuard ],        // ← add JwtStrategy
+  providers: [AuthService, JwtStrategy, AuthGuard], // ← add JwtStrategy
   controllers: [AuthController, ResetPasswordController],
-  exports: [ AuthService],
+  exports: [AuthService],
 })
 export class AuthModule {}

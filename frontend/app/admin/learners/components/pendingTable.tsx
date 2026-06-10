@@ -1,11 +1,7 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { Check, X, ChevronLeft, ChevronRight } from "lucide-react";
 
-// ─────────────────────────────────────────────────────────────
-// TYPE : Apprenant en attente
-// Basé sur l'entité Apprenant (statut = "pending")
-// ─────────────────────────────────────────────────────────────
 export interface PendingApprenant {
   id: number;
   nom: string;
@@ -14,23 +10,20 @@ export interface PendingApprenant {
   telephone?: string | null;
   dateInscription: string;
   statut: "pending" | "accepted" | "rejected";
-  programme?: string; // New field
+  programme?: string;
   formations: { id: number; titre: string }[];
 }
 
-// ─────────────────────────────────────────────────────────────
-// TYPES PROPS
-// ─────────────────────────────────────────────────────────────
 interface PendingTableProps {
   apprenants: PendingApprenant[];
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
   onApproveAll: () => void;
+  page: number;
+  totalPages: number;
+  onPageChange: (p: number) => void;
 }
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
 function getInitials(nom: string, prenom: string): string {
   const n = (nom || "").trim()[0] ?? "";
   const p = (prenom || "").trim()[0] ?? "";
@@ -52,35 +45,45 @@ function getAvatarColor(name: string): string {
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
 
-// ─────────────────────────────────────────────────────────────
-// COMPOSANT : tableau des demandes en attente (Tab 1)
-// Colonnes : Apprenant | Formation demandée | Date | Actions
-// Actions : Rejeter + Approuver par ligne + Tout approuver
-// ─────────────────────────────────────────────────────────────
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  const pages: (number | "...")[] = [];
+  let prev: number | null = null;
+  for (let i = 1; i <= total; i++) {
+    const inRange =
+      i === 1 || i === total || (i >= current - 1 && i <= current + 1);
+    if (inRange) {
+      if (prev !== null && i - prev > 1) pages.push("...");
+      pages.push(i);
+      prev = i;
+    }
+  }
+  return pages;
+}
+
 export default function PendingTable({
   apprenants,
   onApprove,
   onReject,
   onApproveAll,
+  page,
+  totalPages,
+  onPageChange,
 }: PendingTableProps) {
-  // Filtrer seulement les pending
-  const pending = apprenants.filter((a) => a.statut === "pending");
-
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* ── Header : titre + bouton "Tout approuver" ── */}
+      {/* ── Header ── */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
         <div>
           <h3 className="text-sm font-semibold text-gray-800">
             Demandes d'inscription
           </h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            {pending.length} demande{pending.length > 1 ? "s" : ""} en attente
+            {apprenants.length} demande{apprenants.length > 1 ? "s" : ""} en
+            attente
           </p>
         </div>
 
-        {/* Bouton tout approuver — visible seulement si demandes > 0 */}
-        {pending.length > 0 && (
+        {apprenants.length > 0 && (
           <button
             onClick={onApproveAll}
             className="flex items-center gap-2 text-sm font-semibold text-emerald-600
@@ -88,7 +91,7 @@ export default function PendingTable({
                        hover:bg-emerald-50 px-4 py-2 rounded-xl transition"
           >
             <Check size={14} />
-            Tout approuver ({pending.length})
+            Tout approuver ({apprenants.length})
           </button>
         )}
       </div>
@@ -104,8 +107,7 @@ export default function PendingTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
-          {/* Aucune demande */}
-          {pending.length === 0 && (
+          {apprenants.length === 0 && (
             <tr>
               <td
                 colSpan={4}
@@ -116,15 +118,13 @@ export default function PendingTable({
             </tr>
           )}
 
-          {/* Une ligne par apprenant pending */}
-          {pending.map((a) => (
+          {apprenants.map((a) => (
             <tr key={a.id} className="hover:bg-gray-50/60 transition-colors">
-              {/* Colonne : Avatar + Nom + Email */}
               <td className="px-6 py-4">
                 <div className="flex items-center gap-3">
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center
-                                  text-xs font-bold flex-shrink-0 ${getAvatarColor(a.nom)}`}
+                                text-xs font-bold flex-shrink-0 ${getAvatarColor(a.nom)}`}
                   >
                     {getInitials(a.nom, a.prenom)}
                   </div>
@@ -137,7 +137,6 @@ export default function PendingTable({
                 </div>
               </td>
 
-              {/* Colonne : Formation(s) demandée(s) */}
               <td className="px-6 py-4">
                 <div className="flex flex-wrap gap-1.5">
                   {a.formations?.length > 0 ? (
@@ -151,10 +150,7 @@ export default function PendingTable({
                       </span>
                     ))
                   ) : a.programme ? (
-                    <span
-                      className="text-xs font-medium px-3 py-1 rounded-full
-                                 bg-purple-50 text-purple-700 border border-purple-100"
-                    >
+                    <span className="text-xs font-medium px-3 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
                       {a.programme}
                     </span>
                   ) : (
@@ -163,17 +159,14 @@ export default function PendingTable({
                 </div>
               </td>
 
-              {/* Colonne : Date d'inscription */}
               <td className="px-6 py-4 text-sm text-gray-500 font-mono">
-                {a.dateInscription 
-                  ? new Date(a.dateInscription).toLocaleDateString("fr-FR") 
+                {a.dateInscription
+                  ? new Date(a.dateInscription).toLocaleDateString("fr-FR")
                   : "—"}
               </td>
 
-              {/* Colonne : Actions Rejeter + Approuver */}
               <td className="px-6 py-4">
                 <div className="flex items-center justify-end gap-2">
-                  {/* Bouton Rejeter → statut = "rejected" */}
                   <button
                     onClick={() => onReject(a.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200
@@ -181,8 +174,6 @@ export default function PendingTable({
                   >
                     <X size={12} /> Rejeter
                   </button>
-
-                  {/* Bouton Approuver → statut = "accepted" */}
                   <button
                     onClick={() => onApprove(a.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl
@@ -196,6 +187,59 @@ export default function PendingTable({
           ))}
         </tbody>
       </table>
+
+      {/* ── Pagination ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-6 py-3 border-t border-gray-50">
+          <span className="text-xs text-gray-400">
+            Page {page} sur {totalPages}
+          </span>
+          <div className="flex gap-1 items-center">
+            <button
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200
+                         text-gray-400 hover:bg-emerald-50 hover:text-emerald-700
+                         disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            {getPageNumbers(page, totalPages).map((p, i) =>
+              p === "..." ? (
+                <span
+                  key={`dot-${i}`}
+                  className="w-8 h-8 flex items-center justify-center text-xs text-gray-400"
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => onPageChange(p as number)}
+                  className={`w-8 h-8 text-xs rounded-lg border transition font-semibold ${
+                    page === p
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : "border-gray-200 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"
+                  }`}
+                >
+                  {p}
+                </button>
+              ),
+            )}
+
+            <button
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200
+                         text-gray-400 hover:bg-emerald-50 hover:text-emerald-700
+                         disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from config import CORS_ORIGINS
 from api.ca_routes import router as ca_router
-from api.deficit_routes import router as deficit_router
+#from api.deficit_routes import router as deficit_router
 from api.predict_routes import router as predict_router
 from api.forecast_routes import router as forecast_router
 from models.registry import registry
@@ -33,7 +33,7 @@ app.add_middleware(
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(ca_router)
-app.include_router(deficit_router)
+#app.include_router(deficit_router)
 app.include_router(predict_router)
 app.include_router(forecast_router)
 

@@ -292,6 +292,7 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
     useState<FormationRecord[]>(staticFormations);
   const [risque, setRisque] = useState<ApprenantRisque[]>(staticRisque);
   const [tauxCompletion, setTauxCompletion] = useState(73);
+  const [trainerMetric, setTrainerMetric] = useState<"efficacite" | "satisfaction">("efficacite");
 
   // table state
   const [sortBy, setSortBy] = useState<keyof FormationRecord>("tauxReussite");
@@ -372,7 +373,7 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
           },
           {
             title: "Satisfaction Moyenne",
-            value: `${data.satisfactionMoyenne ?? 4.6}/5`,
+            value: `${typeof data.satisfactionMoyenne === 'number' ? data.satisfactionMoyenne.toFixed(1) : parseFloat(data.satisfactionMoyenne ?? "4.6").toFixed(1)}/5`,
             trend: (data.evolutionSatisfaction ?? 0.3) >= 0 ? "up" : "stable",
             delta: `+${data.evolutionSatisfaction ?? 0.3} vs trimestre`,
             icon: "⭐",
@@ -512,8 +513,10 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
     ),
     datasets: [
       {
-        label: "Score efficacité",
-        data: formateurs.map((f) => f.scoreEfficacite),
+        label: trainerMetric === "efficacite" ? "Score efficacité" : "Satisfaction moyenne",
+        data: formateurs.map((f) =>
+          trainerMetric === "efficacite" ? f.scoreEfficacite : f.satisfaction
+        ),
         backgroundColor: [
           "#166534cc",
           "#15803dcc",
@@ -662,11 +665,39 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Bar — Performance formateurs */}
         <div className="rounded-xl border border-green-100 bg-white p-4 shadow-sm">
-          <h4 className="text-sm font-semibold text-green-900 mb-1">
-            Performance Formateurs
-          </h4>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <h4 className="text-sm font-semibold text-green-900">
+              Performance Formateurs
+            </h4>
+            <div className="flex bg-green-50 p-0.5 rounded-lg border border-green-100 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setTrainerMetric("efficacite")}
+                className={`px-2 py-0.5 text-[10px] font-semibold rounded-md transition-colors ${
+                  trainerMetric === "efficacite"
+                    ? "bg-green-600 text-white shadow-sm"
+                    : "text-green-700 hover:bg-green-100"
+                }`}
+              >
+                Efficacité
+              </button>
+              <button
+                type="button"
+                onClick={() => setTrainerMetric("satisfaction")}
+                className={`px-2 py-0.5 text-[10px] font-semibold rounded-md transition-colors ${
+                  trainerMetric === "satisfaction"
+                    ? "bg-green-600 text-white shadow-sm"
+                    : "text-green-700 hover:bg-green-100"
+                }`}
+              >
+                Satisfaction
+              </button>
+            </div>
+          </div>
           <p className="text-xs text-gray-400 mb-3">
-            Score d'efficacité pédagogique
+            {trainerMetric === "efficacite"
+              ? "Score d'efficacité pédagogique"
+              : "Score moyen de satisfaction (sur 5)"}
           </p>
           <div className="h-44">
             <Bar
@@ -676,7 +707,14 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
                 maintainAspectRatio: false,
                 plugins: {
                   legend: { display: false },
-                  tooltip: { callbacks: { label: (c) => ` ${c.raw}%` } },
+                  tooltip: {
+                    callbacks: {
+                      label: (c) =>
+                        trainerMetric === "efficacite"
+                          ? ` ${c.raw}%`
+                          : ` ${c.raw}/5`,
+                    },
+                  },
                 },
                 scales: {
                   x: {
@@ -685,14 +723,15 @@ export default function KPISection({ filters }: { filters: FilterOptions }) {
                     ticks: { color: "#9ca3af", font: { size: 11 } },
                   },
                   y: {
-                    min: 60,
-                    max: 100,
+                    min: trainerMetric === "efficacite" ? 60 : 0,
+                    max: trainerMetric === "efficacite" ? 100 : 5,
                     grid: { color: "#f3f4f6" },
                     border: { display: false },
                     ticks: {
                       color: "#9ca3af",
                       font: { size: 10 },
-                      callback: (v) => `${v}%`,
+                      callback: (v) =>
+                        trainerMetric === "efficacite" ? `${v}%` : `${v}/5`,
                     },
                   },
                 },

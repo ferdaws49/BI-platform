@@ -9,15 +9,17 @@ import CreateSessionModal from "./components/CreateSessionModal";
 import AssignFormateurModal from "./components/AssignFormateurModal";
 import ParticipantsListModal from "./components/ParticipantsListModal";
 import PresenceModal from "./components/PresenceModal";
+import ConfirmDeleteSessionModal from "./components/ConfirmDeleteSessionModal";
+import ConfirmAnnulerSessionModal from "./components/ConfirmAnnulerSessionModal";
 import CreateFormationModal from "./components/CreateFormationModal";
 
-import { 
-  API_URL, 
+import {
+  API_URL,
   normalizeSession,
-  Session, 
-  Formateur, 
-  Formation, 
-  FilterOptions 
+  Session,
+  Formateur,
+  Formation,
+  FilterOptions,
 } from "./constants";
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -42,10 +44,20 @@ export default function PlanningPage() {
   const [createFormationModal, setCreateFormationModal] = useState(false);
   const [editSession, setEditSession] = useState<Session | null>(null);
   const [assignModal, setAssignModal] = useState<Session | null>(null);
-  const [participantsModal, setParticipantsModal] = useState<Session | null>(null);
+  const [participantsModal, setParticipantsModal] = useState<Session | null>(
+    null,
+  );
   const [presenceModal, setPresenceModal] = useState<Session | null>(null);
 
+  // Supprimer (UI box)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
+    null,
+  );
+
   // ── Fetch data ───────────────────────────────────────────────────────────────
+
   const fetchAll = () => {
     const token = localStorage.getItem("access_token");
     setLoading(true);
@@ -159,16 +171,16 @@ export default function PlanningPage() {
       const newSession: Session = normalizeSession(await res.json());
       setSessions((prev) => [newSession, ...prev]);
       setCreateModal(false);
-      
+
       // ✅ Feedback immédiat
       toast.success("Session créée avec succès !");
-      
+
       // ✅ Notification persistante
       addNotification(
         "Session créée",
         `La session du ${newSession.date} a été créée avec succès.`,
         "success",
-        "accountChanges"
+        "accountChanges",
       );
     } catch {
       toast.error("Erreur réseau");
@@ -203,16 +215,47 @@ export default function PlanningPage() {
         "Session modifiée",
         "La session a été mise à jour.",
         "info",
-        "accountChanges"
+        "accountChanges",
       );
     } catch {
       toast.error("Erreur réseau");
     }
   };
+  const requestDeleteSession = (id: string) => {
+    setDeleteTargetId(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleSupprimer = async () => {
+    const id = deleteTargetId;
+    if (!id) return;
+
+    // évite double click
+    if (deletingSessionId) return;
+
+    setDeletingSessionId(id);
+    const token = localStorage.getItem("access_token");
+
+    try {
+      const res = await fetch(`${API_URL}/responsable/sessions/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erreur suppression");
+
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      toast.success("Session supprimée");
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setDeletingSessionId(null);
+      setDeleteConfirmOpen(false);
+      setDeleteTargetId(null);
+    }
+  };
 
   // DELETE → backend retourne { success: true } → màj statut localement
   const handleAnnuler = async (id: string) => {
-    if (!confirm("Annuler cette session ?")) return;
     const token = localStorage.getItem("access_token");
     try {
       const res = await fetch(`${API_URL}/responsable/sessions/${id}`, {
@@ -232,15 +275,13 @@ export default function PlanningPage() {
         ),
       );
 
-      // ✅ Feedback immédiat
-      toast.error("Session annulée.");
+      toast.success("Session annulée.");
 
-      // ✅ Notification persistante
       addNotification(
         "Session annulée",
         "La session a été annulée avec succès.",
         "warning",
-        "accountChanges"
+        "accountChanges",
       );
     } catch {
       toast.error("Erreur réseau");
@@ -280,7 +321,7 @@ export default function PlanningPage() {
         "Formateur affecté",
         `Le formateur a été affecté à la session du ${updated.date}.`,
         "success",
-        "trainerUpdates"
+        "trainerUpdates",
       );
     } catch {
       toast.error("Erreur réseau");
@@ -298,7 +339,7 @@ export default function PlanningPage() {
       "Formation créée",
       `La formation "${newFormation.titre}" a été ajoutée.`,
       "success",
-      "accountChanges"
+      "accountChanges",
     );
   };
 
@@ -308,7 +349,6 @@ export default function PlanningPage() {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50">
-
       {/* Header sticky */}
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
         <div className="px-6 py-4">
@@ -439,7 +479,6 @@ export default function PlanningPage() {
       </div>
 
       <div className="px-6 py-6 space-y-6">
-
         {/* KPI Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
@@ -489,6 +528,7 @@ export default function PlanningPage() {
             loading={loading}
             onEdit={(s) => setEditSession(s)}
             onAnnuler={handleAnnuler}
+            onSupprimer={requestDeleteSession}
             onAssignFormateur={(s) => setAssignModal(s)}
             onVoirParticipants={(s) => setParticipantsModal(s)}
             onPresence={(s) => setPresenceModal(s)}
@@ -498,6 +538,7 @@ export default function PlanningPage() {
             sessions={filteredSessions}
             loading={loading}
             onEdit={(s) => setEditSession(s)}
+            onSupprimer={handleSupprimer}
             onAssignFormateur={(s) => setAssignModal(s)}
             onVoirParticipants={(s) => setParticipantsModal(s)}
             onPresence={(s) => setPresenceModal(s)}
@@ -554,8 +595,21 @@ export default function PlanningPage() {
           onClose={() => setPresenceModal(null)}
         />
       )}
+
+      <ConfirmDeleteSessionModal
+        open={deleteConfirmOpen}
+        loading={!!deletingSessionId}
+        title="Supprimer la session ?"
+        description="Cette action est irréversible."
+        confirmText="Supprimer"
+        cancelText="Annuler"
+        onCancel={() => {
+          setDeleteConfirmOpen(false);
+          setDeleteTargetId(null);
+          setDeletingSessionId(null);
+        }}
+        onConfirm={handleSupprimer}
+      />
     </div>
   );
 }
-
-

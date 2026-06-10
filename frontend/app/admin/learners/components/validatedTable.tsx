@@ -3,11 +3,8 @@
 import { Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { PendingApprenant } from "./pendingTable";
 
-// ─────────────────────────────────────────────────────────────
-// TYPES PROPS
-// ─────────────────────────────────────────────────────────────
 interface ValidatedTableProps {
-  apprenants: PendingApprenant[]; // filtrés statut = "accepted"
+  apprenants: PendingApprenant[];
   search: string;
   page: number;
   totalPages: number;
@@ -16,9 +13,6 @@ interface ValidatedTableProps {
   onDelete: (apprenant: PendingApprenant) => void;
 }
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
 function getInitials(nom: string, prenom: string): string {
   const n = (nom || "").trim()[0] ?? "";
   const p = (prenom || "").trim()[0] ?? "";
@@ -40,10 +34,21 @@ function getAvatarColor(name: string): string {
   return AVATAR_COLORS[sum % AVATAR_COLORS.length];
 }
 
-// ─────────────────────────────────────────────────────────────
-// COMPOSANT : liste des apprenants validés (Tab 2)
-// Colonnes : Apprenant | Formations | Téléphone | Date | Actions
-// ─────────────────────────────────────────────────────────────
+function getPageNumbers(current: number, total: number): (number | "...")[] {
+  const pages: (number | "...")[] = [];
+  let prev: number | null = null;
+  for (let i = 1; i <= total; i++) {
+    const inRange =
+      i === 1 || i === total || (i >= current - 1 && i <= current + 1);
+    if (inRange) {
+      if (prev !== null && i - prev > 1) pages.push("...");
+      pages.push(i);
+      prev = i;
+    }
+  }
+  return pages;
+}
+
 export default function ValidatedTable({
   apprenants,
   search,
@@ -55,7 +60,7 @@ export default function ValidatedTable({
 }: ValidatedTableProps) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* ── Header : titre + search ── */}
+      {/* ── Header ── */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50 flex-wrap gap-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-800">
@@ -67,7 +72,6 @@ export default function ValidatedTable({
           </p>
         </div>
 
-        {/* Champ de recherche */}
         <div className="relative">
           <Search
             size={14}
@@ -95,7 +99,6 @@ export default function ValidatedTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
-          {/* Aucun résultat */}
           {apprenants.length === 0 && (
             <tr>
               <td
@@ -109,12 +112,11 @@ export default function ValidatedTable({
 
           {apprenants.map((a) => (
             <tr key={a.id} className="hover:bg-gray-50/60 transition-colors">
-              {/* Apprenant : avatar + nom + email */}
               <td className="px-6 py-4">
                 <div className="flex items-center gap-3">
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center
-                                  text-xs font-bold flex-shrink-0 ${getAvatarColor(a.nom)}`}
+                                text-xs font-bold flex-shrink-0 ${getAvatarColor(a.nom)}`}
                   >
                     {getInitials(a.nom, a.prenom)}
                   </div>
@@ -127,7 +129,6 @@ export default function ValidatedTable({
                 </div>
               </td>
 
-              {/* Formations */}
               <td className="px-6 py-4">
                 <div className="flex flex-wrap gap-1.5">
                   {a.formations?.length > 0 ? (
@@ -146,19 +147,16 @@ export default function ValidatedTable({
                 </div>
               </td>
 
-              {/* Téléphone */}
               <td className="px-6 py-4 text-sm text-gray-500">
                 {a.telephone ?? "—"}
               </td>
 
-              {/* Date inscription */}
               <td className="px-6 py-4 text-xs text-gray-400 font-mono">
-                {a.dateInscription 
-                  ? new Date(a.dateInscription).toLocaleDateString("fr-FR") 
+                {a.dateInscription
+                  ? new Date(a.dateInscription).toLocaleDateString("fr-FR")
                   : "—"}
               </td>
 
-              {/* Actions */}
               <td className="px-6 py-4">
                 <div className="flex items-center justify-end">
                   <button
@@ -182,7 +180,7 @@ export default function ValidatedTable({
           <span className="text-xs text-gray-400">
             Page {page} sur {totalPages}
           </span>
-          <div className="flex gap-1">
+          <div className="flex gap-1 items-center">
             <button
               onClick={() => onPageChange(Math.max(1, page - 1))}
               disabled={page === 1}
@@ -192,19 +190,30 @@ export default function ValidatedTable({
             >
               <ChevronLeft size={14} />
             </button>
-            {[...Array(totalPages)].map((_, i) => (
-              <button
-                key={i}
-                onClick={() => onPageChange(i + 1)}
-                className={`w-8 h-8 text-xs rounded-lg border transition font-semibold ${
-                  page === i + 1
-                    ? "bg-emerald-600 border-emerald-600 text-white"
-                    : "border-gray-200 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
+
+            {getPageNumbers(page, totalPages).map((p, i) =>
+              p === "..." ? (
+                <span
+                  key={`dot-${i}`}
+                  className="w-8 h-8 flex items-center justify-center text-xs text-gray-400"
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => onPageChange(p as number)}
+                  className={`w-8 h-8 text-xs rounded-lg border transition font-semibold ${
+                    page === p
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : "border-gray-200 text-gray-500 hover:bg-emerald-50 hover:text-emerald-700"
+                  }`}
+                >
+                  {p}
+                </button>
+              ),
+            )}
+
             <button
               onClick={() => onPageChange(Math.min(totalPages, page + 1))}
               disabled={page === totalPages}

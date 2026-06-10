@@ -10,6 +10,9 @@ The script prints shapes, null counts, basic stats and a sample for each loader.
 
 import os
 import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()   # ← hathi lazem tkoun QBEL os.getenv
 
 USE_DB = os.getenv("USE_DB", "0") in ("1", "true", "True")
 
@@ -66,11 +69,11 @@ try:
 except Exception as e:
     print("[diagnostics] forecast loader error:", e)
 
-# 3) CA
+# 3) CA — load_ca_oltp() (OLTP dyalek) wela load_ca_dw() (DW dyalet binomtik)
 try:
     if USE_DB:
-        from data.postgres_loader import load_ca_data
-        df_ca = load_ca_data()
+        from data.postgres_loader import load_ca_oltp
+        df_ca = load_ca_oltp()
     else:
         from training.train_ca import generate_data
         df_ca = generate_data()

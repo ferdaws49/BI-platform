@@ -38,9 +38,12 @@ export class ForecastService {
 
   // ── Entry point ────────────────────────────────────────────────────────────
 
-  async getForecast(periodes = 3): Promise<ForecastResponse> {
+  async getForecast(
+    periodes = 3,
+    semestre?: string,
+  ): Promise<ForecastResponse> {
     // 1. Récupérer historique inscriptions depuis Supabase
-    const historique = await this.getHistoriqueInscriptions();
+    const historique = await this.getHistoriqueInscriptions(semestre);
 
     // 2. Appeler Python Prophet
     const result = await this.callPythonForecast(historique, periodes);
@@ -51,19 +54,30 @@ export class ForecastService {
 
   // ── DB Query ───────────────────────────────────────────────────────────────
 
-  private async getHistoriqueInscriptions(): Promise<InscriptionPoint[]> {
-    try {
-      const rows = await this.dataSource.query(`
-        SELECT
-          TO_CHAR(DATE_TRUNC('month', sa."enrolledAt"), 'YYYY-MM') AS ds,
-          COUNT(*)::int AS y
-        FROM sessions_apprenants sa
-        WHERE sa."enrolledAt" IS NOT NULL
-        GROUP BY DATE_TRUNC('month', sa."enrolledAt")
-        ORDER BY DATE_TRUNC('month', sa."enrolledAt")
-      `);
+  private async getHistoriqueInscriptions(
+    semestre?: string,
+  ): Promise<InscriptionPoint[]> {
+    const months = semestre === 'Semestre' ? 6 : semestre === 'Année' ? 12 : 3;
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months);
 
-      // Si moins de 3 mois de données → retourner vide (Python utilisera static data)
+    try {
+      const rows = await this.dataSource.query(
+        `
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', s."date"), 'YYYY-MM') AS ds,
+        COUNT(*)::int AS y
+  FROM sessions_apprenants sa
+  JOIN sessions s ON s.id = sa."sessionId"
+  WHERE s."date" IS NOT NULL
+  AND s."date" >= $1
+  AND s."date" < NOW()
+  GROUP BY DATE_TRUNC('month', s."date")
+  ORDER BY DATE_TRUNC('month', s."date")
+      `,
+        [startDate],
+      );
+
       if (!rows || rows.length < 3) {
         this.logger.warn(
           'Historique insuffisant (<3 mois) → Python utilisera static data',
@@ -92,7 +106,7 @@ export class ForecastService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ historique, periodes }),
-        signal: AbortSignal.timeout(10000), // Prophet peut prendre du temps
+        signal: AbortSignal.timeout(10000),
       });
 
       if (!res.ok) {
@@ -115,7 +129,6 @@ export class ForecastService {
   ): ForecastResponse {
     this.logger.log('Using NestJS fallback forecast (Python unavailable)');
 
-    // Static data si historique vide
     const data =
       historique.length >= 3
         ? historique
@@ -129,7 +142,6 @@ export class ForecastService {
             { ds: '2025-04', y: 28 },
           ];
 
-    // Linear trend simple
     const n = data.length;
     const yValues = data.map((d) => d.y);
     const avg = yValues.reduce((a, b) => a + b, 0) / n;

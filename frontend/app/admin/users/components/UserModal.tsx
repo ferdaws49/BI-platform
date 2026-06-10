@@ -11,15 +11,18 @@ interface UserModalProps {
   onSave: (data: Omit<User, "id" | "creeLe"> & { password?: string }) => void;
 }
 
-export default function UserModal({ user, roles, onClose, onSave }: UserModalProps) {
+export default function UserModal({
+  user,
+  roles,
+  onClose,
+  onSave,
+}: UserModalProps) {
   const isEdit = !!user;
 
   const [nom, setNom] = useState(user?.nom ?? "");
   const [prenom, setPrenom] = useState(user?.prenom ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
-  const [role, setRole] = useState<string>(
-    user?.role ?? (roles[0]?.id || ""),
-  );
+  const [role, setRole] = useState<string>(user?.role ?? (roles[0]?.id || ""));
   const [isActive, setIsActive] = useState<boolean>(user?.isActive ?? true);
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -52,6 +55,7 @@ export default function UserModal({ user, roles, onClose, onSave }: UserModalPro
         prenom,
         email,
         role,
+        roleLabel: roles.find((r) => r.id === role)?.label ?? role,
         isActive,
         ...(!isEdit && { password }), // ← inclus seulement en création
       });
