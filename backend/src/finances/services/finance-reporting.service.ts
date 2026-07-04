@@ -192,12 +192,15 @@ export class FinanceReportingService {
     rows: FinanceReportSessionRowDto[],
     range: DateRange,
   ): Promise<FinanceReportKpisDto> {
-    const revenue = rows.reduce((sum, row) => sum + row.revenue, 0);
-    const cost = rows.reduce((sum, row) => sum + row.cost, 0);
-    const totalExpected = rows.reduce(
-      (sum, row) => sum + row.expectedPerSession * row.inscrits,
-      0,
-    );
+    const start = range.startDate.toISOString().split('T')[0];
+    const end = range.endDate.toISOString().split('T')[0];
+
+    const revenue = await this.sumFinanceByTypes(start, end, ['paiement']);
+    const cost = await this.sumFinanceByTypes(start, end, [
+      'depense_formateur',
+      'depense_logistique',
+    ]);
+    const totalExpected = await this.sumFactureTotal(start, end);
     const margin = revenue - cost;
     const recoveryRate = totalExpected > 0 ? (revenue / totalExpected) * 100 : 0;
     const performanceVsPreviousPeriod = await this.computeRevenuePerformance(
@@ -243,6 +246,44 @@ export class FinanceReportingService {
 
     if (previousRevenue <= 0) return currentRevenue > 0 ? 100 : 0;
     return Number(((currentRevenue - previousRevenue) / previousRevenue * 100).toFixed(2));
+  }
+
+  private async sumFinanceByTypes(
+    start: string,
+    end: string,
+    types: string[],
+  ): Promise<number> {
+    const params: any[] = [start, end, types];
+    const res = await this.dataSource.query(
+      `
+      SELECT COALESCE(SUM(ABS(f.montant)), 0) as total
+      FROM dw.fact_finance f
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      WHERE t.date_key BETWEEN $1 AND $2
+        AND tf.type = ANY($3)
+    `,
+      params,
+    );
+
+    return parseFloat(res[0]?.total) || 0;
+  }
+
+  private async sumFactureTotal(start: string, end: string): Promise<number> {
+    const res = await this.dataSource.query(
+      `
+      SELECT COALESCE(SUM(ABS(f.montant)), 0) as total
+      FROM dw.fact_finance f
+      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      WHERE t.date_key BETWEEN $1 AND $2
+        AND tf.type IN ('paiement', 'impaye')
+        AND f.sk_apprenant != -1
+    `,
+      [start, end],
+    );
+
+    return parseFloat(res[0]?.total) || 0;
   }
 
   private resolveDateRange(filter: FinanceReportFilterDto): DateRange {

@@ -59,10 +59,11 @@ export default function ResultsPage() {
           </div>
         ) : (
           /* ← LISTE DES RÉSULTATS (votre code existant) */
+          
           formationsSummary.map((f) => (
             <div 
               key={f.id || f.formationId} 
-              onClick={() => router.push(`/apprenant/results/${f.id || f.formationId}`)}
+              //{/*onClick={() => router.push(`/apprenant/results/${f.id || f.formationId}`)}*/}
               className="w-full bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm flex justify-between items-center cursor-pointer hover:shadow-md transition-all group"
             >
               <div className="flex items-center gap-4">

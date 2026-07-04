@@ -44,7 +44,7 @@ export const financierLinks = [
   {
     icon: User,
     label: "Profile",
-    href: "/apprenant/profile",
+    href: "/financier/profile",
   },
   {
     icon: LogOut,

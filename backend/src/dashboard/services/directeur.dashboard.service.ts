@@ -1,5 +1,5 @@
 // ============================================================================
-// directeur.dashboard.service.ts  (CORRIGÉ — Mai 2026)
+// directeur.dashboard.service.ts  (CORRIGÉ — Juin 2026)
 //
 // Corrections appliquées:
 //   ✅ Import SessionStatut depuis session.entity
@@ -7,19 +7,17 @@
 //   ✅ getOverview()     → sessionsActives utilise SessionStatut.ACTIF
 //   ✅ getKpis()         → formationsActives utilise SessionStatut.ACTIF
 //   ✅ getAlerts()       → sessionsOrphelines utilise SessionStatut.ACTIF
-// ============================================================================
-// ============================================================================
-// directeur.dashboard.service.ts  (CORRIGÉ — Mai 2026)
 //
 // Migrations DWH appliquées:
 //   ✅ getFinanceKpis()    → lit depuis dw.fact_finance + dw.dim_type_finance
 //   ✅ getFinanceDetails() → lit depuis dw.fact_finance + dw.dim_type_finance
 //      coutTotal = depense_formateur + depense_logistique (plus 'remboursement')
 //
-// Inchangé (OLTP):
-//   ✅ getOverview(), getKpis(), getEnrollmentsChart()
-//   ✅ getRevenueChart(), getCoursesChart(), getTopCourses()
-//   ✅ getTopStudents(), getRecentEnrollments(), getAlerts()
+// Fix apprenants KPI (getKpis):
+//   ✅ tauxCroissanceApprenants respecte désormais filters.periode (via session.date)
+//   ✅ tauxCroissanceApprenants respecte filters.formation et filters.type
+//   ✅ Sémantique: apprenants ACTIFS dans des sessions sur la période (pas dateAccepted)
+// ============================================================================
 
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -68,7 +66,6 @@ export class DirecteurDashboardService {
     @InjectRepository(Session)
     private sessionRepo: Repository<Session>,
 
-    // ✅ AJOUT: DataSource pour les requêtes raw DWH
     private readonly dataSource: DataSource,
   ) {}
 
@@ -128,6 +125,48 @@ export class DirecteurDashboardService {
 
   private toDateKey(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // HELPER — QueryBuilder apprenants actifs sur une période donnée
+  //   Sémantique: apprenants qui ont participé à des sessions dans [start, end]
+  //   Respecte les filtres formation et type
+  // ══════════════════════════════════════════════════════════════════════════
+
+  private buildApprenantActifsQb(
+    start: Date,
+    end: Date,
+    filters: PaginationFilterDto,
+  ) {
+    const typeMap: Record<string, string> = {
+      'Présentiel': 'présentiel',
+      'En ligne':   'en_ligne',
+    };
+
+    const qb = this.apprenantRepo
+      .createQueryBuilder('apprenant')
+      .select('COUNT(DISTINCT apprenant.id)', 'count')
+      .innerJoin('sessions_apprenants', 'sa', 'sa."apprenantId" = apprenant.id')
+      .innerJoin('sessions', 'session', 'session.id = sa."sessionId"')
+      .where('session.date BETWEEN :start AND :end', {
+        start: start.toISOString().split('T')[0],
+        end:   end.toISOString().split('T')[0],
+      });
+
+    if (filters.formation && filters.formation !== 'Tous') {
+      qb.andWhere(
+        'session."formationId" = (SELECT id FROM formations WHERE titre = :titre)',
+        { titre: filters.formation },
+      );
+    }
+
+    if (filters.type && filters.type !== 'Tous') {
+      qb.andWhere('session.type = :type', {
+        type: typeMap[filters.type] ?? filters.type,
+      });
+    }
+
+    return qb;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -224,7 +263,12 @@ export class DirecteurDashboardService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SECTION 2 — KPIs  (OLTP — inchangé)
+  // SECTION 2 — KPIs  ✅ CORRIGÉ
+  //
+  // Fix tauxCroissanceApprenants:
+  //   - Avant : count sur dateAccepted → ignorait periode ET filtres formation/type
+  //   - Après : count DISTINCT sur sessions_apprenants filtré par session.date
+  //             + respect filters.formation + filters.type
   // ══════════════════════════════════════════════════════════════════════════
 
   async getKpis(filters: PaginationFilterDto = {}) {
@@ -237,12 +281,22 @@ export class DirecteurDashboardService {
       endDatePrev:   new Date(now.getFullYear(), now.getMonth(), 0),
     };
 
-    const apprenantsCePeriode = await this.apprenantRepo.count({
-      where: { dateAccepted: Between(dates.startDate, dates.endDate) },
-    });
-    const apprenantsPeriodePrev = await this.apprenantRepo.count({
-      where: { dateAccepted: Between(dates.startDatePrev, dates.endDatePrev) },
-    });
+    // ── ✅ FIX: apprenants actifs dans des sessions sur la période ──────────
+    const resCePeriode = await this.buildApprenantActifsQb(
+      dates.startDate,
+      dates.endDate,
+      filters,
+    ).getRawOne();
+
+    const resPrev = await this.buildApprenantActifsQb(
+      dates.startDatePrev,
+      dates.endDatePrev,
+      filters,
+    ).getRawOne();
+
+    const apprenantsCePeriode   = parseInt(resCePeriode?.count  ?? '0');
+    const apprenantsPeriodePrev = parseInt(resPrev?.count       ?? '0');
+    // ───────────────────────────────────────────────────────────────────────
 
     const formationsActivesQb = this.sessionRepo
       .createQueryBuilder('session')
@@ -330,7 +384,7 @@ export class DirecteurDashboardService {
 
     const tauxCroissance =
       apprenantsPeriodePrev === 0
-        ? 100
+        ? apprenantsCePeriode > 0 ? 100 : 0
         : parseFloat(
             (
               ((apprenantsCePeriode - apprenantsPeriodePrev) /
@@ -420,42 +474,31 @@ export class DirecteurDashboardService {
   }
 
   async getRevenueChart(filters: PaginationFilterDto = {}) {
-    // ✅ MIGRÉ DWH — dw.fact_finance JOIN dw.dim_temps JOIN dw.dim_type_finance
-    // Filtres formation → JOIN dw.dim_formation
-    // Filtres formateur → JOIN dw.dim_formateur
-    // Filtre type session → JOIN dw.dim_session
-    // Pas de filtre période → 6 derniers mois via dim_temps.date_key
-
     const dates = this.getPeriodeDates(filters.periode);
 
-    const params: any[]       = [];
-    const joins: string[]     = [];
+    const params: any[]        = [];
+    const joins: string[]      = [];
     const conditions: string[] = [`dtf.type = 'paiement'`];
 
-    // ── Filtre période ─────────────────────────────────────────────────────
     if (dates) {
       params.push(this.toDateKey(dates.startDate), this.toDateKey(dates.endDate));
       conditions.push(`dt.date_key BETWEEN $${params.length - 1} AND $${params.length}`);
     } else {
-      // 6 derniers mois — on compare date_key (text 'YYYY-MM-DD') >= date actuelle - 6 mois
       conditions.push(`dt.date_key >= TO_CHAR(NOW() - INTERVAL '6 months', 'YYYY-MM-DD')`);
     }
 
-    // ── Filtre formation ───────────────────────────────────────────────────
     if (filters.formation && filters.formation !== 'Tous') {
       joins.push(`JOIN dw.dim_formation dfo ON ff.sk_formation = dfo.sk_formation`);
       params.push(filters.formation);
       conditions.push(`dfo.titre = $${params.length}`);
     }
 
-    // ── Filtre formateur ───────────────────────────────────────────────────
     if (filters.formateur && filters.formateur !== 'Tous') {
       joins.push(`JOIN dw.dim_formateur dfmt ON ff.sk_formateur = dfmt.sk_formateur`);
       params.push(filters.formateur);
       conditions.push(`dfmt.nom = $${params.length}`);
     }
 
-    // ── Filtre type session (présentiel / en ligne) ────────────────────────
     if (filters.type && filters.type !== 'Tous') {
       const typeMap: Record<string, string> = {
         'Présentiel': 'présentiel',
@@ -716,15 +759,6 @@ export class DirecteurDashboardService {
   // ══════════════════════════════════════════════════════════════════════════
   // SECTION 5 — FINANCES  ✅ MIGRÉ VERS DWH
   // ══════════════════════════════════════════════════════════════════════════
-  //
-  // Changements vs ancienne version OLTP:
-  //   - Source: dw.fact_finance JOIN dw.dim_type_finance JOIN dw.dim_temps
-  //   - coutTotal = depense_formateur + depense_logistique  (plus 'remboursement')
-  //   - Les montants dans fact_finance sont déjà signés par l'ETL:
-  //       paiement      → montant positif
-  //       tout le reste → montant négatif (abs)
-  //     donc on SUM directement sans CASE WHEN pour les coûts
-  // ══════════════════════════════════════════════════════════════════════════
 
   async getFinanceKpis(filters: PaginationFilterDto = {}) {
     const now   = new Date();
@@ -740,31 +774,9 @@ export class DirecteurDashboardService {
     const startPrevKey = this.toDateKey(dates.startDatePrev);
     const endPrevKey   = this.toDateKey(dates.endDatePrev);
 
-    // ── Filtre optionnel par formation (JOIN dw.dim_formation) ────────────
-    const formationJoin = filters.formation && filters.formation !== 'Tous'
-      ? `JOIN dw.dim_formation df ON ff.sk_formation = df.sk_formation
-         AND df.titre = $${/* sera positionné dynamiquement */ 'TITRE'}`
-      : '';
+    const formationFilter = filters.formation && filters.formation !== 'Tous';
 
-    // ── Helper: construire les params avec ou sans filtre formation ────────
-    const buildParams = (
-      extraKeys: string[],
-      titre?: string,
-    ): { sql: (baseIdx: number) => string; params: any[] } => {
-      if (titre) {
-        return {
-          sql: (b) =>
-            `JOIN dw.dim_formation df ON ff.sk_formation = df.sk_formation
-             AND df.titre = $${b + extraKeys.length}`,
-          params: [...extraKeys, titre],
-        };
-      }
-      return { sql: () => '', params: extraKeys };
-    };
-
-    // ─────────────────────────────────────────────────────────────────────
-    // 1. Revenu total (tous temps, paiement)
-    // ─────────────────────────────────────────────────────────────────────
+    // ── 1. Revenu total (tous temps) ──────────────────────────────────────
     const revenuTotalRows = await this.dataSource.query(
       `SELECT COALESCE(SUM(ff.montant), 0) AS total
        FROM dw.fact_finance ff
@@ -773,10 +785,7 @@ export class DirecteurDashboardService {
     );
     const revenuTotal = parseFloat(revenuTotalRows[0]?.total ?? '0');
 
-    // ─────────────────────────────────────────────────────────────────────
-    // 2. Coût total (tous temps, depense_formateur + depense_logistique)
-    //    ⚠️ Dans fact_finance, l'ETL stocke ces montants en négatif → ABS()
-    // ─────────────────────────────────────────────────────────────────────
+    // ── 2. Coût total (tous temps) ────────────────────────────────────────
     const coutTotalRows = await this.dataSource.query(
       `SELECT COALESCE(SUM(ABS(ff.montant)), 0) AS total
        FROM dw.fact_finance ff
@@ -785,11 +794,7 @@ export class DirecteurDashboardService {
     );
     const coutTotal = parseFloat(coutTotalRows[0]?.total ?? '0');
 
-    // ─────────────────────────────────────────────────────────────────────
-    // 3. Revenu période courante
-    // ─────────────────────────────────────────────────────────────────────
-    const formationFilter = filters.formation && filters.formation !== 'Tous';
-
+    // ── 3. Revenu période courante ────────────────────────────────────────
     const revenuPeriodeParams: any[] = [startKey, endKey];
     if (formationFilter) revenuPeriodeParams.push(filters.formation);
 
@@ -806,9 +811,7 @@ export class DirecteurDashboardService {
     );
     const revenuCePeriode = parseFloat(revenuPeriodeRows[0]?.total ?? '0');
 
-    // ─────────────────────────────────────────────────────────────────────
-    // 4. Revenu période précédente
-    // ─────────────────────────────────────────────────────────────────────
+    // ── 4. Revenu période précédente ──────────────────────────────────────
     const revenuPrevParams: any[] = [startPrevKey, endPrevKey];
     if (formationFilter) revenuPrevParams.push(filters.formation);
 
@@ -825,9 +828,7 @@ export class DirecteurDashboardService {
     );
     const revenuPeriodePrev = parseFloat(revenuPrevRows[0]?.total ?? '0');
 
-    // ─────────────────────────────────────────────────────────────────────
-    // 5. Formation la plus rentable (tous temps)
-    // ─────────────────────────────────────────────────────────────────────
+    // ── 5. Formation la plus rentable (tous temps) ────────────────────────
     const topFormationRows = await this.dataSource.query(
       `SELECT dfo.titre, COALESCE(SUM(ff.montant), 0) AS total
        FROM dw.fact_finance ff
@@ -841,11 +842,10 @@ export class DirecteurDashboardService {
        LIMIT 1`,
     );
 
-    // ── Calculs finaux ─────────────────────────────────────────────────────
     const profitTotal     = revenuTotal - coutTotal;
     const evolutionRevenu =
       revenuPeriodePrev === 0
-        ? 100
+        ? revenuCePeriode > 0 ? 100 : 0
         : parseFloat(
             (
               ((revenuCePeriode - revenuPeriodePrev) / revenuPeriodePrev) *
@@ -863,8 +863,8 @@ export class DirecteurDashboardService {
           : parseFloat(((profitTotal / revenuTotal) * 100).toFixed(2)),
       evolutionRevenu,
       revenuCeMois: revenuCePeriode,
-      formationPlusRentable:         topFormationRows[0]?.titre ?? '—',
-      profitFormationPlusRentable:   parseFloat(topFormationRows[0]?.total ?? '0'),
+      formationPlusRentable:       topFormationRows[0]?.titre ?? '—',
+      profitFormationPlusRentable: parseFloat(topFormationRows[0]?.total ?? '0'),
     };
   }
 
@@ -874,10 +874,9 @@ export class DirecteurDashboardService {
 
     const formationFilter = filters.formation && filters.formation !== 'Tous';
 
-    // ── Paramètres dynamiques ──────────────────────────────────────────────
     const params: any[] = [];
     const conditions: string[] = [
-      `dfo.formation_id != -1`, // exclure "Non applicable"
+      `dfo.formation_id != -1`,
       `ff.sk_session IS NOT NULL`,
     ];
 
@@ -894,8 +893,6 @@ export class DirecteurDashboardService {
       ? `WHERE ${conditions.join(' AND ')}`
       : '';
 
-    // ── Requête principale DWH ─────────────────────────────────────────────
-    // On group par formation et on sépare paiement vs dépenses
     const rawResult: any[] = await this.dataSource.query(
       `SELECT
          dfo.titre                                                       AS formation,
@@ -923,7 +920,6 @@ export class DirecteurDashboardService {
       params,
     );
 
-    // ── Filtre statut côté JS (cohérent avec l'ancien comportement) ────────
     let filtered = rawResult;
     if (filters.statut && filters.statut !== 'Tous') {
       filtered = rawResult.filter(
@@ -931,7 +927,6 @@ export class DirecteurDashboardService {
       );
     }
 
-    // ── Tri ────────────────────────────────────────────────────────────────
     const sortField = ['revenus', 'couts', 'profit', 'formation'].includes(sortBy)
       ? sortBy
       : 'revenus';
@@ -942,11 +937,10 @@ export class DirecteurDashboardService {
       return va < vb ? 1 : -1;
     });
 
-    // ── Enrichissement + pagination ────────────────────────────────────────
     const withMarge = filtered.map((r) => {
       const revenus = parseFloat(r.revenus ?? '0');
-      const couts   = parseFloat(r.couts ?? '0');
-      const profit  = parseFloat(r.profit ?? '0');
+      const couts   = parseFloat(r.couts   ?? '0');
+      const profit  = parseFloat(r.profit  ?? '0');
       return {
         formation: r.formation,
         revenus,
@@ -1072,7 +1066,7 @@ export class DirecteurDashboardService {
       })
       .getRawOne();
 
-    const rCeMois      = parseFloat(revenuCeMois?.total ?? '0');
+    const rCeMois      = parseFloat(revenuCeMois?.total      ?? '0');
     const rMoisDernier = parseFloat(revenuMoisDernier?.total ?? '0');
 
     if (rMoisDernier > 0 && rCeMois < rMoisDernier * 0.8) {

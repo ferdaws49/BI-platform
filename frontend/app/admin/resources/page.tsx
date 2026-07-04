@@ -23,6 +23,7 @@ import { Button } from "./components/ui";
 
 const API = "http://localhost:5000";
 
+// ─── Types API ────────────────────────────────────────────────────────────────
 type FormationApiItem = {
   id: string | number;
   titre?: string;
@@ -30,7 +31,6 @@ type FormationApiItem = {
   description?: string;
   dureeHeures?: number | string | null;
   prix?: number | string | null;
-  niveauType?: Formation["niveauType"];
   statut?: Formation["statut"];
   nbSessions?: number | null;
 };
@@ -49,6 +49,7 @@ type FormateurApiItem = {
 type FormateurPayload = Omit<Formateur, "id" | "rating"> &
   Partial<Pick<Formateur, "id" | "rating">>;
 
+// ─── Mapping API → state (sans niveauType) ────────────────────────────────────
 function mapFormationApiItem(f: FormationApiItem): Formation {
   return {
     id: String(f.id),
@@ -57,7 +58,7 @@ function mapFormationApiItem(f: FormationApiItem): Formation {
     description: f.description || "",
     dureeHeures: Number(f.dureeHeures) || 0,
     prix: Number(f.prix) || 0,
-    niveauType: f.niveauType ?? "présentiel",
+    niveauType: "présentiel", // hardcoded — colonne absente de la DB
     statut: f.statut ?? "active",
     nbSessions: f.nbSessions ?? 0,
   };
@@ -94,7 +95,6 @@ export default function AdminResourcesPage() {
           const mapped: Formation[] = data.map(mapFormationApiItem);
           dispatch({ type: "SET_FORMATIONS", payload: mapped });
 
-          // Catégories uniques depuis les formations
           const cats = [
             ...new Set(mapped.map((f) => f.categorie).filter(Boolean)),
           ];
@@ -116,7 +116,6 @@ export default function AdminResourcesPage() {
           }));
           dispatch({ type: "SET_FORMATEURS", payload: mapped });
 
-          // Spécialités uniques depuis les formateurs
           const specs = [
             ...new Set(mapped.map((f) => f.specialite).filter(Boolean)),
           ];
@@ -135,7 +134,17 @@ export default function AdminResourcesPage() {
   // ─── CRUD Formations ──────────────────────────────────────────────────────
   const handleAddFormation = async (data: SavePayload): Promise<void> => {
     const token = localStorage.getItem("access_token");
-    const { nbSessions, dureeHeures, ...body } = data;
+    // nbSessions est calculé par le backend — on ne l'envoie pas
+    // niveauType absent de la DB — on ne l'envoie pas non plus
+    const { nbSessions, dureeHeures, ...rest } = data;
+    const body = {
+      titre: rest.titre,
+      categorie: rest.categorie,
+      description: rest.description,
+      prix: rest.prix,
+      statut: rest.statut,
+    };
+
     try {
       const res = await fetch(`${API}/responsable/formations`, {
         method: "POST",
@@ -145,7 +154,14 @@ export default function AdminResourcesPage() {
         },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("❌ Création formation error:", res.status, errText);
+        sonnerToast.error(`Erreur ${res.status}`);
+        return;
+      }
+
       const result: FormationApiItem = await res.json();
       const newF = mapFormationApiItem({
         ...result,
@@ -153,14 +169,13 @@ export default function AdminResourcesPage() {
         categorie: result.categorie ?? body.categorie,
         description: result.description ?? body.description,
         prix: result.prix ?? body.prix,
-        niveauType: result.niveauType ?? body.niveauType,
         statut: result.statut ?? body.statut,
-        dureeHeures: result.dureeHeures ?? dureeHeures,
-        nbSessions: result.nbSessions ?? nbSessions,
+        dureeHeures: result.dureeHeures ?? 0,
+        nbSessions: result.nbSessions ?? 0,
       });
+
       dispatch({ type: "ADD_FORMATION", payload: newF });
 
-      // Zid la catégorie si nouvelle
       if (newF.categorie && !state.categories.includes(newF.categorie)) {
         dispatch({
           type: "SET_CATEGORIES",
@@ -170,18 +185,29 @@ export default function AdminResourcesPage() {
 
       sonnerToast.success("Formation créée avec succès");
       closeModal();
-    } catch {
+    } catch (e) {
+      console.error("❌ handleAddFormation exception:", e);
       sonnerToast.error("Erreur lors de la création");
     }
   };
 
   const handleUpdateFormation = async (data: SavePayload): Promise<void> => {
     const token = localStorage.getItem("access_token");
-    const { id, nbSessions, dureeHeures, ...body } = data;
+    const { id, nbSessions, dureeHeures, ...rest } = data;
+
     if (!id) {
       sonnerToast.error("Identifiant de formation manquant");
       return;
     }
+
+    const body = {
+      titre: rest.titre,
+      categorie: rest.categorie,
+      description: rest.description,
+      prix: rest.prix,
+      statut: rest.statut,
+    };
+
     try {
       const res = await fetch(`${API}/responsable/formations/${id}`, {
         method: "PATCH",
@@ -191,7 +217,14 @@ export default function AdminResourcesPage() {
         },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("❌ Update formation error:", res.status, errText);
+        sonnerToast.error(`Erreur ${res.status}`);
+        return;
+      }
+
       const result: FormationApiItem = await res.json();
       const updatedFormation = mapFormationApiItem({
         ...result,
@@ -200,15 +233,12 @@ export default function AdminResourcesPage() {
         categorie: result.categorie ?? body.categorie,
         description: result.description ?? body.description,
         prix: result.prix ?? body.prix,
-        niveauType: result.niveauType ?? body.niveauType,
         statut: result.statut ?? body.statut,
         dureeHeures: result.dureeHeures ?? dureeHeures,
         nbSessions: result.nbSessions ?? nbSessions,
       });
-      dispatch({
-        type: "UPDATE_FORMATION",
-        payload: updatedFormation,
-      });
+
+      dispatch({ type: "UPDATE_FORMATION", payload: updatedFormation });
 
       if (
         updatedFormation.categorie &&
@@ -222,7 +252,8 @@ export default function AdminResourcesPage() {
 
       sonnerToast.success("Formation mise à jour");
       closeModal();
-    } catch {
+    } catch (e) {
+      console.error("❌ handleUpdateFormation exception:", e);
       sonnerToast.error("Erreur lors de la mise à jour");
     }
   };
@@ -234,10 +265,18 @@ export default function AdminResourcesPage() {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("❌ Delete formation error:", res.status, errText);
+        sonnerToast.error(`Erreur ${res.status}`);
+        return;
+      }
+
       dispatch({ type: "DELETE_FORMATION", payload: id });
       sonnerToast.success("Formation supprimée");
-    } catch {
+    } catch (e) {
+      console.error("❌ handleDeleteFormation exception:", e);
       sonnerToast.error("Erreur lors de la suppression");
     }
   };
@@ -245,7 +284,14 @@ export default function AdminResourcesPage() {
   // ─── CRUD Formateurs ──────────────────────────────────────────────────────
   const handleAddFormateur = async (data: FormateurPayload): Promise<void> => {
     const token = localStorage.getItem("access_token");
-    const { rating, ...body } = data;
+    const body = {
+      nom: data.nom,
+      prenom: data.prenom,
+      email: data.email,
+      specialite: data.specialite,
+      telephone: data.telephone || "",
+    };
+
     try {
       const res = await fetch(`${API}/responsable/formateurs`, {
         method: "POST",
@@ -255,17 +301,24 @@ export default function AdminResourcesPage() {
         },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("❌ Création formateur error:", res.status, errText);
+        sonnerToast.error(`Erreur ${res.status}`);
+        return;
+      }
+
       const result = await res.json();
       const newF: Formateur = {
         ...body,
         id: String(result.id),
-        telephone: body.telephone || "",
-        rating: rating ?? 4.5,
+        rating: 4.5,
+        nbSessions: 0,
       };
+
       dispatch({ type: "ADD_FORMATEUR", payload: newF });
 
-      // Zid la spécialité si nouvelle
       if (data.specialite && !state.specialites.includes(data.specialite)) {
         dispatch({
           type: "SET_SPECIALITES",
@@ -275,14 +328,16 @@ export default function AdminResourcesPage() {
 
       sonnerToast.success("Formateur ajouté avec succès");
       closeModal();
-    } catch {
+    } catch (e) {
+      console.error("❌ handleAddFormateur exception:", e);
       sonnerToast.error("Erreur lors de l'ajout");
     }
   };
 
   const handleUpdateFormateur = async (data: Formateur): Promise<void> => {
     const token = localStorage.getItem("access_token");
-    const { id, rating, ...body } = data;
+    const { id, rating, nbSessions, ...body } = data;
+
     try {
       const res = await fetch(`${API}/responsable/formateurs/${id}`, {
         method: "PATCH",
@@ -292,8 +347,18 @@ export default function AdminResourcesPage() {
         },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error();
-      dispatch({ type: "UPDATE_FORMATEUR", payload: { ...body, id, rating } });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("❌ Update formateur error:", res.status, errText);
+        sonnerToast.error(`Erreur ${res.status}`);
+        return;
+      }
+
+      dispatch({
+        type: "UPDATE_FORMATEUR",
+        payload: { ...body, id, rating, nbSessions },
+      });
 
       if (data.specialite && !state.specialites.includes(data.specialite)) {
         dispatch({
@@ -304,7 +369,8 @@ export default function AdminResourcesPage() {
 
       sonnerToast.success("Formateur mis à jour");
       closeModal();
-    } catch {
+    } catch (e) {
+      console.error("❌ handleUpdateFormateur exception:", e);
       sonnerToast.error("Erreur lors de la mise à jour");
     }
   };
@@ -312,13 +378,22 @@ export default function AdminResourcesPage() {
   const handleDeleteFormateur = async (id: string) => {
     const token = localStorage.getItem("access_token");
     try {
-      await fetch(`${API}/responsable/formateurs/${id}`, {
+      const res = await fetch(`${API}/responsable/formateurs/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("❌ Delete formateur error:", res.status, errText);
+        sonnerToast.error(`Erreur ${res.status}`);
+        return;
+      }
+
       dispatch({ type: "DELETE_FORMATEUR", payload: id });
       sonnerToast.success("Formateur supprimé");
-    } catch {
+    } catch (e) {
+      console.error("❌ handleDeleteFormateur exception:", e);
       sonnerToast.error("Erreur lors de la suppression");
     }
   };

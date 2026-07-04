@@ -7,6 +7,7 @@ import { User, UserRole, UserStatus } from '../users/users.entity';
 import { InjectEntityManager } from '@nestjs/typeorm';
 import { EntityManager } from 'typeorm';
 import { Apprenant } from '../apprenants/entities/apprenant.entity';
+import { MailService } from 'src/mail/mail.service';
 
 type AcceptInscriptionResult = {
   message: string;
@@ -21,6 +22,7 @@ export class InscriptionsService {
     private usersService: UsersService,
     @InjectEntityManager()
     private entityManager: EntityManager,
+    
   ) {}
 
   async create(data: Partial<Inscription>) {
@@ -94,6 +96,8 @@ export class InscriptionsService {
 
       return { message: 'Inscription acceptée avec succès', userId: savedUser.id };
     });
+
+    
   }
 
   async approveAll(ids: number[]) {

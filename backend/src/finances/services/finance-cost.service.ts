@@ -23,7 +23,6 @@ import { Finance, FinanceType } from '../entities/finance.entity';
 import { Formateur } from 'src/formateurs/entities/formateur.entity';
 import { Session } from 'src/sessions/entities/session.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { resolveDashboardPeriod } from 'src/utils/period.utils';
 
 type Rentabilite = 'rentable' | 'seuil' | 'deficitaire';
 
@@ -153,13 +152,13 @@ async getKpi(filter: CostFilterDto): Promise<CostKpiDto> {
   const totalCa = metrics.reduce((sum, m) => sum + m.ca, 0);
 
   // ← AJOUTER : charges fixes sans session (loyer, admin...)
-  const { currentStart, currentEnd } = resolveDashboardPeriod(filter);
+  const { rangeStart, rangeEnd } = resolveCostPeriod(filter);
 
-const chargesFixes = await this.sumFinanceInRange(
-   currentStart.toISOString().split('T')[0],
-  currentEnd.toISOString().split('T')[0],
-  'depense_logistique'
-);
+  const chargesFixes = await this.sumFinanceInRange(
+    rangeStart.toISOString().split('T')[0],
+    rangeEnd.toISOString().split('T')[0],
+    'depense_logistique',
+  );
   // chargesFixes inclut logistique variable + charges fixes
   // On soustrait la logistique variable déjà dans metrics
   const logistiqueVariable = metrics.reduce((sum, m) => sum + (m.coutTotal - m.coutFormateur), 0);
@@ -575,11 +574,11 @@ private async sumFinanceInRange(start: string, end: string, type: string, format
   const rows = this.applyMetricFilters(filter, metrics);
 
   // ← AJOUT : même calcul de charges fixes que dans getKpi()
-  const { currentStart, currentEnd } = resolveDashboardPeriod(filter);
+  const { rangeStart, rangeEnd } = resolveCostPeriod(filter);
   const chargesFixes = await this.sumFinanceInRange(
-    currentStart.toISOString().split('T')[0],
-    currentEnd.toISOString().split('T')[0],
-    'depense_logistique'
+    rangeStart.toISOString().split('T')[0],
+    rangeEnd.toISOString().split('T')[0],
+    'depense_logistique',
   );
   const logistiqueVariable = rows.reduce((sum, m) => sum + (m.coutTotal - m.coutFormateur), 0);
   const chargesFixesSeulement = Math.max(0, chargesFixes - logistiqueVariable);

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+    .card { background: #ffffff; border-radius: 8px; padding: 32px; max-width: 500px; margin: auto; }
+    .badge { background: #c0392b; color: white; padding: 6px 14px; border-radius: 20px; font-size: 14px; }
+    h2 { color: #c0392b; }
+    p { color: #444; line-height: 1.6; }
+    .footer { margin-top: 24px; font-size: 12px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">❌ Inscription refusée</span>
+    <h2>Bonjour {{prenom}},</h2>
+    <p>
+      Nous vous informons que votre demande d'inscription n'a pas pu être
+      <strong>acceptée</strong> suite à l'examen de votre dossier.
+    </p>
+    <p>
+      Pour toute question, n'hésitez pas à nous contacter directement.
+    </p>
+    <p>Cordialement,<br/><strong>L'équipe MBICenter</strong></p>
+    <div class="footer">Cet email a été envoyé automatiquement, merci de ne pas y répondre.</div>
+  </div>
+</body>
+</html>

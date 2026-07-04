@@ -23,7 +23,7 @@ import {
   Avatar,
   ProgressBar,
 } from "../ui";
-import { revenueApi } from "@/lib/financier-revenue.api";
+import { revenueApi, PaymentTableResponse } from "@/lib/financier-revenue.api";
 import { Paiement, PaymentStatus } from "../../types";
 
 Chart.register(
@@ -49,13 +49,12 @@ const TOOLTIP_BASE = {
 function mapStatus(s: string): PaymentStatus {
   const normalized = (s ?? "").toLowerCase();
   if (normalized === "paid") return "Payé";
-  if (normalized === "partial" ) return "Partiel";
+  if (normalized === "partial") return "Partiel";
   return "Impayé";
 }
 
 // ── Mapper ligne backend → Paiement ───────────────────────
 function mapPaymentRow(raw: any, index: number): Paiement {
-    console.log("RAW from backend:", raw); // ← AJOUTE ÇA
   const nom = raw.apprenant ?? "";
   const initiales = nom
     .split(" ")
@@ -65,8 +64,8 @@ function mapPaymentRow(raw: any, index: number): Paiement {
     .toUpperCase() || "??";
 
   return {
-    id: Number(raw.paymentId ?? raw.financeId ?? raw.id ?? index),
-    apprenantId: String(raw.apprenantId ?? raw.userId ?? ""),
+    id: Number(raw.financeId || raw.id),
+    apprenantId: String(raw.inscriptionId || ""),
     apprenantNom: nom,
     apprenantInitiales: initiales,
     formation: raw.formation ?? "",
@@ -348,10 +347,8 @@ export function PaiementModal({
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // ── Reset / Pré-remplissage ──
   useEffect(() => {
     if (!open) return;
-
     if (editItem) {
       setForm({
         apprenantId: Number(editItem.apprenantId) || null,
@@ -360,12 +357,10 @@ export function PaiementModal({
         montant: String(editItem.montantEncaisse ?? ""),
         paymentDate: editItem.date || new Date().toISOString().split("T")[0],
       });
-
       const app = apprenants.find(
         (a) => String(a.id) === String(editItem.apprenantId)
       );
       setSearchNom(app?.nom ?? "");
-
       const uid = Number(editItem.apprenantId);
       if (uid) loadSessions(uid);
     } else {
@@ -382,7 +377,6 @@ export function PaiementModal({
     setError(null);
   }, [open, editItem, apprenants]);
 
-  // ── Fermer dropdown si clic extérieur ──
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -394,7 +388,6 @@ export function PaiementModal({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // ── Charger les sessions d'un apprenant ──
   const loadSessions = async (apprenantId: number) => {
     setLoadingSessions(true);
     try {
@@ -408,7 +401,6 @@ export function PaiementModal({
     }
   };
 
-  // ── Sélection apprenant (création uniquement) ──
   const selectApprenant = (app: ApprenantOption) => {
     setSearchNom(app.nom);
     setShowDropdown(false);
@@ -422,7 +414,6 @@ export function PaiementModal({
     loadSessions(app.id);
   };
 
-  // ── Changement session → récupère formationId auto ──
   const handleSessionChange = (val: string) => {
     const session = sessions.find((s) => String(s.id) === val);
     setForm((prev) => ({
@@ -432,7 +423,6 @@ export function PaiementModal({
     }));
   };
 
-  // ── Filtre local apprenants ──
   const filteredApprenants = useMemo(() => {
     if (!searchNom.trim()) return apprenants;
     const q = searchNom.toLowerCase();
@@ -443,14 +433,9 @@ export function PaiementModal({
     );
   }, [searchNom, apprenants]);
 
-  // ── Submit ──
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    
-    
     if (!form.apprenantId || !form.sessionId || !form.formationId || !form.montant || !form.paymentDate) {
-       console.log("❌ VALIDATION FAILED");
       setError("Veuillez remplir tous les champs obligatoires.");
       return;
     }
@@ -473,15 +458,12 @@ export function PaiementModal({
         <h2 className="mb-4 text-lg font-semibold text-foreground">
           {isEditing ? "Modifier le paiement" : "Ajouter un paiement"}
         </h2>
-
         {error && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
             {error}
           </div>
         )}
-
-        <form onSubmit={handleSubmit}  className="space-y-4">
-          {/* ─── Apprenant (autocomplete) ─── */}
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative" ref={dropdownRef}>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
               Apprenant <span style={{ color: "#DC2626" }}>*</span>
@@ -505,7 +487,6 @@ export function PaiementModal({
               style={{ borderColor: "#e5eadd", color: "#2d4a3e", background: "#fff" }}
               autoComplete="off"
             />
-
             {showDropdown && !isEditing && (
               <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-xl border shadow-lg" style={{ borderColor: "#e5eadd", background: "#fff" }}>
                 {filteredApprenants.length === 0 ? (
@@ -530,8 +511,6 @@ export function PaiementModal({
               </div>
             )}
           </div>
-
-          {/* ─── Session (cascade) ─── */}
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
               Session <span style={{ color: "#DC2626" }}>*</span>
@@ -559,8 +538,6 @@ export function PaiementModal({
               ))}
             </select>
           </div>
-
-          {/* ─── Montant ─── */}
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
               Montant (DT) <span style={{ color: "#DC2626" }}>*</span>
@@ -577,8 +554,6 @@ export function PaiementModal({
               placeholder="0.00"
             />
           </div>
-
-          {/* ─── Date ─── */}
           <div>
             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.7 }}>
               Date de paiement <span style={{ color: "#DC2626" }}>*</span>
@@ -592,8 +567,6 @@ export function PaiementModal({
               style={{ borderColor: "#e5eadd", color: "#2d4a3e", background: "#fff" }}
             />
           </div>
-
-          {/* ─── Actions ─── */}
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -603,15 +576,13 @@ export function PaiementModal({
             >
               Annuler
             </button>
-            
             <button
-  type="submit"
-  
-  className="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90"
-  style={{ background: "#1a7149" }}
->
-  {isEditing ? "Modifier" : "Valider le paiement"}
-</button>
+              type="submit"
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-white transition-all hover:opacity-90"
+              style={{ background: "#1a7149" }}
+            >
+              {isEditing ? "Modifier" : "Valider le paiement"}
+            </button>
           </div>
         </form>
       </div>
@@ -620,11 +591,7 @@ export function PaiementModal({
 }
 
 // ── Sortable column header ─────────────────────────────────
-type SortKey =
-  | "montantTotal"
-  | "montantEncaisse"
-  | "montantEncours"
-  | "statut";
+type SortKey = "montantTotal" | "montantEncaisse" | "montantEncours" | "statut";
 type SortDir = "asc" | "desc";
 
 function SortTh({
@@ -657,23 +624,29 @@ function SortTh({
   );
 }
 
-// ── Pagination avec flèches ───────────────────────────────
+// ✅ NOUVEAU : Pagination intelligente < 1 2 3 ... 10 >
 function Pagination({
   page,
-  pages,
+  totalPages,
+  startItem,
+  endItem,
+  total,
   onChange,
 }: {
   page: number;
-  pages: number;
+  totalPages: number;
+  startItem: number;
+  endItem: number;
+  total: number;
   onChange: (p: number) => void;
 }) {
-  if (pages <= 1) return null;
+  if (totalPages <= 1) return null;
 
-  const getRange = () => {
+  const getVisiblePages = (): (number | string)[] => {
     const delta = 1;
     const range: (number | string)[] = [];
-    for (let i = 1; i <= pages; i++) {
-      if (i === 1 || i === pages || (i >= page - delta && i <= page + delta)) {
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= page - delta && i <= page + delta)) {
         range.push(i);
       } else if (range[range.length - 1] !== "...") {
         range.push("...");
@@ -681,37 +654,42 @@ function Pagination({
     }
     return range;
   };
-
   return (
-    <div className="flex items-center justify-between px-5 py-3 border-t" style={{ borderColor: "#e5eadd" }}>
-      <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>
-        Page {page}/{pages} · {pages} pages
+    <div
+      className="flex items-center justify-between px-5 py-3 border-t"
+      style={{ borderColor: "#e5eadd" }}
+    >
+      <span className="text-xs" style={{ color: "#2d4a3e", opacity: 0.5 }}>
+        {total > 0
+          ? `Affichage de ${startItem} à ${endItem} sur ${total} entrées`
+          : "Aucune entrée"}
       </span>
+
       <div className="flex items-center gap-1">
-        {/* Précédent */}
         <button
           onClick={() => onChange(Math.max(1, page - 1))}
           disabled={page === 1}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-all disabled:opacity-30"
-          style={{
-            background: page === 1 ? "transparent" : "rgba(229,234,221,0.5)",
-            color: "#2d4a3e",
-          }}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-all disabled:opacity-30 hover:bg-[rgba(229,234,221,0.5)]"
+          style={{ color: "#2d4a3e" }}
+          title="Page précédente"
         >
           ‹
         </button>
 
-        {/* Numéros */}
-        {getRange().map((item, idx) =>
+        {getVisiblePages().map((item, idx) =>
           item === "..." ? (
-            <span key={`dots-${idx}`} className="px-1 text-xs" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+            <span
+              key={`dots-${idx}`}
+              className="px-2 text-xs"
+              style={{ color: "#2d4a3e", opacity: 0.4 }}
+            >
               ...
             </span>
           ) : (
             <button
               key={item}
               onClick={() => onChange(Number(item))}
-              className="h-7 min-w-[28px] rounded-lg px-1.5 text-xs font-medium transition-all"
+              className="h-8 min-w-[32px] rounded-lg px-2 text-sm font-medium transition-all"
               style={{
                 background: page === item ? "#1a7149" : "transparent",
                 color: page === item ? "#fff" : "#2d4a3e",
@@ -722,15 +700,11 @@ function Pagination({
           )
         )}
 
-        {/* Suivant */}
         <button
-          onClick={() => onChange(Math.min(pages, page + 1))}
-          disabled={page === pages}
-          className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-all disabled:opacity-30"
-          style={{
-            background: page === pages ? "transparent" : "rgba(229,234,221,0.5)",
-            color: "#2d4a3e",
-          }}
+          onClick={() => onChange( page + 1)}
+          disabled={page === totalPages}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-all disabled:opacity-30 hover:bg-[rgba(229,234,221,0.5)]"
+          style={{ color: "#2d4a3e" }}
         >
           ›
         </button>
@@ -749,19 +723,17 @@ export default function PaiementsTab({
   const [kpis, setKpis] = useState<any>(null);
   const [pieData, setPieData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [apprenants, setApprenants] = useState<
-    { id: number; nom: string; initiales: string }[]
-  >([]);
-  const [formations, setFormations] = useState<
-    { id: number; title: string }[]
-  >([]);
+  const [pageCache, setPageCache] = useState<Map<number, Paiement[]>>(new Map());
+  const [isFetchingPage, setIsFetchingPage] = useState(false);
+  const [apprenants, setApprenants] = useState<{ id: number; nom: string; initiales: string }[]>([]);
+  const [formations, setFormations] = useState<{ id: number; title: string }[]>([]);
+  const [tableData, setTableData] = useState<PaymentTableResponse | null>(null);
 
   const safeFormations = Array.isArray(formations) ? formations : [];
-const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
+  const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
 
   const [search, setSearch] = useState("");
   const [filterFormation, setFilterFormation] = useState("Tout");
-  const [filterStatut, setFilterStatut] = useState("Tout");
   const [filterDette, setFilterDette] = useState("Tout");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -769,46 +741,133 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
   const [editItem, setEditItem] = useState<Paiement | null>(null);
   const [page, setPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
-  const PER = 6;
+  const PER = 5;
+
+
+const [allRows, setAllRows] = useState<Paiement[]>([]);
+
+
+
+
+
+useEffect(() => {
+  let cancelled = false;
+  async function loadKpisAndCharts() {
+    setLoading(true);
+    try {
+      const statusToSend = filters.paymentStatus;
+
+      const apiFilters = { ...filters, paymentStatus: statusToSend };
+
+      const [appr, form, k, p] = await Promise.all([
+        revenueApi.getApprenants().catch(() => []),
+        revenueApi.getFormationsList().catch(() => []),
+        revenueApi.getPaymentKpis(apiFilters),
+        revenueApi.getPaymentPie(apiFilters),
+      ]);
+
+      if (cancelled) return;
+
+      setApprenants(appr);
+      setFormations(form);
+      setKpis(k);
+      setPieData(p);
+    } catch (e) {
+      console.error("Erreur KPIs:", e);
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  }
+  loadKpisAndCharts();
+  return () => { cancelled = true; };
+}, [filters]); // ← PAS de 'page'
+
 
   // ── Chargement des données ─────────────────────────────
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const statusToSend = filterStatut !== "Tout" 
-        ? (filterStatut === "Payé" ? "paid" : filterStatut === "Partiel" ? "partial" : "unpaid")
-        : filters.paymentStatus;
+  let cancelled = false;
+  async function load() {
+    setLoading(true);
+    try {
+      const statusToSend = filters.paymentStatus;
 
-        const apiFilters = { ...filters , paymentStatus: statusToSend };
-         
-        const [appr, form, k, p, t] = await Promise.all([
-          revenueApi.getApprenants().catch(() => []),
-          revenueApi.getFormationsList().catch(() => []),
-          revenueApi.getPaymentKpis(apiFilters),
-          revenueApi.getPaymentPie(apiFilters),
-          revenueApi.getPaymentTable(apiFilters),
-        ]);
+      const apiFilters = { ...filters, paymentStatus: statusToSend };
+
+      const [appr, form, k, p, t, tAll] = await Promise.all([
+        revenueApi.getApprenants().catch(() => []),
+        revenueApi.getFormationsList().catch(() => []),
+        revenueApi.getPaymentKpis(apiFilters),
+        revenueApi.getPaymentPie(apiFilters),
+        revenueApi.getPaymentTable({ ...apiFilters, page, limit: PER }),        // ← paginé
+        revenueApi.getPaymentTable({ ...apiFilters, page: 1, limit: 9999 }),       // ← tout pour le graphique
+      ]);
+
+      if (cancelled) return;
+
+      setApprenants(appr);
+      setFormations(form);
+      setKpis(k);
+      setPieData(p);
+      setTableData(t);
+      setRows((t.items ?? []).map(mapPaymentRow));
+      setAllRows((tAll.items ?? []).map(mapPaymentRow)); // ✅ Nouvel état pour le graphique
+    } catch (e) {
+      console.error("Erreur chargement:", e);
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  }
+  load();
+  return () => { cancelled = true; };
+}, [filters, page]);
+
+  // ── 2. CHANGEMENT DE PAGE : cache ou fetch silencieux ──
+  useEffect(() => {
+    if (page === 1) return; // Déjà chargé par l'effet ci-dessus
+
+    // ✅ HIT CACHE : page déjà en mémoire → instantané
+    if (pageCache.has(page)) {
+      setRows(pageCache.get(page)!);
+      return;
+    }
+
+    // ✅ MISS CACHE : fetch silencieux (pas de setLoading)
+    let cancelled = false;
+    async function fetchPage() {
+      setIsFetchingPage(true);
+      try {
+        const statusToSend = filters.paymentStatus;
+
+        const t = await revenueApi.getPaymentTable({
+          ...filters,
+          paymentStatus: statusToSend,
+          page,
+          limit: PER,
+        });
 
         if (cancelled) return;
 
-        setApprenants(appr);
-        setFormations(form);
-        setKpis(k);
-        setPieData(p);
-        setRows((t.items ?? []).map(mapPaymentRow));
+        setTableData(t);
+        const mapped = (t.items ?? []).map(mapPaymentRow);
+        setRows(mapped);
+
+        // ✅ Stocke dans le cache
+        setPageCache(prev => new Map(prev).set(page, mapped));
       } catch (e) {
-        console.error("Erreur chargement paiements:", e);
+        console.error("Erreur page:", e);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setIsFetchingPage(false);
       }
     }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [filters, filterStatut]);
+    fetchPage();
+    return () => { cancelled = true; };
+  }, [page]); // ← Seul déclencheur
+
+  // ── 3. RESET PAGE quand filtres locaux changent ──
+  useEffect(() => {
+    setPage(1);
+  }, [search, filterDette, sortKey, sortDir]);
+
 
   // ── KPIs ──────────────────────────────────────────────
   const totalEncaisse = kpis?.totalEncaisse ?? 0;
@@ -816,42 +875,29 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
   const totalFacture = totalEncaisse + totalNonEncaisse;
   const tauxPaiement =
     kpis?.paymentRatePercent ??
-    (totalFacture > 0
-      ? Math.round((totalEncaisse / totalFacture) * 100)
-      : 0);
-  const nbrReglements =
-    kpis?.paymentsCount ??
-    rows.filter((r) => r.statut === "Payé").length;
+    (totalFacture > 0 ? Math.round((totalEncaisse / totalFacture) * 100) : 0);
+  const nbrReglements = kpis?.paymentsCount ?? rows.filter((r) => r.statut === "Payé").length;
 
   // ── Pie % ──────────────────────────────────────────────
   const slices = pieData?.slices ?? [];
-  const payePct = Math.round(
-    slices.find((s: any) => s.status === "paye")?.percent ?? 0
-  );
-  const partielPct = Math.round(
-    slices.find((s: any) => s.status === "avance")?.percent ?? 0
-  );
-  const impayePct = Math.round(
-    slices.find((s: any) => s.status === "impaye")?.percent ?? 0
-  );
+  const payePct = Math.round(slices.find((s: any) => s.status === "paye")?.percent ?? 0);
+  const partielPct = Math.round(slices.find((s: any) => s.status === "avance")?.percent ?? 0);
+  const impayePct = Math.round(slices.find((s: any) => s.status === "impaye")?.percent ?? 0);
 
   // ── Filtres locaux ─────────────────────────────────────
   const filtered = useMemo(() => {
     let r = [...rows];
     if (search)
-      r = r.filter((x) =>
-        x.apprenantNom.toLowerCase().includes(search.toLowerCase())
-      );
+      r = r.filter((x) => x.apprenantNom.toLowerCase().includes(search.toLowerCase()));
     if (filterFormation !== "Tout")
       r = r.filter((x) => x.formationId === filterFormation);
-    if (filterStatut !== "Tout")
-      r = r.filter((x) => x.statut === filterStatut);
+    
     if (filterDette === "500")
       r = r.filter((x) => x.montantTotal - x.montantEncaisse >= 500);
     if (filterDette === "1000")
       r = r.filter((x) => x.montantTotal - x.montantEncaisse >= 1000);
     return r;
-  }, [rows, search, filterFormation, filterStatut, filterDette]);
+  }, [rows, search, filterFormation, filterDette]);
 
   // ── Tri ────────────────────────────────────────────────
   const sorted = useMemo(() => {
@@ -870,8 +916,10 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
     });
   }, [filtered, sortKey, sortDir]);
 
-  const paged = sorted.slice((page - 1) * PER, page * PER);
-  const pages = Math.ceil(filtered.length / PER);
+ const totalPages = tableData?.totalPages ?? 1;
+  const startItem = tableData?.startItem ?? 0;
+  const endItem = tableData?.endItem ?? 0;
+  const total = tableData?.total ?? 0;
 
   function toggleSort(col: SortKey) {
     if (sortKey === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -884,80 +932,48 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
 
   // ── Rechargement après mutation ────────────────────────
   async function reload() {
-    try {
-      const [k, pi, t] = await Promise.all([
-        revenueApi.getPaymentKpis(filters),
-        revenueApi.getPaymentPie(filters),
-        revenueApi.getPaymentTable({ ...filters, page: 1 , limit: 200 }),
-      ]);
-      setKpis(k);
-      setPieData(pi);
-      setRows((t.items ?? []).map(mapPaymentRow));
-    } catch (e) {
-      console.error("Erreur rechargement:", e);
-    }
+    // Vider le cache et recharger
+    setPageCache(new Map());
+    setPage(1);
+    // Le useEffect [filters, filterStatut] se re-déclenchera si besoin
   }
-
-  // ── Sauvegarde (create / update) ──────────────────────
+  // ── Sauvegarde ─────────────────────────────────────────
   async function handleSave(dto: {
-  id?: number;
-  apprenantId: number;
-  formationId: number;
-  montant: number;
-  paymentDate: string;
-  sessionId?: string | number;
-}) {
-  try {
-    if (dto.id) {
-      await revenueApi.updatePayment(dto.id, dto);
-      setToast("Paiement modifié avec succès ✅");
-    } else {
-      await revenueApi.addPayment(dto);
-      setToast("Paiement ajouté avec succès ✅");
-    }
-
-    // 🔥 Fermer le modal APRÈS que le toast ait eu le temps de s'afficher
-    setTimeout(() => {
-      setModalOpen(false);
-      setEditItem(null);
-    }, 100);
-
-    // 🔥 Recharger les données en background
-    reload().catch(err => console.error("Erreur reload:", err));
-
-  } catch (e) {
-    console.error(e);
-    alert('Erreur lors de l\'enregistrement du paiement.');
-  }
-}
-
-  // ── Suppression ────────────────────────────────────────
-  async function handleDelete(id: number) {
-    if (!confirm("Supprimer ce paiement ?")) return;
+    id?: number;
+    apprenantId: number;
+    formationId: number;
+    montant: number;
+    paymentDate: string;
+    sessionId?: string | number;
+  }) {
     try {
-      await revenueApi.deletePayment(id);
-      setRows((prev) => prev.filter((r) => r.id !== id));
-      setToast("Paiement supprimé ✅");
+      if (dto.id) {
+        await revenueApi.updatePayment(dto.id, dto);
+        setToast("Paiement modifié avec succès ✅");
+      } else {
+        await revenueApi.addPayment(dto);
+        setToast("Paiement ajouté avec succès ✅");
+      }
+      setTimeout(() => {
+        setModalOpen(false);
+        setEditItem(null);
+      }, 100);
+      reload().catch((err) => console.error("Erreur reload:", err));
     } catch (e) {
       console.error(e);
-      alert("Erreur lors de la suppression.");
+      alert("Erreur lors de l'enregistrement du paiement.");
     }
   }
 
-  // ── export ───────────────────────────────
+
+
+  
+
+  // ── Export ─────────────────────────────────────────────
   function handleExport() {
     const data = sorted;
     if (!data || data.length === 0) return;
-
-    const headers = [
-      "Apprenant",
-      "Session",
-      "Total",
-      "Encaissé",
-      "Restant",
-      "Statut",
-    ];
-
+    const headers = ["Apprenant", "Session", "Total", "Encaissé", "Restant", "Statut"];
     const csvRows = data.map((r) => [
       r.apprenantNom,
       r.session,
@@ -966,21 +982,18 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
       r.montantTotal - r.montantEncaisse,
       r.statut,
     ]);
-
-    const csv =
-      [headers, ...csvRows]
-        .map((e) => e.join(","))
-        .join("\n");
-
+    const csv = [headers, ...csvRows].map((e) => e.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
     a.download = "paiements.csv";
     a.click();
   }
   const closeToast = useCallback(() => setToast(null), []);
+
+
+ 
 
 
   // ── Skeleton ──────────────────────────────────────────
@@ -1006,39 +1019,24 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
 
   return (
     <div className="space-y-6">
-      {/* ── Toast ── */}
       {toast && <SuccessToast message={toast} onClose={closeToast} />}
 
       {/* ── Filtres locaux ── */}
-      <div
-        className="flex flex-wrap items-center gap-2 p-2 rounded-xl border border-border bg-card shadow-sm"
-      >
+      <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl border border-border bg-card shadow-sm">
         <FilterSelect
-  value={filterFormation}
-  onChange={(v) => { setFilterFormation(v); setPage(1); }}
-  label="Formation :"
-  options={[
-    { label: "Toutes", value: "Tout" },
-    ...safeFormations.map((f) => ({  // ← safeFormations au lieu de formations
-      label: f.title,
-      value: String(f.id),
-    })),
-  ]}
-/>
-
-        <FilterSelect
-          value={filterStatut}
+          value={filterDette}
           onChange={(v) => {
-            setFilterStatut(v);
+            setFilterDette(v);
             setPage(1);
           }}
-          label="Statut :"
-          options={["Tout", "Payé", "Partiel", "Impayé"].map((v) => ({
-            label: v,
-            value: v,
-          }))}
+          label="Encours min :"
+    options={[
+      { label: "Tous", value: "Tout" },
+      { label: "> 500 TND", value: "500" },
+      { label: "> 1 000 TND", value: "1000" },
+    ]}
+  
         />
-
         <FilterSelect
           value={filterDette}
           onChange={(v) => {
@@ -1052,7 +1050,6 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
             { label: "> 1 000 TND", value: "1000" },
           ]}
         />
-
         <button
           onClick={() => {
             setEditItem(null);
@@ -1075,10 +1072,7 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
             badge={
               <span
                 className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                style={{
-                  background: "rgba(26,113,73,0.12)",
-                  color: "#1a7149",
-                }}
+                style={{ background: "rgba(26,113,73,0.12)", color: "#1a7149" }}
               >
                 {Math.round(tauxPaiement)}%
               </span>
@@ -1103,17 +1097,9 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
             sub={`sur ${rows.length} paiements totaux`}
           />
         </div>
-
         <div className={`p-4 ${cardClass}`}>
-          <SectionTitle
-            title="Répartition statuts"
-            sub="% par type de paiement"
-          />
-          <PaymentPie
-            paye={payePct}
-            partiel={partielPct}
-            impaye={impayePct}
-          />
+          <SectionTitle title="Répartition statuts" sub="% par type de paiement" />
+          <PaymentPie paye={payePct} partiel={partielPct} impaye={impayePct} />
         </div>
       </div>
 
@@ -1123,7 +1109,7 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
           title="Graphique de Recouvrement"
           sub="Revenu Facturé vs Argent Encaissé — par formation"
         />
-        <RecouvrementBarChart rows={rows} />
+        <RecouvrementBarChart rows={allRows} />
       </div>
 
       {/* ── Tableau ── */}
@@ -1135,18 +1121,12 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
           <div>
             <p
               className="font-bold text-sm"
-              style={{
-                color: "#2d4a3e",
-                fontFamily: "'Sora', sans-serif",
-              }}
+              style={{ color: "#2d4a3e", fontFamily: "'Sora', sans-serif" }}
             >
               Liste des paiements
             </p>
-            <p
-              className="text-xs mt-0.5"
-              style={{ color: "#2d4a3e", opacity: 0.4 }}
-            >
-              {sorted.length} résultat{sorted.length > 1 ? "s" : ""}
+            <p className="text-xs mt-0.5" style={{ color: "#2d4a3e", opacity: 0.4 }}>
+              {tableData?.total ?? 0} résultat{(tableData?.total ?? 0) > 1 ? "s" : ""}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1166,169 +1146,71 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: "rgba(229,234,221,0.35)" }}>
-                <th
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                  style={{ color: "#2d4a3e", opacity: 0.5 }}
-                >
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.5 }}>
                   Apprenant
                 </th>
-                <th
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                  style={{ color: "#2d4a3e", opacity: 0.5 }}
-                >
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: "#2d4a3e", opacity: 0.5 }}>
                   Session
                 </th>
-                <SortTh
-                  label="Montant"
-                  col="montantTotal"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortTh
-                  label="Encaissé"
-                  col="montantEncaisse"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortTh
-                  label="En cours"
-                  col="montantEncours"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortTh
-                  label="Statut"
-                  col="statut"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <th
-                  className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                  style={{ color: "#2d4a3e", opacity: 0.5 }}
-                >
-                  Actions
-                </th>
+                <SortTh label="Montant" col="montantTotal" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Encaissé" col="montantEncaisse" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="En cours" col="montantEncours" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                <SortTh label="Statut" col="statut" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                
               </tr>
             </thead>
             <tbody>
-              {paged.length === 0 ? (
+              {sorted.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="text-center py-10 text-sm"
-                    style={{ color: "#2d4a3e", opacity: 0.35 }}
-                  >
+                  <td colSpan={6} className="text-center py-10 text-sm" style={{ color: "#2d4a3e", opacity: 0.35 }}>
                     Aucun paiement trouvé
                   </td>
                 </tr>
               ) : (
-                paged.map((row, i) => {
+                sorted.filter(Boolean).map((row, i) => {
                   const encours = row.montantTotal - row.montantEncaisse;
                   const barColor =
-                    row.statut === "Payé"
-                      ? "#1a7149"
-                      : row.statut === "Partiel"
-                      ? "#D97706"
-                      : "#DC2626";
+                    row.statut === "Payé" ? "#1a7149" : row.statut === "Partiel" ? "#D97706" : "#DC2626";
                   return (
                     <tr
-                      key={row.id}
+                      key={row?.id && !isNaN(row.id) ? row.id : `row-${i}`}
                       className="hover:bg-white/50 transition-colors border-t"
                       style={{ borderColor: "#e5eadd" }}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <Avatar
-                            initiales={row.apprenantInitiales}
-                            idx={i}
-                            size={30}
-                          />
-                          <p
-                            className="text-xs font-semibold"
-                            style={{ color: "#2d4a3e" }}
-                          >
-                            {row.apprenantNom}
+                          <Avatar initiales={row.apprenantInitiales} idx={i} size={30} />
+                          <p className="text-xs font-semibold" style={{ color: "#2d4a3e" }}>
+                            {row?.apprenantNom}
                           </p>
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <span
                           className="text-xs px-2 py-0.5 rounded-lg"
-                          style={{
-                            background: "rgba(26,113,73,0.08)",
-                            color: "#1a7149",
-                          }}
+                          style={{ background: "rgba(26,113,73,0.08)", color: "#1a7149" }}
                         >
-                          {row.session}
+                          {row?.session}
                         </span>
                       </td>
-                      <td
-                        className="px-4 py-3 text-xs font-semibold"
-                        style={{ color: "#2d4a3e" }}
-                      >
+                      <td className="px-4 py-3 text-xs font-semibold" style={{ color: "#2d4a3e" }}>
                         {fmtCurrency(row.montantTotal)}
                       </td>
                       <td className="px-4 py-3">
-                        <p
-                          className="text-xs font-semibold mb-1"
-                          style={{ color: "#1a7149" }}
-                        >
+                        <p className="text-xs font-semibold mb-1" style={{ color: "#1a7149" }}>
                           {fmtCurrency(row.montantEncaisse)}
                         </p>
-                        <ProgressBar
-                          value={row.montantEncaisse}
-                          max={row.montantTotal || 1}
-                          color={barColor}
-                          height={4}
-                        />
+                        <ProgressBar value={row.montantEncaisse} max={row.montantTotal || 1} color={barColor} height={4} />
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`text-xs font-bold ${
-                            encours > 0
-                              ? "text-red-600"
-                              : "text-emerald-700"
-                          }`}
-                        >
+                        <span className={`text-xs font-bold ${encours > 0 ? "text-red-600" : "text-emerald-700"}`}>
                           {fmtCurrency(encours)}
                         </span>
                       </td>
                       <td className="px-4 py-3">
                         <StatusPill status={row.statut} />
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => {
-                              setEditItem(row);
-                              setModalOpen(true);
-                            }}
-                            className="px-2 py-1 rounded-lg text-xs border transition-all hover:bg-white"
-                            style={{
-                              borderColor: "#e5eadd",
-                              color: "#2d4a3e",
-                            }}
-                            title="Modifier"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => handleDelete(row.id)}
-                            className="px-2 py-1 rounded-lg text-xs border transition-all hover:bg-white"
-                            style={{
-                              borderColor: "#e5eadd",
-                              color: "#DC2626",
-                            }}
-                            title="Supprimer"
-                          >
-                            🗑
-                          </button>
-                        </div>
-                      </td>
+                      
                     </tr>
                   );
                 })
@@ -1337,8 +1219,15 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
           </table>
         </div>
 
-        {/* ── Pagination avec flèches ── */}
-        <Pagination page={page} pages={pages} onChange={setPage} />
+        {/* ✅ NOUVEAU : Pagination intelligente avec données backend */}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          startItem={startItem}
+          endItem={endItem}
+          total={total}
+          onChange={setPage}
+        />
       </div>
 
       {/* ── Modal ── */}
@@ -1347,13 +1236,14 @@ const safeApprenants = Array.isArray(apprenants) ? apprenants : [];
         onClose={() => {
           setModalOpen(false);
           setEditItem(null);
-          
         }}
         onSave={handleSave}
         editItem={editItem}
-        apprenants={apprenants}
-        formations={formations}
+        apprenants={safeApprenants}
+        formations={safeFormations}
       />
+
+      
     </div>
   );
 }

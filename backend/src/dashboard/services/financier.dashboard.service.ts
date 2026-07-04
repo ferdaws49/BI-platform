@@ -32,6 +32,9 @@ export class FinancierDashboardService {
   
   async getKpisGlobaux(filter: FinancierDashboardFilterDto): Promise<DashboardKpisDto> {
   const { startDate, endDate } = this.getResolvedDates(filter);
+
+    console.log('=== FILTER REÇU ===', JSON.stringify(filter));
+  console.log('=== DATES RÉSOLUES ===', { startDate, endDate });
   const formationId = filter.formationId ? Number(filter.formationId) : null;
 
   // ── CA COURANT (identique à Revenue.sumFinanceInRange) ──
@@ -52,6 +55,8 @@ export class FinancierDashboardService {
   const diff = end.getTime() - start.getTime();
   const prevStart = this.fmt(new Date(start.getTime() - diff));
   const prevEnd = this.fmt(new Date(end.getTime() - diff));
+    console.log('=== PÉRIODE PRÉCÉDENTE ===', { prevStart, prevEnd });
+
 
   const resPrev = await this.dataSource.query(`
     SELECT COALESCE(SUM(ABS(f.montant)), 0) as total
@@ -295,18 +300,19 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
 }
   async getSessionsPerformance(filter: FinancierDashboardFilterDto): Promise<SessionsPerformanceResponseDto> {
   const { startDate, endDate } = await this.getResolvedDates(filter);
+    console.log('=== SESSIONS PERFORMANCE FILTER ===', { startDate, endDate, status: filter.status, formationId: filter.formationId });
+
   const formationId = filter.formationId ? Number(filter.formationId) : null;
-  
-  // Paramètres de pagination
+
   const page = filter.page ?? 1;
   const limit = filter.limit ?? 10;
-  const offset = (page - 1) * limit;
 
-  const params: any[] = [startDate, endDate, limit, offset];
+  // ── On retire le LIMIT/OFFSET de la requête SQL ──
+  const params: any[] = [startDate, endDate];
   let formationFilter = '';
   if (formationId) {
     params.push(formationId);
-    formationFilter = `AND fo.formation_id = $5`;
+    formationFilter = `AND fo.formation_id = $3`;
   }
 
   const raws = await this.dataSource.query(`
@@ -319,8 +325,7 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
       ds.prix_session as "prix_unitaire",
       COUNT(DISTINCT CASE WHEN f.sk_apprenant <> -1 THEN f.sk_apprenant END) as "inscrits",
       COALESCE(SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END), 0) as "ca_encaisse",
-      COALESCE(SUM(CASE WHEN tf.type IN ('depense_formateur', 'depense_logistique') THEN ABS(f.montant) ELSE 0 END), 0) as "cout_total",
-      COUNT(*) OVER() as "total_count" -- Récupère le total global avant le LIMIT
+      COALESCE(SUM(CASE WHEN tf.type IN ('depense_formateur', 'depense_logistique') THEN ABS(f.montant) ELSE 0 END), 0) as "cout_total"
     FROM dw.dim_session ds
     INNER JOIN dw.fact_finance f ON ds.sk_session = f.sk_session
     INNER JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
@@ -329,32 +334,49 @@ private async computeCroissanceDwh(filter: FinancierDashboardFilterDto): Promise
     ${formationFilter}
     GROUP BY ds.session_id, ds.titre, fo.titre, ds.date, ds.capacite, ds.prix_session
     ORDER BY ds.date DESC
-    LIMIT $3 OFFSET $4
   `, params);
 
-  const total = raws.length > 0 ? parseInt(raws[0].total_count) : 0;
 
-  const items = raws.map(row => ({
+  // ── Mapping COMPLET avec statut calculé ──
+  let allItems: SessionPerformanceRowDto[] = raws.map(row => {
+    const caEncaisse = parseFloat(row.ca_encaisse);
+    const coutTotal = parseFloat(row.cout_total);
+    const inscrits = parseInt(row.inscrits);
+    const prixUnitaire = parseFloat(row.prix_unitaire);
+    const caFacture = inscrits * prixUnitaire;
+
+    return {
       sessionId: row.sessionid,
       session: row.sessiontitle,
       formation: row.formationtitle,
       date: row.date,
-      inscrits: parseInt(row.inscrits),
+      inscrits,
       capacite: parseInt(row.capacite),
-      caEncaisse: parseFloat(row.ca_encaisse),
-      cout: parseFloat(row.cout_total),
-      margeNette: parseFloat(row.ca_encaisse) - parseFloat(row.cout_total),
-      roi: parseFloat(row.cout_total) > 0 ? ((parseFloat(row.ca_encaisse) - parseFloat(row.cout_total)) / parseFloat(row.cout_total)) * 100 : 0,
-      roiTrend: "stable", // ou votre logique
-      status: this.resolveSessionStatus(parseFloat(row.ca_encaisse), (parseInt(row.inscrits) * parseFloat(row.prix_unitaire)))
-  }));
+      caEncaisse,
+      cout: coutTotal,
+      margeNette: caEncaisse - coutTotal,
+      roi: coutTotal > 0 ? ((caEncaisse - coutTotal) / coutTotal) * 100 : 0,
+      roiTrend: 'stable',
+      status: this.resolveSessionStatus(caEncaisse, caFacture),
+    };
+  });
 
-  return { 
-    items, 
-    page, 
-    limit, 
-    total, 
-    totalPages: Math.ceil(total / limit) || 1 
+  // ── Filtre par statut si fourni ──
+  if (filter.status) {
+    allItems = allItems.filter(item => item.status === filter.status);
+  }
+
+  // ── Pagination manuelle après filtrage ──
+  const total = allItems.length;
+  const offset = (page - 1) * limit;
+  const items = allItems.slice(offset, offset + limit);
+
+  return {
+    items,
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit) || 1,
   };
 }
   private resolvePeriods(filter: FinancierDashboardFilterDto) {

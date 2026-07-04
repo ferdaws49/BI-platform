@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Bell } from 'lucide-react';
 import { getProfile } from '@/lib/profile.api';
 import NotificationBadge from './NotificationBadge';
 
@@ -18,10 +18,9 @@ export default function Navbar({ showSearch = true, showNotifications = true }: 
     async function loadUser() {
       try {
         const data = await getProfile();
-        console.log("Navbar user:", data);
         setUser(data);
       } catch (error) {
-        console.error("Erreur chargement navbar", error);
+        console.error('Erreur chargement navbar', error);
       } finally {
         setLoading(false);
       }
@@ -51,9 +50,9 @@ export default function Navbar({ showSearch = true, showNotifications = true }: 
       {showSearch ? (
         <div className="relative w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="Rechercher formations, sessions..." 
+          <input
+            type="text"
+            placeholder="Rechercher formations, sessions..."
             className="w-full pl-10 pr-4 py-2 bg-gray-50 rounded-xl border-none focus:ring-2 focus:ring-brand-dark outline-none text-sm transition-all"
           />
         </div>
@@ -63,9 +62,9 @@ export default function Navbar({ showSearch = true, showNotifications = true }: 
 
       {/* Notifications et Profil */}
       <div className="flex items-center gap-6">
-        {/* ✅ NotificationBadge dynamique */}
+        {/* NotificationBadge dynamique */}
         {showNotifications && <NotificationBadge />}
-        
+
         <div className="flex items-center gap-3 pl-6 border-l border-gray-100">
           {!loading && user ? (
             <>
@@ -73,10 +72,10 @@ export default function Navbar({ showSearch = true, showNotifications = true }: 
                 <p className="text-sm font-bold text-gray-900">{user.username || ''}</p>
                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">{user.email || ''}</p>
               </div>
-              
+
               {user.profileImage ? (
-                <img 
-                  src={`http://localhost:5000/profile/images/${user.profileImage}`} 
+                <img
+                  src={`http://localhost:5000/profile/images/${user.profileImage}`}
                   alt="Profile"
                   className="w-10 h-10 rounded-full object-cover shadow-inner border border-gray-100"
                 />

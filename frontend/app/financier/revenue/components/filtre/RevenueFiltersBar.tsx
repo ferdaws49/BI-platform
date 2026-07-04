@@ -188,7 +188,7 @@ export default function RevenueFiltersBar({ onChange, formations = [] }: Props) 
           >
             <option value="">Tous statuts</option>
             <option value="paid">Payé</option>
-            <option value="partial">Avance</option>
+            <option value="partial">Partiel</option>
             <option value="unpaid">Impayé</option>
           </select>
           <svg

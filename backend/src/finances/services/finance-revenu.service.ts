@@ -43,17 +43,20 @@ export class FinanceRevenueService {
   // ========== KPI CARDS ==========
 
   async getKpiCards(filter: RevenueFilterDto): Promise<KpiCardsDto> {
-    const { currentStart, currentEnd, previousStart, previousEnd } = this.resolveDashboardPeriod(filter);
+  const { currentStart, currentEnd, previousStart, previousEnd } = this.resolveDashboardPeriod(filter);
 
-    const [curRev, prevRev, curFact, prevFact, curIns, prevIns, topFormation] = await Promise.all([
-      this.sumFinanceInRange(currentStart, currentEnd, 'paiement', filter.formationId),
-      this.sumFinanceInRange(previousStart, previousEnd, 'paiement', filter.formationId),
-      this.sumFactureTotal(currentStart, currentEnd, filter.formationId),
-      this.sumFactureTotal(previousStart, previousEnd, filter.formationId),
-      this.countInscriptionsInRange(currentStart, currentEnd, filter.formationId),
-      this.countInscriptionsInRange(previousStart, previousEnd, filter.formationId),
-      this.getTopFormationByRevenue(currentStart, currentEnd)
-    ]);
+  const [curRev, prevRev, curFact, prevFact, curIns, prevIns, topFormation] = await Promise.all([
+    this.sumFinanceInRange(currentStart, currentEnd, 'paiement', filter.formationId),
+    this.sumFinanceInRange(previousStart, previousEnd, 'paiement', filter.formationId),
+    this.sumFactureTotal(currentStart, currentEnd, filter.formationId),
+    this.sumFactureTotal(previousStart, previousEnd, filter.formationId),
+    this.countInscriptionsInRange(currentStart, currentEnd, filter.formationId),
+    this.countInscriptionsInRange(previousStart, previousEnd, filter.formationId),
+    // ✅ CORRECTION : passer formationId pour avoir le bon top
+    filter.formationId 
+      ? this.getFormationById(filter.formationId, currentStart, currentEnd)
+      : this.getTopFormationByRevenue(currentStart, currentEnd)
+  ]);
 
     const recoveryRatePercent = curFact > 0 ? (curRev / curFact) * 100 : 0;
     const averageBasket = curIns > 0 ? curRev / curIns : 0;
@@ -68,6 +71,21 @@ export class FinanceRevenueService {
       averageBasketGrowthPercent: this.calculateGrowth(averageBasket, prevAvgBasket),
     };
   }
+
+  private async getFormationById(formationId: number, start: string, end: string): Promise<{ id: number; titre: string; total: number } | null> {
+  const res = await this.dataSource.query(`
+    SELECT fo.formation_id as id, fo.titre, SUM(f.montant) as total
+    FROM dw.fact_finance f
+    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+    WHERE t.date_key BETWEEN $1 AND $2
+      AND tf.type = 'paiement'
+      AND fo.formation_id = $3
+    GROUP BY fo.formation_id, fo.titre
+  `, [start, end, formationId]);
+  return res[0] || null;
+}
 
   private async sumFinanceInRange(start: string, end: string, type: string, formationId?: number): Promise<number> {
     const params: any[] = [start, end, type];
@@ -186,20 +204,26 @@ private async sumFactureTotal(
 
   if (formationId) {
     params.push(formationId);
-    formationFilter = `AND ds.sk_formation = (SELECT sk_formation FROM dw.dim_formation WHERE formation_id = $3)`;
+    // ✅ CORRECTION : filtrer via fact_finance qui a sk_formation, pas dim_session
+    formationFilter = `
+      AND ds.sk_session IN (
+        SELECT DISTINCT f_sub.sk_session 
+        FROM dw.fact_finance f_sub
+        JOIN dw.dim_formation fo_sub ON f_sub.sk_formation = fo_sub.sk_formation
+        WHERE fo_sub.formation_id = $${params.length}
+      )
+    `;
   }
 
   const res = await this.dataSource.query(`
     SELECT COALESCE(SUM(ds.prix_session * sub.count_apprenants), 0) as total
     FROM dw.dim_session ds
     INNER JOIN (
-      -- On compte combien d'élèves sont inscrits à CHAQUE session
       SELECT sk_session, COUNT(DISTINCT sk_apprenant) as count_apprenants
       FROM dw.fact_finance
       WHERE sk_apprenant != -1
       GROUP BY sk_session
     ) sub ON ds.sk_session = sub.sk_session
-    -- IMPORTANT : On filtre sur la date de la SESSION
     WHERE ds.date BETWEEN $1 AND $2
     ${formationFilter}
   `, params);
@@ -250,15 +274,19 @@ private async sumFactureTotal(
   // ========== REVENUE EVOLUTION ==========
 
   async getRevenueEvolutionByFormation(filter: RevenueFilterDto): Promise<RevenueEvolutionMultiLineDto> {
-    const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
-        console.log("DEBUG DATES:", { currentStart, currentEnd });
+  const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
+  const topN = filter.topFormations ?? 5;
 
-    const topN = filter.topFormations ?? 5;
-
-    const topIds = await this.getTopFormationIdsByRevenue(currentStart, currentEnd, topN);
-    if (topIds.length === 0) {
-      return { months: [], series: [] };
-    }
+  let topIds: number[];
+  
+  if (filter.formationId) {
+    // ✅ Si un filtre formation est actif, on affiche CETTE formation
+    topIds = [filter.formationId];
+  } else {
+    topIds = await this.getTopFormationIdsByRevenue(currentStart, currentEnd, topN);
+  }
+  
+  if (topIds.length === 0) return { months: [], series: [] };
 
     const rows = await this.dataSource.query(`
       SELECT 
@@ -411,9 +439,15 @@ private async sumFactureTotal(
   async getBubbleChart(filter: RevenueFilterDto): Promise<BubbleChartPointDto[]> {
   const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
   const metric = filter.bubbleMetric ?? BubbleMetric.MARGIN;
-  
-  // 1. Définir la limite (par défaut 5 si non précisé dans le DTO)
   const limit = filter.topFormations ?? 5;
+
+  const params: any[] = [currentStart, currentEnd, limit];
+  let formationFilter = '';
+
+  if (filter.formationId) {
+    params.push(filter.formationId);
+    formationFilter = `AND fo.formation_id = $${params.length}`;
+  }
 
   const rows = await this.dataSource.query(`
     SELECT 
@@ -429,12 +463,11 @@ private async sumFactureTotal(
     LEFT JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
     LEFT JOIN dw.dim_session se ON f.sk_session = se.sk_session
     WHERE fo.formation_id != -1
+    ${formationFilter}
     GROUP BY fo.formation_id, fo.titre
-    -- 2. On trie par revenu décroissant pour avoir les plus importantes
     ORDER BY revenue DESC 
-    -- 3. On limite le nombre de bulles
     LIMIT $3
-  `, [currentStart, currentEnd, limit]); // Ajout de la limite en paramètre
+  `, params);
 
   return rows.map((row: any): BubbleChartPointDto => {
     const revenue = Number(parseFloat(row.revenue || 0).toFixed(2));
@@ -462,17 +495,23 @@ private async sumFactureTotal(
   async getSessionsRevenueTable(filter: RevenueFilterDto): Promise<SessionRevenueTableResponseDto> {
   const { currentStart, currentEnd, previousStart, previousEnd } = this.resolveDashboardPeriod(filter);
 
-  const sortMap: Record<string, string> = {
-    'date': 'ds.date',
-    'session': 'ds.titre',
-    'formation': 'si.formation_title',
-    'inscrits': 'COALESCE(cr.inscrits, 0)',
-    'prix': 'ds.prix_session',
-    'ca': 'COALESCE(cr.ca, 0)',
-  };
+  const sortMap: Record<string, string> = { /* ... */ };
   const sortByKey = filter.sortBy ?? 'ca';
   const sortBy = sortMap[sortByKey] || 'COALESCE(cr.ca, 0)';
   const sortOrder = filter.sortOrder?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+  const params: any[] = [currentStart, currentEnd, previousStart, previousEnd];
+  let formationFilterCur = '';
+  let formationFilterPrev = '';
+  let formationFilterInfo = '';
+
+  if (filter.formationId) {
+    params.push(filter.formationId);
+    const idx = params.length;
+    formationFilterCur = `AND fo.formation_id = $${idx}`;
+    formationFilterPrev = `AND fo.formation_id = $${idx}`;
+    formationFilterInfo = `AND fo.formation_id = $${idx}`;
+  }
 
   const raw = await this.dataSource.query(`
     WITH cur_rev AS (
@@ -481,7 +520,9 @@ private async sumFactureTotal(
       FROM dw.fact_finance f 
       JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
       JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
       WHERE t.date_key BETWEEN $1 AND $2 
+        ${formationFilterCur}
       GROUP BY f.sk_session
     ),
     prev_rev AS (
@@ -489,13 +530,16 @@ private async sumFactureTotal(
       FROM dw.fact_finance f 
       JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
       JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
       WHERE t.date_key BETWEEN $3 AND $4 
+        ${formationFilterPrev}
       GROUP BY f.sk_session
     ),
     session_info AS (
       SELECT DISTINCT ON (f.sk_session) f.sk_session, fo.titre as formation_title
       FROM dw.fact_finance f 
       JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+      WHERE 1=1 ${formationFilterInfo}
       ORDER BY f.sk_session, f.id_fact_finance
     )
     SELECT 
@@ -514,7 +558,7 @@ private async sumFactureTotal(
     LEFT JOIN session_info si ON si.sk_session = ds.sk_session
     WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
     ORDER BY ${sortBy} ${sortOrder}
-  `, [currentStart, currentEnd, previousStart, previousEnd]);
+  `, params);
 
   const items: SessionRevenueTableRowDto[] = raw.map((r: any) => {
     const current = parseFloat(r.caEncaisse) || 0;
@@ -565,24 +609,38 @@ private async sumFactureTotal(
   async exportSessionsRevenueCsv(filter: RevenueFilterDto): Promise<string> {
   const { currentStart, currentEnd, previousStart, previousEnd } = this.resolveDashboardPeriod(filter);
 
+  // === EXACTEMENT les mêmes params et filtres que le tableau ===
+  const params: any[] = [currentStart, currentEnd, previousStart, previousEnd];
+  let formationFilterCur = '';
+  let formationFilterPrev = '';
+
+  if (filter.formationId) {
+    params.push(filter.formationId);
+    const idx = params.length;
+    formationFilterCur = `AND fo.formation_id = $${idx}`;
+    formationFilterPrev = `AND fo.formation_id = $${idx}`;
+  }
+
   const rows = await this.dataSource.query(`
     WITH cur_rev AS (
-      SELECT f.sk_session, 
-             COUNT(DISTINCT f.sk_apprenant) as inscrits, 
+      SELECT f.sk_session, COUNT(DISTINCT f.sk_apprenant) as inscrits,
              SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
       FROM dw.fact_finance f 
       JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
       JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
       WHERE t.date_key BETWEEN $1 AND $2 
+        ${formationFilterCur}
       GROUP BY f.sk_session
     ),
     prev_rev AS (
-      SELECT f.sk_session, 
-             SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
+      SELECT f.sk_session, SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as ca
       FROM dw.fact_finance f 
       JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps 
       JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+      LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
       WHERE t.date_key BETWEEN $3 AND $4 
+        ${formationFilterPrev}
       GROUP BY f.sk_session
     ),
     session_info AS (
@@ -592,51 +650,53 @@ private async sumFactureTotal(
       ORDER BY f.sk_session, f.id_fact_finance
     )
     SELECT 
-      ds.session_id, 
-      ds.type_session as session, 
-      COALESCE(si.formation_title,'Non définie') as formation,
-      ds.date as date,                    -- ✅ CORRECTION : utilise ds.date directement
-      ds.capacite, 
-      COALESCE(cr.inscrits,0) as inscrits, 
-      COALESCE(ds.prix_session,0) as prix,
-      COALESCE(cr.ca,0) as caEncaisse, 
-      COALESCE(pr.ca,0) as caEncaissePrev
+      ds.session_id as "sessionId",
+      ds.titre as "session",
+      ds.date as "date",
+      COALESCE(si.formation_title, 'Non définie') as "formation",
+      ds.capacite,
+      COALESCE(cr.inscrits, 0) as "inscrits",
+      COALESCE(ds.prix_session, 0) as "prix",
+      COALESCE(cr.ca, 0) as "caEncaisse",
+      COALESCE(pr.ca, 0) as "caEncaissePrev"
     FROM dw.dim_session ds
     LEFT JOIN cur_rev cr ON cr.sk_session = ds.sk_session
     LEFT JOIN prev_rev pr ON pr.sk_session = ds.sk_session
     LEFT JOIN session_info si ON si.sk_session = ds.sk_session
     WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
-    ORDER BY COALESCE(cr.ca,0) DESC
-  `, [currentStart, currentEnd, previousStart, previousEnd]);
+    ORDER BY COALESCE(cr.ca, 0) DESC
+  `, params);
 
-  const header = ['Session', 'Formation', 'Date', 'Inscrits', 'Prix (DT)', 'CA Encaisse (DT)', 'Variation (%)', 'Statut Tendance'];
-  
+  // === EXACTEMENT les mêmes colonnes que le tableau ===
+  const header = ['Session', 'Formation', 'Date', 'Capacite', 'Inscrits', 'Prix (DT)', 'CA Encaisse (DT)', 'Variation (%)'];
+
   const lines = rows.map((r: any) => {
     const current = parseFloat(r.caEncaisse) || 0;
     const previous = parseFloat(r.caEncaissePrev) || 0;
+    
     let percent = 0;
-    
-    if (previous > 0) percent = ((current - previous) / previous) * 100;
-    else if (current > 0) percent = 100;
-    
-    let color = 'NEUTRAL';
-    if (percent > 0) color = 'GREEN';
-    else if (percent < 0) color = 'RED';
 
-    // ✅ CORRECTION : formatage de la date en français
+    if (previous > 0) {
+      percent = ((current - previous) / previous) * 100;
+    } else if (previous === 0 && current > 0) {
+      percent = 100;
+    } else if (current === 0 && previous > 0) {
+      percent = -100;
+    }
+
     const dateStr = r.date 
       ? new Date(r.date).toLocaleDateString('fr-FR') 
       : '';
 
     return [
       this.csvEscape(r.session),
-      this.csvEscape(r.formation),
+      this.csvEscape(r.formation || 'Non définie'),
       dateStr,
+      r.capacite ? parseInt(r.capacite) : '',
       r.inscrits,
       parseFloat(r.prix).toFixed(2),
       current.toFixed(2),
       percent.toFixed(2) + '%',
-      color,
     ].join(',');
   });
 
@@ -654,21 +714,31 @@ private async sumFactureTotal(
   // ========== PAYMENT MANAGEMENT ==========
 
   async getPaymentManagementKpis(filter: RevenueFilterDto): Promise<PaymentManagementKpisDto> {
-    const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
+  const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
 
-    const encRes = await this.dataSource.query(`
-      SELECT COALESCE(SUM(f.montant), 0) as total, COUNT(*) as count
-      FROM dw.fact_finance f
-      JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
-      JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
-      WHERE t.date_key BETWEEN $1 AND $2
-        AND tf.type = 'paiement'
-    `, [currentStart, currentEnd]);
+  const params: any[] = [currentStart, currentEnd];
+  let formationFilter = '';
 
-    const totalEncaisse = parseFloat(encRes[0]?.total) || 0;
-    const paymentsCount = parseInt(encRes[0]?.count) || 0;
+  if (filter.formationId) {
+    params.push(filter.formationId);
+    formationFilter = `AND fo.formation_id = $${params.length}`;
+  }
 
-    const totalFacture = await this.sumFactureInRange(currentStart, currentEnd, filter.formationId);
+  const encRes = await this.dataSource.query(`
+    SELECT COALESCE(SUM(f.montant), 0) as total, COUNT(*) as count
+    FROM dw.fact_finance f
+    JOIN dw.dim_temps t ON f.sk_temps = t.sk_temps
+    JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
+    WHERE t.date_key BETWEEN $1 AND $2
+      AND tf.type = 'paiement'
+      ${formationFilter}
+  `, params);
+
+  const totalEncaisse = parseFloat(encRes[0]?.total) || 0;
+  const paymentsCount = parseInt(encRes[0]?.count) || 0;
+
+  const totalFacture = await this.sumFactureInRange(currentStart, currentEnd, filter.formationId);
     const totalNonEncaisse = Math.max(0, totalFacture - totalEncaisse);
     const paymentRatePercent = totalFacture > 0 ? (totalEncaisse / totalFacture) * 100 : 0;
 
@@ -683,6 +753,14 @@ private async sumFactureTotal(
   async getPaymentManagementPie(filter: RevenueFilterDto): Promise<PaymentManagementPieDto> {
   const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
 
+  const params: any[] = [currentStart, currentEnd];
+  let formationFilter = '';
+
+  if (filter.formationId) {
+    params.push(filter.formationId);
+    formationFilter = `AND fo.formation_id = $${params.length}`;
+  }
+
   const rows = await this.dataSource.query(`
     SELECT 
       ds.session_id,
@@ -693,9 +771,11 @@ private async sumFactureTotal(
     LEFT JOIN dw.fact_finance f ON f.sk_session = ds.sk_session
     LEFT JOIN dw.dim_temps dt ON f.sk_temps = dt.sk_temps AND dt.date_key BETWEEN $1 AND $2
     LEFT JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
+    LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
     WHERE ds.session_id != '00000000-0000-0000-0000-000000000000'
+    ${formationFilter}
     GROUP BY ds.session_id, ds.prix_session
-  `, [currentStart, currentEnd]);
+  `, params);
 
   let paye = 0, avance = 0, impaye = 0;
 
@@ -777,24 +857,33 @@ private async sumFactureTotal(
   async getPaymentManagementTable(filter: RevenueFilterDto): Promise<PaymentManagementTableResponseDto> {
   const { currentStart, currentEnd } = this.resolveDashboardPeriod(filter);
 
+  const params: any[] = [currentStart, currentEnd];
+  let formationFilter = '';
+
+  if (filter.formationId) {
+    params.push(filter.formationId);
+    formationFilter = `AND fo.formation_id = $${params.length}`;
+  }
+
   const rows = await this.dataSource.query(`
-    SELECT 
+    SELECT
       da.apprenant_id as "inscriptionId",
       da.nom as "nom",
       ds.session_id as "sessionId",
-      ds.type_session as "sessionTitle",
+      ds.titre as "sessionTitle",
       fo.titre as "formationTitle",
       COALESCE(ds.prix_session, 0) as "total",
       SUM(CASE WHEN tf.type = 'paiement' THEN f.montant ELSE 0 END) as "paid"
     FROM dw.dim_apprenant da
     JOIN dw.fact_finance f ON f.sk_apprenant = da.sk_apprenant
     JOIN dw.dim_session ds ON f.sk_session = ds.sk_session
-    LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation   -- ← VIA fact_finance
+    LEFT JOIN dw.dim_formation fo ON f.sk_formation = fo.sk_formation
     JOIN dw.dim_temps dt ON f.sk_temps = dt.sk_temps AND dt.date_key BETWEEN $1 AND $2
     JOIN dw.dim_type_finance tf ON f.sk_type_finance = tf.sk_type_finance
     WHERE da.apprenant_id != -1
-    GROUP BY da.apprenant_id, da.nom, ds.session_id, ds.type_session, fo.titre, ds.prix_session
-  `, [currentStart, currentEnd]);
+    ${formationFilter}
+    GROUP BY da.apprenant_id, da.nom, ds.session_id, ds.titre, fo.titre, ds.prix_session
+  `, params);
 
   let items: PaymentManagementTableRowDto[] = rows.map((row: any) => {
     const total = parseFloat(row.total) || 0;
@@ -806,6 +895,7 @@ private async sumFactureTotal(
     else if (paid > 0) status = PaiementStatus.PARTIAL;
 
     return {
+      financeId: Number(row.financeId),
       inscriptionId: Number(row.inscriptionId),
       apprenant: row.nom || 'Inconnu',
       session: row.sessionTitle,
@@ -821,16 +911,28 @@ private async sumFactureTotal(
     items = items.filter(item => item.status === filter.paymentStatus);
   }
 
+  // ✅ PAGINATION CORRIGÉE
   const page = filter.page ?? 1;
   const limit = filter.limit ?? 10;
   const total = items.length;
+  const totalPages = Math.ceil(total / limit) || 1;
+
+  // ✅ AJOUT : calcul des indices et flags
+  const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, total);
+  const hasPreviousPage = page > 1;
+  const hasNextPage = page < totalPages;
 
   return {
     items: items.slice((page - 1) * limit, page * limit),
     page,
     limit,
     total,
-    totalPages: Math.ceil(total / limit) || 1,
+    totalPages,
+    hasPreviousPage,
+    hasNextPage,
+    startItem,
+    endItem,
   };
 }
   // ========== UTILITAIRES ==========

@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete,
+  Controller, Get, Post, Patch, Delete,SetMetadata,
   Param, Body, ParseIntPipe, UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -59,9 +59,12 @@ export class UsersController {
     return this.usersService.remove(id);
   }
 
-  // POST /admin/users/:id/reset-password
-  @Post(':id/reset-password')
-  requestResetPassword(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.requestResetPassword(id);
-  }
+  // POST /admin/users/:id/reset-password ← admin يطلب إرسال email للـ user
+@Post(':id/reset-password')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@SetMetadata('roles', ['admin'])
+requestReset(@Param('id', ParseIntPipe) id: number) {
+  return this.usersService.requestResetPassword(id);
+}
+
 }

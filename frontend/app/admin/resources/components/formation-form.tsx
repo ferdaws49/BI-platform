@@ -17,8 +17,7 @@ import {
 } from "./ui";
 import { ChevronDown } from "lucide-react";
 
-// ─── Schéma Zod ───────────────────────────────────────────────────────────────
-// .trim() sur les strings → supprime les espaces avant validation
+// ─── Schéma Zod — sans niveauType ────────────────────────────────────────────
 const formationSchema = z.object({
   titre: z.string().trim().min(2, "Titre requis (min 2 caractères)"),
   categorie: z.string().trim().min(1, "Catégorie requise"),
@@ -27,15 +26,13 @@ const formationSchema = z.object({
     .trim()
     .min(5, "Description trop courte (min 5 caractères)"),
   prix: z.coerce.number().positive("Prix requis").min(0.01, "Prix requis"),
-  niveauType: z.enum(["présentiel", "en_ligne"]),
   statut: z.enum(["active", "completed"]),
 });
 
-// Type strict du payload — plus de any
 type FormationFormInput = z.input<typeof formationSchema>;
 type FormationValues = z.output<typeof formationSchema>;
 
-// Payload envoyé au parent (inclut les champs non-éditables en mode edit)
+// Payload envoyé au parent
 export type SavePayload = FormationValues & {
   id?: string;
   nbSessions?: number;
@@ -69,7 +66,6 @@ function CategorieInput({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Sync inputValue quand le parent reset le form
   useEffect(() => {
     setInputValue(value);
   }, [value]);
@@ -97,7 +93,7 @@ function CategorieInput({
           value={inputValue}
           onChange={(e) => handleInput(e.target.value)}
           onFocus={() => setOpen(true)}
-          onBlur={onBlur} // ✅ transmet onBlur à RHF pour déclencher la validation
+          onBlur={onBlur}
           placeholder="Ex : Data & IA, Développement Web..."
           className="rounded-xl border-border/50 pr-8"
         />
@@ -164,12 +160,10 @@ export function FormationFormModal({
       categorie: "",
       description: "",
       prix: 500,
-      niveauType: "présentiel",
       statut: "active",
     },
   });
 
-  // Sync form à chaque ouverture
   useEffect(() => {
     if (!isOpen) return;
     if (editModeData) {
@@ -178,7 +172,6 @@ export function FormationFormModal({
         categorie: editModeData.categorie,
         description: editModeData.description,
         prix: editModeData.prix,
-        niveauType: editModeData.niveauType ?? "présentiel",
         statut: editModeData.statut ?? "active",
       });
     } else {
@@ -187,13 +180,11 @@ export function FormationFormModal({
         categorie: "",
         description: "",
         prix: 500,
-        niveauType: "présentiel",
         statut: "active",
       });
     }
   }, [isOpen, editModeData, reset]);
 
-  // ✅ Payload typé — préserve id + champs calculés en mode edit
   const onSubmit = async (data: FormationValues) => {
     const payload: SavePayload =
       isEdit && editModeData
@@ -230,7 +221,7 @@ export function FormationFormModal({
           )}
         </div>
 
-        {/* Catégorie — Controller pour intégrer CategorieInput dans RHF */}
+        {/* Catégorie */}
         <div>
           <Label>Catégorie *</Label>
           <Controller
@@ -248,40 +239,22 @@ export function FormationFormModal({
           />
         </div>
 
-        {/* Type + Statut */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="niveauType">Type *</Label>
-            <SelectNative
-              id="niveauType"
-              {...register("niveauType")}
-              className="rounded-xl border-border/50"
-            >
-              <option value="présentiel">🖥 Présentiel</option>
-              <option value="en_ligne">🌐 En ligne</option>
-            </SelectNative>
-            {errors.niveauType && (
-              <p className="text-xs text-destructive mt-1">
-                {errors.niveauType.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="statut">Statut *</Label>
-            <SelectNative
-              id="statut"
-              {...register("statut")}
-              className="rounded-xl border-border/50"
-            >
-              <option value="active">✅ Active</option>
-              <option value="completed">🏁 Terminée</option>
-            </SelectNative>
-            {errors.statut && (
-              <p className="text-xs text-destructive mt-1">
-                {errors.statut.message}
-              </p>
-            )}
-          </div>
+        {/* Statut seul (niveauType supprimé) */}
+        <div>
+          <Label htmlFor="statut">Statut *</Label>
+          <SelectNative
+            id="statut"
+            {...register("statut")}
+            className="rounded-xl border-border/50"
+          >
+            <option value="active">✅ Active</option>
+            <option value="completed">🏁 Terminée</option>
+          </SelectNative>
+          {errors.statut && (
+            <p className="text-xs text-destructive mt-1">
+              {errors.statut.message}
+            </p>
+          )}
         </div>
 
         {/* Prix */}
@@ -290,7 +263,7 @@ export function FormationFormModal({
           <Input
             id="prix"
             type="number"
-            min={0.01} // ✅ aligné avec schema min(0.01)
+            min={0.01}
             step={0.01}
             {...register("prix")}
             className="rounded-xl border-border/50"

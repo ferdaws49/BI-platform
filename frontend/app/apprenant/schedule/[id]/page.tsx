@@ -30,7 +30,7 @@ export default function FormationSchedulePage() {
       <div className="relative border-l-2 border-emerald-100 ml-4 space-y-8">
         {sessions.map((session: any, index: number) => (
           <div key={index} className="relative pl-8">
-            {/* Point sur la timeline */}
+            
             <div className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-emerald-500 border-4 border-white shadow-sm" />
             
             <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">

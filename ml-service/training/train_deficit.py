@@ -4,10 +4,9 @@ train_deficit.py
 Standalone training script for Session Deficit Prediction model.
 
 Usage:
-  python train_deficit.py --input data/sessions.json
-  python train_deficit.py --input data/sessions.json --min-samples 20
-
-Can also be called programmatically from deficit_route.py /train endpoint.
+  python train_deficit.py
+  python train_deficit.py --min-samples 20
+  python train_deficit.py --date-from 2024-01-01 --date-to 2024-12-31
 ─────────────────────────────────────────────────────────────────────────────
 """
 
@@ -15,21 +14,16 @@ import argparse
 import json
 import logging
 import sys
-from pathlib import Path
+from datetime import date
 from services.deficit_service import run_training
-
-
-
-from schemas.deficit_schema import RawSessionInput, TrainResponse
+from schemas.deficit_schema import RawSessionInput, SessionFilter
+from data.postgres_loader_sessions import load_sessions_data
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
 )
 logger = logging.getLogger("train_deficit")
-
-
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -42,16 +36,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python train_deficit.py --input data/sessions.json
-  python train_deficit.py --input data/sessions.json --min-samples 20
-  python train_deficit.py --input data/sessions.json --output-metrics metrics.json
+  python train_deficit.py
+  python train_deficit.py --min-samples 20
+  python train_deficit.py --date-from 2024-01-01 --date-to 2024-12-31
+  python train_deficit.py --output-metrics metrics.json
         """,
-    )
-    parser.add_argument(
-        "--input",
-        required=True,
-        type=Path,
-        help="Path to JSON file containing list of raw session objects",
     )
     parser.add_argument(
         "--min-samples",
@@ -60,31 +49,45 @@ Examples:
         help="Minimum number of sessions required to train (default: 10)",
     )
     parser.add_argument(
+        "--date-from",
+        type=str,
+        default=None,
+        help="Date de début (format: YYYY-MM-DD). Par défaut: 1er janvier de l'année courante",
+    )
+    parser.add_argument(
+        "--date-to",
+        type=str,
+        default=None,
+        help="Date de fin (format: YYYY-MM-DD). Par défaut: aujourd'hui",
+    )
+    parser.add_argument(
         "--output-metrics",
-        type=Path,
+        type=str,
         default=None,
         help="Optional path to save training metrics as JSON",
     )
 
     args = parser.parse_args()
 
-    # Load sessions from JSON file
-    if not args.input.exists():
-        logger.error(f"Input file not found: {args.input}")
+    # Dates par défaut
+    date_from = date.fromisoformat(args.date_from) if args.date_from else date(date.today().year, 1, 1)
+    date_to = date.fromisoformat(args.date_to) if args.date_to else date.today()
+
+    # Chargement depuis PostgreSQL
+    filters = SessionFilter(date_from=date_from, date_to=date_to)
+    logger.info(f"Chargement des sessions depuis PostgreSQL ({date_from} → {date_to})")
+
+    df = load_sessions_data(filters)
+
+    if df.empty:
+        logger.error("Aucune donnée trouvée en base pour ces filtres.")
         sys.exit(1)
 
-    with open(args.input, "r", encoding="utf-8") as f:
-        raw_data = json.load(f)
-
-    # Handle both {"sessions": [...]} and plain [...] formats
-    if isinstance(raw_data, dict) and "sessions" in raw_data:
-        raw_data = raw_data["sessions"]
-
-    logger.info(f"Loaded {len(raw_data)} sessions from {args.input}")
+    logger.info(f"{len(df)} sessions chargées depuis la base.")
 
     # Parse into Pydantic models
     try:
-        sessions = [RawSessionInput(**item) for item in raw_data]
+        sessions = [RawSessionInput(**row) for row in df.to_dict("records")]
     except Exception as e:
         logger.error(f"Failed to parse session data: {e}")
         sys.exit(1)

@@ -99,5 +99,23 @@ export class MailService {
                 }
 
     }
+
+  async sendInscriptionAccepted(email: string, prenom: string, nom: string) {
+    await this.mailerService.sendMail({
+      to: email,
+      subject: '✅ Votre inscription a été acceptée',
+      template: './inscription-accepted', // templates/inscription-accepted.hbs
+      context: { prenom, nom },
+    });
+  }
+
+  async sendInscriptionRejected(email: string, prenom: string, nom: string) {
+    await this.mailerService.sendMail({
+      to: email,
+      subject: '❌ Votre inscription a été refusée',
+      template: './inscription-rejected', // templates/inscription-rejected.hbs
+      context: { prenom, nom },
+    });
+  }
 }
 

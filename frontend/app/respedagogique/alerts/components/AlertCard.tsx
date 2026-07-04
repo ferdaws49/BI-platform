@@ -74,38 +74,20 @@ export function AlertCard({ apprenant, expanded, onToggle }: AlertCardProps) {
               {apprenant.factors.map(f => <FactorBar key={f.label} factor={f} />)}
             </div>
           </div>
+{/* Actions */}
 
-          {/* Actions */}
-          <div className="flex flex-wrap gap-3 pt-2">
-            <a
-              href={`mailto:${apprenant.email}`}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold transition-all hover:opacity-90 shadow-md"
-            >
-              <Mail size={14} />
-              Contacter par email
-            </a>
-            {apprenant.phone && (
-              <a
-                href={`tel:${apprenant.phone}`}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-border text-foreground rounded-xl text-xs font-bold transition-all hover:bg-muted"
-              >
-                <Phone size={14} />
-                {apprenant.phone}
-              </a>
-            )}
-            <button
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-border text-foreground rounded-xl text-xs font-bold transition-all hover:bg-muted"
-              onClick={() => alert(`Planifier entretien avec ${apprenant.prenom} ${apprenant.nom}`)}
-            >
-              <Calendar size={14} />
-              Planifier un entretien
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 pt-2 border-t border-border/50 text-[11px] text-muted-foreground italic">
-            <span>Formateur responsable :</span>
-            <span className="font-bold text-foreground not-italic">{apprenant.formateur}</span>
-          </div>
+    <div className="flex flex-wrap items-center gap-4 pt-2">
+      {apprenant.phone && (
+        <div className="inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-border text-foreground rounded-xl text-xs font-bold select-none">
+          <Phone size={14} className="text-muted-foreground" />
+          <span>Contacter sur : {apprenant.phone}</span>
+        </div>
+      )}
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground italic">
+        <span>Formateur responsable :</span>
+        <span className="font-bold text-foreground not-italic">{apprenant.formateur}</span>
+      </div>
+        </div>
         </div>
       )}
     </div>

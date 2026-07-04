@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Search, ArrowUpDown, ArrowUp, ArrowDown,
   TrendingUp, TrendingDown, Minus, ChevronLeft, ChevronRight,
@@ -86,6 +86,10 @@ export default function PerformanceTable({ data }: PerformanceTableProps) {
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [page, setPage] = useState(1);
   const perPage = 5;
+  useEffect(() => {
+    setPage(1);
+    setSearch("");
+  }, [data]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {

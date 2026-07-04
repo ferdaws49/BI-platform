@@ -8,6 +8,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const currentYear = new Date().getFullYear();
   return (
     <div className="flex min-h-screen font-sans bg-background transition-colors duration-300">
       <Sidebar role="financier" />
@@ -15,7 +16,7 @@ export default function DashboardLayout({
       <div className="flex-1 flex flex-col min-w-0">
         <Header
           title="Pilotage Financier"
-          subtitle="Exercice 2026"
+          subtitle={`Exercice ${currentYear}`}
           showFilters={false}
         />
 

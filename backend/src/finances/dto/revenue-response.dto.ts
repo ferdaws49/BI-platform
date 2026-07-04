@@ -235,6 +235,15 @@ export class PaymentManagementTableResponseDto {
 
   @ApiProperty()
   totalPages: number;
+
+   @ApiProperty()
+  hasPreviousPage: boolean;
+   @ApiProperty()
+  hasNextPage: boolean;
+   @ApiProperty()
+  startItem: number;  // numéro du 1er élément affiché
+   @ApiProperty()
+  endItem: number;
 }
 
 export enum BubbleMetric {

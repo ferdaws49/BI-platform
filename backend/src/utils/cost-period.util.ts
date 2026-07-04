@@ -51,7 +51,7 @@ export function resolveCostPeriod(filter: CostFilterDto): {
     return { rangeStart: startOfUtcQuarter(now), rangeEnd: endOfUtcQuarter(now) };
   }
   if (filter.periodPreset === CostPeriodPreset.YEAR) {
-    return { rangeStart: startOfUtcYear(now), rangeEnd: endOfUtcYear(now) };
+    return { rangeStart: startOfUtcYear(now), rangeEnd: now };
   }
 
   // 3. fallback SAFE (PAS 2025 !)

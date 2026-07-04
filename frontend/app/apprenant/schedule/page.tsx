@@ -165,9 +165,10 @@ function SessionCard({ session }: { session: any}) {
       setJoining(false);
     }
 
-  };
+  }; 
+  {/**onClick={() => router.push(`/apprenant/schedule/${session.formationId}`)} hedi kenet fi awel div */}
   return (
-    <div onClick={() => router.push(`/apprenant/schedule/${session.formationId}`)}
+    <div 
      className="bg-white p-5 rounded-[24px] border border-gray-100 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition-all group">
       <div className="flex md:flex-col items-center justify-center bg-[#f9f8f3] rounded-2xl p-4 min-w-[90px] group-hover:bg-emerald-50 transition-colors">
         <span className="text-2xl font-black text-[#2d4a3e]">{format(parseISO(session.date), 'dd')}</span>

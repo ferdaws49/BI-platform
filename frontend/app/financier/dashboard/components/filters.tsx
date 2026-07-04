@@ -1,36 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, ChevronDown, Filter, BookOpen } from "lucide-react";
 import type { PeriodFilter } from "../types";
 
 
 function getPeriodDates(period: string) {
   const now = new Date();
-
   const format = (d: Date) => d.toISOString().split("T")[0];
-
   const endDate = format(now);
   const start = new Date(now);
 
-  if (period === "Mois" || period === "month") {
+  if (period === "month") {
     start.setDate(now.getDate() - 30);
-  }
-
-  if (period === "Trimestre" || period === "quarter") {
+  } else if (period === "quarter") {
     start.setDate(now.getDate() - 90);
+  } else {
+    // "year" ou défaut → 1er janvier
+    start.setFullYear(now.getFullYear(), 0, 1);
   }
 
-  if (period === "Année" || period === "year") {
-  start.setFullYear(now.getFullYear());
-  start.setMonth(0);
-  start.setDate(1);
-}
-
-  return {
-    startDate: format(start),
-    endDate,
-  };
+  return { startDate: format(start), endDate };
 }
 
 
@@ -52,15 +42,13 @@ export default function FiltersBar({ onFilterChange, formations }: FiltersBarPro
   const [period, setPeriod] = useState("Année");
   const [status, setStatus] = useState("Tout");
   const [formationId, setFormationId] = useState("");
-
+ 
+   useEffect(() => {
+    handleApplyFilters("Année", "Tout", "");
+  }, []);
   
   const handleApplyFilters = (p: string, status: string, formationId: string) => {
-    const mapPeriod = (p: string) => {
-  if (p === "Mois") return "month";
-  if (p === "Trimestre") return "quarter";
-  if (p === "Année") return "year";
-  return "year";
-};
+    
 
 const mapStatus = (s: string) => {
   const map: Record<string, string> = {

@@ -11,6 +11,7 @@ import { ApprenantModule } from '../apprenants/apprenants.module';
     TypeOrmModule.forFeature([Inscription]),
     UsersModule,
     ApprenantModule,
+   
   ],
   controllers: [InscriptionsController],
   providers: [InscriptionsService],

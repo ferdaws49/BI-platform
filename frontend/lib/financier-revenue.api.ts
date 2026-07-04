@@ -5,6 +5,21 @@ export interface FormationSelect {
   id: number;
   title: string;
 }
+
+export interface PaymentTableResponse {
+  items: any[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+  startItem: number;
+  endItem: number;
+}
+
+
+
  
 function getToken(): string {
   if (typeof window === "undefined") return "";
@@ -93,8 +108,9 @@ export const revenueApi = {
   getPaymentKpis: (f: any) => fetchRevenue("finance/payments/kpis", f),
   getPaymentPie: (f: any) => fetchRevenue("finance/payments/charts/pie", f),
   getPaymentBar: (f: any) => fetchRevenue("finance/payments/charts/bar", f),
-  getPaymentTable: (f: any) => fetchRevenue("finance/payments/table", f ),
- 
+  
+getPaymentTable: (f: any): Promise<PaymentTableResponse> => 
+  fetchRevenue("finance/payments/table", f), 
   // ── CRUD Paiements ──
   addPayment: (dto: {
     apprenantId: number;
@@ -112,12 +128,18 @@ export const revenueApi = {
       montant: number;
       paymentDate: string;
       sessionId?: string | number;
+      id?: number; // Il est peut-être présent ici
     }
   ) =>
-    fetchJSON(`finance/payments/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(dto),
-    }),
+    {
+  // On déstructure pour extraire 'id' et ne garder que le reste dans 'data'
+  const { id: _unusedId, ...data } = dto;
+
+  return fetchJSON(`finance/payments/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data), // On envoie 'data' qui ne contient plus 'id'
+  });
+},
  
   deletePayment: (id: number) =>
     fetchJSON(`finance/payments/${id}`, { method: "DELETE" }),
